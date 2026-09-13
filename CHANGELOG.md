@@ -8,6 +8,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.95 — 2026-09-13
+
 ### Added
 
 - Science-benchmark campaigns over the existing headless Research loop: Harbor
