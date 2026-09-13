@@ -8,6 +8,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.96 — 2026-09-13
+
 ### Added
 
 - `literature`, one tool for papers. `search` runs a query against OpenAlex and
