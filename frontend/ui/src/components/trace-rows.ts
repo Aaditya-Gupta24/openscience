@@ -1,7 +1,7 @@
 import type { Part, ToolPart } from "@synsci/sdk/v2/client"
 import type { ResearchTraceEntry } from "./research-trace"
 import { collapsibleTracePart, traceFamily } from "./research-trace"
-import { toolChanges, writtenFiles } from "./tool-display"
+import { toolChanges, writtenFiles, reasoningDisplayText } from "./tool-display"
 
 /**
  * The activity trace as a list of rows, the way Cursor presents work: one
@@ -11,7 +11,7 @@ import { toolChanges, writtenFiles } from "./tool-display"
  * live progress and problems are never folded into a count.
  */
 export type TraceRow =
-  | { kind: "thought"; entries: ResearchTraceEntry[]; seconds?: number }
+  | { kind: "thought"; entries: ResearchTraceEntry[]; seconds?: number; readable: boolean }
   | { kind: "text"; entry: ResearchTraceEntry; narration: boolean }
   | { kind: "agent"; entry: ResearchTraceEntry }
   | { kind: "tool"; entry: ResearchTraceEntry }
@@ -57,6 +57,9 @@ function thoughtSeconds(part: Part) {
   return Math.max(0, Math.round((time.end - time.start) / 1000))
 }
 
+const readableText = (entry: ResearchTraceEntry) =>
+  entry.part.type === "reasoning" && !!reasoningDisplayText(entry.part.text ?? "")
+
 export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
   const rows: TraceRow[] = []
   // Text that arrives before later work is narration: it belongs to the
@@ -74,9 +77,12 @@ export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
       if (previous?.kind === "thought") {
         previous.entries.push(entry)
         previous.seconds = seconds === undefined ? previous.seconds : (previous.seconds ?? 0) + seconds
+        previous.readable = previous.readable || readableText(entry)
         return
       }
-      rows.push({ kind: "thought", entries: [entry], seconds })
+      // A phase the provider kept entirely private still took its time: the
+      // row keeps the duration and has nothing to open.
+      rows.push({ kind: "thought", entries: [entry], seconds, readable: readableText(entry) })
       return
     }
     if (part.type === "text") {

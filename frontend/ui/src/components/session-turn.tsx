@@ -38,7 +38,6 @@ import {
   generatedArtifacts,
   sessionErrorDisplay,
   reasoningDisplayText,
-  privateReasoningOnly,
   stripRedactedReasoning,
   writtenFiles,
 } from "./tool-display"
@@ -151,7 +150,9 @@ function TraceGroupRow(props: {
   label: string
   live?: boolean
   working?: boolean
-  header?: boolean
+  /** `false`: the body alone (a burst of one call). `"label"`: the label
+   *  alone, for a phase with nothing to open. */
+  header?: boolean | "label"
   changes?: { additions: number; deletions: number }
   children: JSX.Element
 }) {
@@ -165,6 +166,23 @@ function TraceGroupRow(props: {
     return (
       <div data-component="trace-group" data-kind={props.kind} data-header="false">
         <div data-slot="trace-group-body">{props.children}</div>
+      </div>
+    )
+  }
+  if (props.header === "label") {
+    return (
+      <div
+        data-component="trace-group"
+        data-kind={props.kind}
+        data-header="label"
+        data-live={props.live ? "true" : undefined}
+      >
+        <div data-component="trace-row" data-static="true">
+          <Show when={props.live}>
+            <Spinner />
+          </Show>
+          <span data-slot="trace-row-label">{props.label}</span>
+        </div>
       </div>
     )
   }
@@ -260,6 +278,7 @@ function AssistantTrace(props: {
                     kind="thought"
                     live={running()}
                     working={props.working}
+                    header={value().readable ? undefined : "label"}
                     label={thoughtLabel(value().seconds, running())}
                   >
                     <For each={ids()}>
@@ -488,8 +507,7 @@ export function SessionTurn(
       if (!msgParts) continue
       for (const p of msgParts) {
         if (p?.type === "tool") return true
-        if (p?.type === "reasoning" && (reasoningDisplayText(p.text ?? "") || privateReasoningOnly(p.text ?? "")))
-          return true
+        if (p?.type === "reasoning" && reasoningDisplayText(p.text ?? "")) return true
       }
     }
     return false

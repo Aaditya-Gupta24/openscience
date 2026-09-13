@@ -64,6 +64,22 @@ describe("trace rows", () => {
     expect(thoughtLabel(thought.seconds, false)).toBe("Thought 40s")
   })
 
+  test("a phase the provider kept entirely private keeps its time and has nothing to open", () => {
+    const rows = buildTraceRows(
+      entries([
+        tool("read", "read"),
+        { ...reasoning("r1", 0, 75_000), text: "[REDACTED]" } as Part,
+        tool("grep", "grep"),
+        reasoning("r2", 80_000, 82_000),
+      ]),
+    )
+    expect(rows.map((row) => row.kind)).toEqual(["explored", "thought", "explored", "thought"])
+    const quiet = rows[1] as Extract<(typeof rows)[number], { kind: "thought" }>
+    expect(quiet.readable).toBe(false)
+    expect(thoughtLabel(quiet.seconds, false)).toBe("Thought 1m 15s")
+    expect((rows[3] as Extract<(typeof rows)[number], { kind: "thought" }>).readable).toBe(true)
+  })
+
   test("patch edit counts use actual file receipts and keep distinct same-name files", () => {
     const rows = buildTraceRows(
       entries([

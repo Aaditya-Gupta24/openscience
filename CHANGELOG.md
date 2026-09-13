@@ -8,6 +8,147 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Added
+
+- Science-benchmark campaigns over the existing headless Research loop: Harbor
+  0.22.0 for Terminal-Bench Science, Terminal-Bench 4 science, and BiomniBench-DA
+  50; native adapters for BixBench3 and ResearchClawBench. Bundled skills stay
+  on unless `--ak skills=none`. See `evals/science-harness`.
+- Autoresearch: a pane beside Files, Terminal and Compute with one tab per
+  study, tracking metrics from every run. A script imports
+  `openscience_track` (or `wandb`, shimmed) and logs numbers; inside a compute
+  job the records ride the job log with no network or dependency, and land in a
+  per-project SQLite store. A study reads as a score (best value and its move
+  from the baseline), the climb across runs, the runs with a multi-run chart
+  (shared hover, smoothing, log scale) and per-run configuration, summary and
+  curves, then the queue, the lessons and the activity; local GPUs show in
+  the bar.
+- Studies: an autoresearch loop the agent drives with the `study` and
+  `experiments` tools. One metric and direction, a baseline, a queue of ideas
+  ranked by expected value, exactly one run per idea through the existing
+  compute permissions, verdicts with analysis and lessons, kill criteria in
+  plain words ("1 hour OR val_loss plateaus for 500 steps"), budgets by runs,
+  hours, spend or target, and Pause, Resume, Halt and Write up beside the
+  score. The driver follows each run, ends runs that break the criteria, and
+  wakes the session with one "Study update" per batch of news, capped per
+  hour; `study.md`, `ideas.md`, `results.tsv` and `lessons.md` are rendered
+  into the working folder. An `autoresearch` skill carries the method.
+
+- Core skills: fifteen research procedures authored for the Research agent and
+  always on its index: `research-lookup`, `literature-review`, `brainstorming`,
+  `hypotheses`, `reproduce`, `autoresearch`, `compute`, `delegation`, `figures`,
+  `schematics`, `paper-writing`, `ml-paper-writing`, `citations`, `peer-review`
+  and `sources`. Each is under 250 lines with a workflow, its checks and one
+  level of references. `schematics` plans, styles from reference figures,
+  renders with Nano Banana Pro and checks the image against the plan;
+  `figures` ships a matplotlib style module and one reference per figure type;
+  `citations` resolves every reference against Crossref, OpenAlex, arXiv or
+  PubMed and ships a `.bib` validator. The retired K-Dense versions
+  (`scientific-writing`, `citation-management`, `hypothesis-generation`,
+  `scientific-schematics`, `venue-templates`, ...) resolve to their replacements.
+- Specialists the agent can call: the Task tool's `specialist` takes `ml`,
+  `biology`, `physics`, `chemistry` or the read-only `critique` reviewer. A
+  specialist worker keeps the Research contract and gains its domain contract,
+  the full index of its skill categories and its domain tools.
+- Library sync: 46 more K-Dense scientific skills (`paper-lookup`,
+  `database-lookup`, `experimental-design`, `statistical-power`, `nextflow`,
+  `bulk-rnaseq`, `phylogenetics`, `molecular-dynamics`, `pkpd-modeling`,
+  `pdf`, `docx`, `pptx`, `xlsx`, ...), 357 skills in total.
+- `generate_image` takes `image_size` (1K, 2K, 4K) and up to 14
+  `reference_paths`, and sends Gemini the documented `imageConfig` request.
+- Autoresearch steering and loop discipline, after autoresearcherUI: a
+  `steer` input on the study adds a standing directive that wakes the agent
+  at once and stays in its study reminder until retired; the driver asks for
+  more ideas when fewer than three are queued, for a change of kind after
+  four runs without progress, and for a step-back review every six runs;
+  `study create` requires a budget agreed for this study rather than one
+  carried over; `study propose` rejects configurations already tried; and
+  after a short run the agent is told to wait for it in the same turn rather
+  than end the turn and be woken.
+
+- Skill roots as an API, after the proposal in #608: `GET /settings/skills/paths`
+  lists every directory feeding the catalog with the skills it won and lost,
+  `POST` registers a local directory without a restart (scanned recursively,
+  optionally persisted to `skills.paths` in the global or project config,
+  missing or empty directories rejected, duplicates refused), `DELETE` removes
+  it, `POST /settings/skills/reload` rescans, and `GET /skill/{name}/content`
+  returns a skill's instructions for clients without filesystem access. A
+  skill that shadows a same-named one now carries `shadows` with the losing
+  paths, so a local edit that had no effect is explained.
+
+### Removed
+
+- Fusion, the delegation strategy that bound one persistent worker to the lead
+  with per-turn handoff budgets. Workers are parallel only: a fresh child per
+  Task call, on the Worker model from Customize → Models or the lead's model.
+  The Workers switch in Tools, the Fusion badge and handoff count on task
+  cards, the `delegation_strategy` preference and the binding store are gone;
+  a stored `fusion` preference is ignored.
+
+### Changed
+
+- Reasoning runs deeper and shows more. The composer's effort defaults to
+  **high** whenever a model offers it (the picker keeps every level), a worker
+  running on the lead's model inherits that effort, and direct OpenAI, Azure and
+  Codex OAuth requests for the GPT-5/GPT-6/o3/o4/codex families ask for
+  `detailed` reasoning summaries instead of `auto`. A phase the provider kept
+  private shows as a "Thought" row with its duration and nothing to open.
+- The `/` menu is one list in the agent's own tiers. It opens on Core: `/plan`,
+  `/goal`, the fifteen core skills in workflow order and `/compact`; pinned
+  skills and the Session actions (`/stop` while a turn runs, `/init`,
+  `/handoff`, `/checkpoint`, `/resume`) follow, then the whole library by
+  subject. Typing filters everything at once, prefix matches first and core
+  ahead on ties, with a library skill's subject on the right. Rows are one
+  line: icon, name, purpose. The separate "Browse all skills" dialog is gone;
+  the menu and Customize → Skills cover it.
+- `/status`, `/context` and `/undo` are removed from the menu and the command
+  catalog. The session header shows progress and context usage, and **Undo
+  from here** on a finished response reverts a turn.
+- Customize → Skills is organised the way the agent uses skills: Core first in
+  workflow order, then the skills you wrote, installed or keep in the project
+  (personal skills can be edited and deleted in place), then the library as
+  folded shelves by subject with a per-shelf Activate all / Turn off all, and
+  a Sources section listing every directory that feeds the catalog with the
+  names that lost a collision. Views are All, Core, Library, Personal and
+  Off; search is one flat list. Add skill gains "Add a local folder", which
+  registers a directory of skills without a restart and can persist it to the
+  global or project config. Badges, tags and the density toggle are gone; a
+  prevailing ask-first permission reads once in the summary.
+- A new session opens on the composer alone; the "What would you like to work
+  on?" heading and starter buttons are gone.
+- Delegation is scoped: a worker needs a clean boundary, a self-contained
+  brief with a definition of done, and one worker per independent branch.
+  Checking the lead's own output (compiling, reading the rendered pages,
+  confirming a number or a reference) is never delegated, and a report on the
+  session's own work is built from its evidence rather than a literature
+  review. The header, the delegation reminder, the Task tool and the
+  paper-writing skill all say so; built-in command descriptions are sentence
+  case.
+- A delegated worker is a closed line while it runs (title, agent, state,
+  elapsed) and streams nothing; its handoff, outputs and **Open agent** appear
+  when it finishes. The live operation list, activity groups, operation count
+  and model provenance are gone from the card.
+- Skills that declare `allowed-tools` unlock those tools for whichever agent
+  loaded them; the biology database tools are no longer reserved for the
+  biology agent.
+- The composer no longer shows a separate Independence chip; Independence
+  stays in Tools next to Delegation, where it was already set.
+
+### Fixed
+
+- Autoresearch, from the pre-release audit: `study start` refuses a run once
+  the study's run budget is spent (live runs count, so parallel starts cannot
+  overshoot it) and refuses to share a GPU when every local GPU already has a
+  live run; a run whose compute job record disappears is marked failed after
+  two minutes instead of holding its slot forever; a study wake that fails to
+  reach the session keeps its news and spends neither the hourly cap nor the
+  turn tally; dispatch failures no longer count against the run budget; the
+  pane reads a study's complete run list from its overview rather than the
+  project-wide cap, and its charts release their resize observers.
+- A PDF opened from Results filled a fixed 560px box inside a scrolling pane,
+  so a page showed clipped with blank space below it. The viewer now fills the
+  pane and scrolls its pages itself, as in the Files tab.
+
 ## v2.0.94 — 2026-09-12
 
 ### Changed

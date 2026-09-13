@@ -21,6 +21,8 @@ import type {
   AppAgentsResponses,
   AppLogErrors,
   AppLogResponses,
+  AppSkillContentErrors,
+  AppSkillContentResponses,
   AppSkillDeleteResponses,
   AppSkillsResponses,
   AppSkillWriteResponses,
@@ -41,6 +43,30 @@ import type {
   EventSubscribeResponse,
   EventSubscribeResponses,
   ExperimentalResourceListResponses,
+  ExperimentsDirectiveErrors,
+  ExperimentsDirectiveResponses,
+  ExperimentsGpusResponses,
+  ExperimentsIdeaErrors,
+  ExperimentsIdeaResponses,
+  ExperimentsIngestFinishErrors,
+  ExperimentsIngestFinishResponses,
+  ExperimentsIngestPointsErrors,
+  ExperimentsIngestPointsResponses,
+  ExperimentsIngestRunResponses,
+  ExperimentsIngestSummaryErrors,
+  ExperimentsIngestSummaryResponses,
+  ExperimentsKeysResponses,
+  ExperimentsRetireDirectiveErrors,
+  ExperimentsRetireDirectiveResponses,
+  ExperimentsRunErrors,
+  ExperimentsRunResponses,
+  ExperimentsRunsResponses,
+  ExperimentsSeriesResponses,
+  ExperimentsStudiesResponses,
+  ExperimentsStudyControlErrors,
+  ExperimentsStudyControlResponses,
+  ExperimentsStudyErrors,
+  ExperimentsStudyResponses,
   FileAnnotationsCreateResponses,
   FileAnnotationsDeleteResponses,
   FileAnnotationsHistoryResponses,
@@ -366,8 +392,14 @@ import type {
   SettingsScientificToolSetupErrors,
   SettingsScientificToolSetupResponses,
   SettingsScientificToolsResponses,
+  SettingsSkillsAddRootErrors,
+  SettingsSkillsAddRootResponses,
   SettingsSkillsInstallErrors,
   SettingsSkillsInstallResponses,
+  SettingsSkillsReloadResponses,
+  SettingsSkillsRemoveRootErrors,
+  SettingsSkillsRemoveRootResponses,
+  SettingsSkillsRootsResponses,
   SettingsStorageClearCacheResponses,
   SettingsStorageRelocateErrors,
   SettingsStorageRelocateResponses,
@@ -1897,7 +1929,6 @@ export class Preferences extends HeyApiClient {
         modelID: string
       } | null
       delegation_autonomy?: "interactive" | "balanced" | "autonomous"
-      delegation_strategy?: "parallel" | "fusion"
       delegation_diversity?: "focused" | "balanced" | "exploratory"
     },
     options?: Options<never, ThrowOnError>,
@@ -1920,7 +1951,6 @@ export class Preferences extends HeyApiClient {
             { in: "body", key: "delegation_level" },
             { in: "body", key: "delegation_worker_model" },
             { in: "body", key: "delegation_autonomy" },
-            { in: "body", key: "delegation_strategy" },
             { in: "body", key: "delegation_diversity" },
           ],
         },
@@ -2104,6 +2134,121 @@ export class Wallet extends HeyApiClient {
 }
 
 export class Skills extends HeyApiClient {
+  /**
+   * Unregister a skill directory
+   *
+   * Remove a root registered at runtime, and with persist also drop it from skills.paths in that config. Only that root's skills leave the catalog.
+   */
+  public removeRoot<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      path: string
+      persist?: "global" | "project"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "path" },
+            { in: "query", key: "persist" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SettingsSkillsRemoveRootResponses,
+      SettingsSkillsRemoveRootErrors,
+      ThrowOnError
+    >({
+      url: "/settings/skills/paths",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List skill roots
+   *
+   * Every directory contributing skills, with its kind (bundled, project, user, installed, config, runtime), the skills it won, and the same-named skills it lost to another root. The revision changes whenever the catalog is rebuilt.
+   */
+  public roots<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<SettingsSkillsRootsResponses, unknown, ThrowOnError>({
+      url: "/settings/skills/paths",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register a skill directory
+   *
+   * Add a local directory as a skill root for this project. It is scanned recursively at once; no restart is needed. A missing or empty directory is rejected (400), and a root that is already active is rejected (409) instead of loading every skill twice.
+   */
+  public addRoot<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      path: string
+      persist?: "global" | "project"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "path" },
+            { in: "body", key: "persist" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SettingsSkillsAddRootResponses,
+      SettingsSkillsAddRootErrors,
+      ThrowOnError
+    >({
+      url: "/settings/skills/paths",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Rescan skill directories
+   *
+   * Rebuild the catalog so files changed outside the app are picked up without a restart.
+   */
+  public reload<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).post<SettingsSkillsReloadResponses, unknown, ThrowOnError>({
+      url: "/settings/skills/reload",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Install skill from git
    *
@@ -3840,7 +3985,6 @@ export class Session extends HeyApiClient {
           modelID: string
         }
         autonomy?: "interactive" | "balanced" | "autonomous"
-        strategy?: "parallel" | "fusion"
       }
       system?: string
       variant?: string
@@ -3946,7 +4090,6 @@ export class Session extends HeyApiClient {
           modelID: string
         }
         autonomy?: "interactive" | "balanced" | "autonomous"
-        strategy?: "parallel" | "fusion"
       }
       system?: string
       variant?: string
@@ -4015,7 +4158,6 @@ export class Session extends HeyApiClient {
           modelID: string
         }
         autonomy?: "interactive" | "balanced" | "autonomous"
-        strategy?: "parallel" | "fusion"
       }
       variant?: string
       tier?: string
@@ -4441,7 +4583,6 @@ export class Runtime extends HeyApiClient {
           modelID: string
         }
         autonomy?: "interactive" | "balanced" | "autonomous"
-        strategy?: "parallel" | "fusion"
       }
       requestID?: string
       message?: string
@@ -4816,6 +4957,505 @@ export class Question extends HeyApiClient {
       url: "/question/{requestID}/reject",
       ...options,
       ...params,
+    })
+  }
+}
+
+export class Experiments extends HeyApiClient {
+  /**
+   * List tracked runs
+   */
+  public runs<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      study_id?: string
+      status?: "running" | "finished" | "failed" | "killed" | "cancelled"
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "study_id" },
+            { in: "query", key: "status" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ExperimentsRunsResponses, unknown, ThrowOnError>({
+      url: "/experiments/runs",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get one tracked run
+   */
+  public run<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ExperimentsRunResponses, ExperimentsRunErrors, ThrowOnError>({
+      url: "/experiments/runs/{runID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Downsampled metric series for runs
+   */
+  public series<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      run_ids: string
+      keys?: string
+      max?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "run_ids" },
+            { in: "query", key: "keys" },
+            { in: "query", key: "max" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ExperimentsSeriesResponses, unknown, ThrowOnError>({
+      url: "/experiments/series",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Metric names logged by runs
+   */
+  public keys<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      run_ids?: string
+      study_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "run_ids" },
+            { in: "query", key: "study_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ExperimentsKeysResponses, unknown, ThrowOnError>({
+      url: "/experiments/keys",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Local GPU inventory
+   */
+  public gpus<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ExperimentsGpusResponses, unknown, ThrowOnError>({
+      url: "/experiments/gpus",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List studies
+   */
+  public studies<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "query", key: "directory" }] }])
+    return (options?.client ?? this.client).get<ExperimentsStudiesResponses, unknown, ThrowOnError>({
+      url: "/experiments/studies",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Study overview: ideas, runs, events, baseline and best
+   */
+  public study<ThrowOnError extends boolean = false>(
+    parameters: {
+      studyID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "studyID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ExperimentsStudyResponses, ExperimentsStudyErrors, ThrowOnError>({
+      url: "/experiments/studies/{studyID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Pause, resume, halt or re-render a study
+   */
+  public studyControl<ThrowOnError extends boolean = false>(
+    parameters: {
+      studyID: string
+      action: "pause" | "resume" | "halt" | "render"
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "studyID" },
+            { in: "path", key: "action" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsStudyControlResponses,
+      ExperimentsStudyControlErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/studies/{studyID}/{action}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Add a standing directive; the session is woken with it
+   */
+  public directive<ThrowOnError extends boolean = false>(
+    parameters: {
+      studyID: string
+      directory?: string
+      text: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "studyID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "text" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsDirectiveResponses,
+      ExperimentsDirectiveErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/studies/{studyID}/directives",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Retire a standing directive
+   */
+  public retireDirective<ThrowOnError extends boolean = false>(
+    parameters: {
+      studyID: string
+      directiveID: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "studyID" },
+            { in: "path", key: "directiveID" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsRetireDirectiveResponses,
+      ExperimentsRetireDirectiveErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/studies/{studyID}/directives/{directiveID}/retire",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Reprioritize or drop an idea
+   */
+  public idea<ThrowOnError extends boolean = false>(
+    parameters: {
+      studyID: string
+      ideaID: string
+      directory?: string
+      priority?: number
+      status?: "queued" | "dropped"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "studyID" },
+            { in: "path", key: "ideaID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "priority" },
+            { in: "body", key: "status" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<ExperimentsIdeaResponses, ExperimentsIdeaErrors, ThrowOnError>({
+      url: "/experiments/studies/{studyID}/ideas/{ideaID}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Register a run reported over HTTP
+   */
+  public ingestRun<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      name: string
+      project?: string
+      config?: {
+        [key: string]: unknown
+      }
+      study_id?: string
+      session_id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "body", key: "name" },
+            { in: "body", key: "project" },
+            { in: "body", key: "config" },
+            { in: "body", key: "study_id" },
+            { in: "body", key: "session_id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ExperimentsIngestRunResponses, unknown, ThrowOnError>({
+      url: "/experiments/ingest/runs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Append metric points to a run
+   */
+  public ingestPoints<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+      directory?: string
+      points: Array<{
+        key: string
+        step: number
+        value: number
+        ts?: number
+      }>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "points" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsIngestPointsResponses,
+      ExperimentsIngestPointsErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/ingest/runs/{runID}/points",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Merge summary values into a run
+   */
+  public ingestSummary<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+      directory?: string
+      summary: {
+        [key: string]: unknown
+      }
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "summary" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsIngestSummaryResponses,
+      ExperimentsIngestSummaryErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/ingest/runs/{runID}/summary",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Finish a run reported over HTTP
+   */
+  public ingestFinish<ThrowOnError extends boolean = false>(
+    parameters: {
+      runID: string
+      directory?: string
+      status?: "finished" | "failed"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "runID" },
+            { in: "query", key: "directory" },
+            { in: "body", key: "status" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ExperimentsIngestFinishResponses,
+      ExperimentsIngestFinishErrors,
+      ThrowOnError
+    >({
+      url: "/experiments/ingest/runs/{runID}/finish",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 }
@@ -7951,6 +8591,36 @@ export class Command3 extends HeyApiClient {
 
 export class Skill extends HeyApiClient {
   /**
+   * Read a skill's instructions
+   *
+   * The SKILL.md text and location of one skill, for clients without filesystem access.
+   */
+  public content<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<AppSkillContentResponses, AppSkillContentErrors, ThrowOnError>({
+      url: "/skill/{name}/content",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Delete user skill
    *
    * Delete a local user-authored skill.
@@ -8458,6 +9128,11 @@ export class OpenScienceClient extends HeyApiClient {
   private _question?: Question
   get question(): Question {
     return (this._question ??= new Question({ client: this.client }))
+  }
+
+  private _experiments?: Experiments
+  get experiments(): Experiments {
+    return (this._experiments ??= new Experiments({ client: this.client }))
   }
 
   private _provider?: Provider2

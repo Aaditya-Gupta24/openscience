@@ -36,6 +36,8 @@ import { NotebookTool, PythonTool } from "./notebook"
 import { RKernelTool, RTool } from "./rkernel"
 import { ModalTool } from "./modal"
 import { ComputeJobTool } from "./compute-job"
+import { ExperimentsTool } from "./experiments"
+import { StudyTool } from "./study"
 import { ScientificCapabilityTool } from "./scientific-capability"
 import { ResearchContractTool } from "./research-contract"
 import { State } from "@/project/state"
@@ -214,6 +216,8 @@ export namespace ToolRegistry {
       ScientificCapabilityTool,
       ComputeJobTool,
       ProviderComputeTool,
+      ExperimentsTool,
+      StudyTool,
       ...custom.filter((tool) => !compatibility.has(tool.id) && tool.id !== PythonTool.id && tool.id !== RTool.id),
     ]
   }
@@ -266,6 +270,10 @@ export namespace ToolRegistry {
     agent?: Agent.Info,
     enabled: (id: string) => boolean = () => true,
     request?: string,
+    /** Tools a loaded skill or an explicit prompt setting unlocked for this
+     * request. A biology database skill loaded by the lead Research agent
+     * makes its query tools callable without switching agents. */
+    unlocked: ReadonlySet<string> = new Set(),
   ) {
     const tools = await all()
     const result = await Promise.all(
@@ -276,9 +284,10 @@ export namespace ToolRegistry {
           // work nor a model-facing contract.
           if (!enabled(t.id)) return false
 
-          // Biology-only tools: only available for the biology agent.
+          // Biology database tools: the biology agent's by default, and any
+          // agent's once a skill that declares them has been loaded.
           if (BIOLOGY_TOOL_IDS.has(t.id)) {
-            return agent?.name === "biology"
+            return agent?.name === "biology" || unlocked.has(t.id)
           }
 
           // Artifact tool: only for artifact-oriented scientific agents.
@@ -286,7 +295,13 @@ export namespace ToolRegistry {
             return !!agent?.name && ARTIFACT_AGENTS.includes(agent.name)
           }
 
-          if (t.id === "compute_job" || t.id === "scientific_capability" || t.id === "provider_compute") {
+          if (
+            t.id === "compute_job" ||
+            t.id === "scientific_capability" ||
+            t.id === "provider_compute" ||
+            t.id === "study" ||
+            t.id === "experiments"
+          ) {
             return !!agent?.name && (COMPUTE_AGENTS.includes(agent.name) || agent.name === "researchagent-test")
           }
 

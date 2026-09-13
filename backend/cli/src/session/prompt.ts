@@ -29,6 +29,7 @@ import PROMPT_DIRECT from "../session/prompt/direct.txt"
 import PROMPT_QUICK from "../session/prompt/quick.txt"
 import PROMPT_INSPECTION from "../session/prompt/inspection.txt"
 import PROMPT_BIOLOGY from "../agent/prompt/biology.txt"
+import PROMPT_CHEMISTRY from "../agent/prompt/chemistry.txt"
 import PROMPT_PHYSICS from "../agent/prompt/physics.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
@@ -79,8 +80,8 @@ import { ComputeJobs } from "@/compute/jobs"
 import { KernelRuntime } from "@/science/kernel/registry"
 import { SessionCheckpoint } from "./checkpoint"
 import { ToolSelection } from "./tool-selection"
+import { Experiments } from "@/experiments"
 import { SessionLoopState } from "./loop-state"
-import { Fusion } from "./fusion"
 import { ContractProgress } from "./contract-progress"
 import { FileLease } from "@/util/file-lease"
 import { Global } from "@/global"
@@ -110,7 +111,7 @@ export namespace SessionPrompt {
     "</metadata>",
   ].join("\n")
   // Scientific agents can still consume session-scoped artifact references.
-  const SKILL_ROUTING_AGENTS = new Set(["research", "biology", "physics", "ml"])
+  const SKILL_ROUTING_AGENTS = new Set(["research", "biology", "physics", "ml", "chemistry"])
 
   type TestHooks = {
     afterAttachmentAuthorization?: (input: { sessionID: string; path: string }) => void | Promise<void>
@@ -1195,6 +1196,7 @@ export namespace SessionPrompt {
             bypassAgentCheck: true,
             attachments: task.attachments,
             effort: MessageV2.resolveResearchEffort(lastUser.effort),
+            variant: lastUser.variant,
             delegationSettings: MessageV2.resolveDelegationSettings(lastUser.delegationSettings, {
               effort: lastUser.effort,
               enabled: lastUser.delegation,
@@ -1478,6 +1480,7 @@ export namespace SessionPrompt {
         model,
         tools: lastUser.tools,
         effort: MessageV2.resolveResearchEffort(lastUser.effort),
+        variant: lastUser.variant,
         delegationSettings,
         processor,
         bypassAgentCheck,
@@ -1509,6 +1512,11 @@ export namespace SessionPrompt {
         ...(await InstructionPrompt.system()),
         ...(SKILL_ROUTING_AGENTS.has(agent.name) && !narrow && (!minimal || ToolSelection.slashInvocation(route.text))
           ? [await SystemPrompt.availableSkills(agent.permission, route.text)]
+          : []),
+        // Research always carries the curated core index; the full catalog
+        // above appears only for an explicit /skill invocation.
+        ...(minimal && !narrow && !ToolSelection.slashInvocation(route.text)
+          ? [await SystemPrompt.coreSkills(agent.permission)].filter((value): value is string => !!value)
           : []),
         ...(contract ? [contract] : []),
         ...reminders.system,
@@ -1892,6 +1900,7 @@ export namespace SessionPrompt {
     session: Session.Info
     tools?: Record<string, boolean>
     effort: MessageV2.ResearchEffort
+    variant?: string
     delegationSettings: MessageV2.DelegationSettings
     processor: SessionProcessor.Info
     bypassAgentCheck: boolean
@@ -1928,6 +1937,7 @@ export namespace SessionPrompt {
         model: input.model,
         bypassAgentCheck: input.bypassAgentCheck,
         effort: input.effort,
+        variant: input.variant,
         delegationSettings: input.delegationSettings,
         // Batched child calls resolve against the same gated, hook-wrapped
         // set the model was offered instead of the unfiltered registry.
@@ -1961,9 +1971,20 @@ export namespace SessionPrompt {
       SessionLoopState.externalPrompts(input.messages) || SessionLoopState.routing(input.messages)
     const activation = ToolSelection.activation(SessionLoopState.epochMessages(input.messages))
     const loadedCapabilities = activation.capabilities
-    const activatedTools = activation.tools
+    // A session driving a study keeps the study, experiments and compute
+    // tools on offer regardless of how the latest wake-up is worded.
+    const study = input.direct ? undefined : await Experiments.studyForSession(input.session.id).catch(() => undefined)
+    const activatedTools = study
+      ? new Set([...activation.tools, "study", "experiments", "compute_job", "python", "edit", "write", "apply_patch"])
+      : activation.tools
 
     const extensions = await ToolRegistry.customIDs()
+    const unlocked = new Set([
+      ...activatedTools,
+      ...Object.entries(input.tools ?? {})
+        .filter(([, value]) => value === true)
+        .map(([id]) => id),
+    ])
     const native = await ToolRegistry.tools(
       { modelID: input.model.api.id, providerID: input.model.providerID },
       input.agent,
@@ -1984,6 +2005,7 @@ export namespace SessionPrompt {
           extensions,
         }),
       input.request,
+      unlocked,
     )
     // One execution envelope for direct and batched calls: the Plan mode gate
     // and both plugin hooks wrap every tool the model was offered.
@@ -2228,12 +2250,7 @@ export namespace SessionPrompt {
     } as const
   }
 
-  export function researchEffortReminder(
-    value: unknown,
-    delegation?: unknown,
-    enabled?: boolean,
-    fusion?: { lead: Fusion.Model },
-  ) {
+  export function researchEffortReminder(value: unknown, delegation?: unknown, enabled?: boolean) {
     const effort = MessageV2.resolveResearchEffort(value)
     const settings = MessageV2.resolveDelegationSettings(delegation, { effort, enabled })
     const posture =
@@ -2244,21 +2261,14 @@ export namespace SessionPrompt {
       settings.level === "off"
         ? "Automatic delegation is off. Work in the lead conversation unless the user explicitly attached an agent."
         : settings.level === "light"
-          ? "Delegation is Low. Delegate when clearly useful, especially for one genuinely independent branch."
+          ? "Delegation is Low. Delegate at most one genuinely independent branch, and only when it clearly shortens the path to the result."
           : settings.level === "high"
-            ? "Delegation is High. Aggressively parallelize independent research and verification when useful."
-            : "Delegation is Normal. Naturally parallelize genuinely independent work when it improves the result."
+            ? "Delegation is High. Parallelize independent branches freely, one worker per branch."
+            : "Delegation is Normal. Delegate a genuinely independent branch when it shortens the path to the result; otherwise do the work here."
     const interaction = decisionPolicy(settings.autonomy)
-    // Only the lead runs Fusion; a worker inherits the settings with level off
-    // and must not be told it has a worker of its own.
-    const fusionPosture =
-      fusion && settings.strategy === "fusion" && settings.level !== "off"
-        ? [Fusion.leadPosture({ lead: fusion.lead, worker: settings.workerModel ?? fusion.lead })]
-        : []
     return [
       `Research effort: ${effort.toUpperCase()}. ${posture}`,
-      `${delegationPosture} The model may use as many useful workers as available machine capacity permits, and must integrate their findings in the lead response.`,
-      ...fusionPosture,
+      `${delegationPosture} A worker needs a clean boundary, a self-contained brief with a definition of done, and its findings integrated in the lead response. Verifying the lead's own output (compiling, reading a rendered file, checking a number or a reference) is never a worker's job.`,
       `Independence: ${settings.autonomy}. ${interaction.instruction} Apply this posture to the lead and workers. It never overrides the permission mode.`,
     ].join("\n")
   }
@@ -2853,6 +2863,52 @@ export namespace SessionPrompt {
     system: string[]
   }
 
+  /** A session driving a study carries the study's rules and its current
+   * state on every request, so a wake-up turn starts grounded without
+   * re-reading files. */
+  async function studyReminder(sessionID: string): Promise<string | undefined> {
+    const study = await Experiments.studyForSession(sessionID).catch(() => undefined)
+    if (!study) return
+    const overview = await Experiments.overview(study.id).catch(() => undefined)
+    if (!overview) return
+    const queued = overview.ideas.filter((idea) => idea.status === "queued")
+    const running = overview.runs.filter((run) => run.status === "running")
+    const done = overview.runs.filter((run) => run.status !== "running")
+    const value = (run: Experiments.Run | undefined) =>
+      run ? `${run.name} (${study.metric} ${run.headline === null ? "n/a" : Experiments.format(run.headline)})` : "none"
+    const budget = Object.entries(study.budget)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => `${key} ${item}`)
+      .join(", ")
+    return [
+      `Study mode: "${study.name}" (${study.id}) is ${study.status}. Objective: ${study.direction} ${study.metric}.`,
+      `Baseline: ${value(overview.baseline)}. Best: ${value(overview.best)}. Runs completed: ${done.length}. Live: ${running.length}/${study.concurrency}${running.length ? ` (${running.map((run) => run.name).join(", ")})` : ""}. Queued ideas: ${queued.length}${
+        queued.length
+          ? ` (next: ${queued
+              .slice(0, 3)
+              .map((idea) => `${idea.title} [ev ${idea.ev}]`)
+              .join("; ")})`
+          : ""
+      }. Budget: ${budget || "none"}${study.killCriteria ? `. Kill criteria: ${study.killCriteria}` : ""}.`,
+      ...(study.review && !overview.baseline
+        ? [
+            `Review gate: before the baseline runs, delegate a read-only critique of the training and evaluation code (Task tool, specialist "critique") and fix anything it marks blocking; only then start the baseline.`,
+          ]
+        : []),
+      `Loop: pick the top queued idea, implement it in the training script, start exactly one run for it with study start, and when a study update reports the run ended, read its numbers with the experiments tool, record the verdict with study record (analysis, lessons), then queue or start the next idea. Keep ${study.concurrency} run${study.concurrency === 1 ? "" : "s"} live while ideas remain. Never re-run an idea that already has a run; propose a new idea instead. Do not ask whether to continue while budget remains; ask only when input or authority is missing. Study updates arrive as user messages that begin "Study update".`,
+      ...(study.directives.some((directive) => directive.active)
+        ? [
+            `Standing directives from the user (rules for the rest of the study):\n${study.directives
+              .filter((directive) => directive.active)
+              .map((directive) => `- ${directive.text}`)
+              .join("\n")}`,
+          ]
+        : []),
+      `Keep at least 3 ideas queued, of different kinds; propose in batches. When a run finishes within a few minutes, wait for it in the same turn (compute_job wait) rather than ending the turn.`,
+      ...(study.lessons ? [`Lessons so far:\n${study.lessons.split("\n").slice(-6).join("\n")}`] : []),
+    ].join("\n")
+  }
+
   export function systemReminder(value: string) {
     return value.replace(/<\/?system-reminder>/gu, "").trim()
   }
@@ -2883,15 +2939,13 @@ export namespace SessionPrompt {
     const effort = userMessage.info.role === "user" ? userMessage.info.effort : undefined
     const delegationSettings = userMessage.info.role === "user" ? userMessage.info.delegationSettings : undefined
     const delegationEnabled = userMessage.info.role === "user" ? userMessage.info.delegation : undefined
-    const lead =
-      userMessage.info.role === "user" && !input.session.parentID ? { lead: userMessage.info.model } : undefined
     const research = route.direct
       ? PROMPT_DIRECT
       : route.inspection
         ? PROMPT_INSPECTION
         : route.quick
           ? [PROMPT_RESEARCH, PROMPT_QUICK].join("\n\n")
-          : [PROMPT_RESEARCH, researchEffortReminder(effort, delegationSettings, delegationEnabled, lead)].join("\n\n")
+          : [PROMPT_RESEARCH, researchEffortReminder(effort, delegationSettings, delegationEnabled)].join("\n\n")
     const prompts = {
       plan: PROMPT_PLAN,
       write: PROMPT_WRITE,
@@ -2899,15 +2953,17 @@ export namespace SessionPrompt {
       research,
       biology: PROMPT_BIOLOGY,
       physics: PROMPT_PHYSICS,
+      chemistry: PROMPT_CHEMISTRY,
     } as const
     const selected = ToolSelection.minimalResearchAgent(input.agent.name)
       ? route.direct || route.inspection
         ? undefined
         : route.quick
           ? PROMPT_QUICK
-          : researchEffortReminder(effort, delegationSettings, delegationEnabled, lead)
+          : researchEffortReminder(effort, delegationSettings, delegationEnabled)
       : prompts[input.agent.name as keyof typeof prompts]
-    const system = [...legacy, ...(selected ? [systemReminder(selected)] : [])]
+    const study = await studyReminder(input.session.id)
+    const system = [...legacy, ...(selected ? [systemReminder(selected)] : []), ...(study ? [study] : [])]
 
     // Original logic when experimental plan mode is disabled
     if (!Flag.OPENSCIENCE_EXPERIMENTAL_PLAN_MODE) {
@@ -3374,85 +3430,6 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
     return { info: assistant, parts: [part] }
   }
 
-  async function status(input: CommandInput) {
-    const [session, messages, todos, artifacts, diff] = await Promise.all([
-      Session.get(input.sessionID),
-      Session.messages({ sessionID: input.sessionID }),
-      Todo.get(input.sessionID),
-      File.artifacts({ sessionID: input.sessionID }).catch(() => []),
-      Session.diff(input.sessionID).catch(() => []),
-    ])
-    const plan = Object.fromEntries(
-      ["in_progress", "pending", "completed", "cancelled"].map((state) => [
-        state,
-        todos.filter((todo) => todo.status === state).length,
-      ]),
-    )
-    const latest = messages.findLast((message) => message.info.role === "user")
-    const model = latest?.info.role === "user" ? `${latest.info.model.providerID}/${latest.info.model.modelID}` : "none"
-    const state = SessionStatus.get(input.sessionID).type
-    const changes = diff.reduce(
-      (total, file) => ({ additions: total.additions + file.additions, deletions: total.deletions + file.deletions }),
-      { additions: 0, deletions: 0 },
-    )
-    return notice(
-      input,
-      [
-        "### Session status",
-        "",
-        `- State: **${state}**`,
-        `- Session: ${session.title}`,
-        `- Plan: ${plan.in_progress ?? 0} active, ${plan.pending ?? 0} pending, ${plan.completed ?? 0} complete`,
-        `- Conversation: ${messages.length} messages`,
-        `- Model: ${model}`,
-        `- Artifacts: ${artifacts.length}`,
-        `- Workspace changes: ${diff.length} files (+${changes.additions} / -${changes.deletions})`,
-        `- Updated: ${new Date(session.time.updated).toISOString()}`,
-      ].join("\n"),
-    )
-  }
-
-  async function context(input: CommandInput) {
-    const messages = await Session.messages({ sessionID: input.sessionID })
-    const composition = MessageV2.composition(messages)
-    const assembled = SessionTelemetry.context(input.sessionID)
-    const selected = await commandModel(input)
-    const model = await Provider.getModel(selected.providerID, selected.modelID).catch(() => undefined)
-    const capacity = model?.limit.context
-    const budget = assembled?.hard ?? capacity
-    const used = assembled?.total ?? composition.total
-    const percent = budget ? Math.min(999, Math.round((used / budget) * 100)) : undefined
-    const summaries = messages.filter((message) => message.info.role === "assistant" && message.info.summary).length
-    return notice(
-      input,
-      [
-        "### Context",
-        "",
-        `- Current conversation: **${composition.total.toLocaleString()} estimated tokens**`,
-        ...(assembled
-          ? [
-              `- Last assembled provider input: **${assembled.total.toLocaleString()} / ${assembled.hard.toLocaleString()} safe tokens (${percent}%)**`,
-              `- Protected newest request: ${assembled.newest.toLocaleString()}`,
-              `- Reducible history: ${assembled.history.toLocaleString()}`,
-            ]
-          : capacity
-            ? [`- Model context: ${capacity.toLocaleString()} tokens`]
-            : []),
-        `- Text: ${composition.text.toLocaleString()}`,
-        `- Reasoning: ${composition.reasoning.toLocaleString()}`,
-        `- Tool results: ${composition.tool.toLocaleString()}`,
-        `- Skills: ${composition.skills.toLocaleString()}`,
-        `- Images: ${composition.images} (${composition.image.toLocaleString()} estimated tokens)`,
-        `- Compaction summaries: ${summaries}`,
-        "",
-        assembled
-          ? "The assembled figure is the exact local preflight from the last provider call, including instructions, tool schemas, file payloads, and media allowances."
-          : "Start a model turn to record the complete assembled-input budget, including instructions and tool schemas.",
-        ...(percent && percent >= 75 ? ["Use `/compact [focus]` before the next long research phase."] : []),
-      ].join("\n"),
-    )
-  }
-
   async function stop(input: CommandInput) {
     const scope = input.arguments.trim().toLowerCase() || "turn"
     if (!["turn", "compute", "all"].includes(scope)) {
@@ -3505,8 +3482,6 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
         template: "minimal",
       })
     }
-    if (!configured && input.command === Command.Default.STATUS) return status(input)
-    if (!configured && input.command === Command.Default.CONTEXT) return context(input)
     if (!configured && input.command === Command.Default.STOP) return stop(input)
     if (!configured && input.command === Command.Default.CHECKPOINT) return checkpoint(input)
     if (!configured && input.command === Command.Default.RESUME) {
