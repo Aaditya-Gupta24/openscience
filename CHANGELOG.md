@@ -33,6 +33,14 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   harness continues the turn (a deliverables check, a worker's result), rather
   than folding it away as narration under the final reply, and shows each
   harness message as one grey note so the reader sees why the agent went on.
+- A search row (glob, grep, list) names the folder it searched, relative to
+  the project ("./", "scripts/"), instead of that folder's parent; the live
+  header reads "Waiting for your approval" or "Waiting for your answer" over a
+  pending card instead of "Running … 6m 50s"; the copy affordance appears only
+  for a finished answer, not under narration while the turn works.
+- The `todowrite` contract asks for updates alongside the next tool call, not
+  as a step of their own: a three-analysis turn spent five of its ten model
+  round-trips on list updates.
 
 ## v2.0.98 — 2026-09-15
 
