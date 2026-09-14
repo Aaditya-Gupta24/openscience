@@ -144,4 +144,26 @@ describe("knowledge cutoff line", () => {
       },
     })
   })
+
+  test("a folder the agent reached through a tool approval is not a connected folder, so the cached prompt stays put", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        const render = async () =>
+          (await SystemPrompt.environment({ api: { id: "test" }, providerID: "test" }, session.id)).join("\n")
+        const before = await render()
+        await SessionFilesystem.grant({
+          sessionID: session.id,
+          path: tmp.path,
+          access: "read",
+          scope: "session",
+          source: "permission",
+        })
+        expect(await render()).toBe(before)
+        expect(before).toContain("Connected project folders:\n    - none")
+      },
+    })
+  })
 })

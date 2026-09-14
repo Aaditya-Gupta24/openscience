@@ -547,7 +547,7 @@ describe("openscience run headless harness", () => {
           "<task_result>",
         )
         // --deadline shows as the time budget in the environment block.
-        expect(stub.requests.some((request) => /Time budget: 10m, elapsed \dm/.test(request))).toBe(true)
+        expect(stub.requests.some((request) => /Time budget: 10m/.test(request))).toBe(true)
       },
     })
   }, 30_000)
@@ -601,6 +601,11 @@ describe("openscience run headless harness", () => {
           ),
         )
         expect(woke).toBe(true)
+        // The worker's result is the runtime's message, not a person's: no
+        // request was told that additional user messages had arrived, which
+        // would also have rewritten the cached system prompt mid-turn.
+        expect(stub.requests.some((request) => request.includes("Additional user messages arrived"))).toBe(false)
+        expect(stub.requests.some((request) => request.includes('state="completed"'))).toBe(true)
       },
     })
   }, 30_000)

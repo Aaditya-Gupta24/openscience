@@ -35,6 +35,11 @@ export namespace HarnessState {
     /** `seeded`: the stored transcript has been summed once, so a process
      * that restarted mid-session does not start the count again at zero. */
     spend: { cost: number; tokens: number; workers: number; ceilingNoted: boolean; seeded?: boolean }
+    /** The status text last appended to the transcript, so the same state is
+     * not appended again on the next step. */
+    statusDelivered?: string
+    /** The tool-availability notice last appended, for the same reason. */
+    toolNoticeDelivered?: string
   }
 
   const sessions = new Map<string, Session>()

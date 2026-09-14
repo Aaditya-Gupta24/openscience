@@ -107,7 +107,7 @@ test("switching the deliverables unit off removes the continuation", async () =>
   }
 })
 
-test("compute stays in <env>; time and spend ride at the tail so the system prompt is cache-stable across steps", async () => {
+test("compute stays in <env>; nothing ephemeral rides at the tail, so every step's request is a prefix of the next", async () => {
   const fixture = toolThenText()
   try {
     await using tmp = await tmpdir({ git: true, config: stressProviderConfig(`${fixture.instance.url.origin}/v1`) })
@@ -127,28 +127,83 @@ test("compute stays in <env>; time and spend ride at the tail so the system prom
         expect(steps).toHaveLength(2)
         const system = (request: { messages: Array<{ role: string; content: unknown }> }) =>
           request.messages.filter((message) => message.role === "system")
-        const tail = (request: { messages: Array<{ role: string; content: unknown }> }) => request.messages.at(-1)!
         const head = JSON.stringify(system(steps[0]))
         expect(head).toMatch(/Compute: \d+ CPUs, [\d.]+ GiB/)
         expect(head).toMatch(/Knowledge cutoff: /)
-        expect(head).not.toContain("Time budget:")
+        // The budget's total is fixed for the session and may sit in <env>;
+        // the elapsed figure may not.
+        expect(head).toContain("Time budget: 2h")
+        expect(head).not.toContain("elapsed")
         expect(head).not.toContain("Spent so far")
         // The provider caches the prefix; a second step whose system prompt
         // differs by one spend figure pays for the whole context again.
         expect(JSON.stringify(system(steps[1]))).toBe(head)
-        for (const step of steps) {
-          const last = tail(step)
-          expect(last.role).toBe("user")
-          expect(String(last.content)).toMatch(
-            /<system-reminder kind="status">[\s\S]*Time budget: 2h, elapsed \dm[\s\S]*Spent so far: \$[\s\S]*on this session[\s\S]*<\/system-reminder>/,
-          )
-        }
-        // The tail is request-only: nothing synthetic was persisted for it.
+        // No per-step status message: the first request ends with the user's
+        // words, and the whole first request is a prefix of the second. OpenAI
+        // reuses a cached prefix only at the end of a message that is still
+        // there, so a changing tail would re-read the conversation every step.
+        const first = JSON.stringify(steps[0].messages)
+        const second = JSON.stringify(steps[1].messages)
+        expect(second.startsWith(first.slice(0, -1))).toBe(true)
+        expect(first).not.toContain('<system-reminder kind="status">')
+        expect(second).not.toContain('<system-reminder kind="status">')
         const messages = await Session.messages({ sessionID: session.id })
         expect(messages.filter((message) => message.info.role === "user")).toHaveLength(1)
       },
     })
   } finally {
+    fixture.instance.stop(true)
+  }
+})
+
+test("a status change is appended once as a durable harness message, and stays put on the next step", async () => {
+  const fixture = toolThenText()
+  const started = Date.now()
+  // Six minutes into a ten-minute budget: the half-way reminder is due at the
+  // first step of the turn.
+  HarnessState.clock.now = () => started + 6 * 60_000
+  try {
+    await using tmp = await tmpdir({ git: true, config: stressProviderConfig(`${fixture.instance.url.origin}/v1`) })
+    await Instance.provide({
+      directory: tmp.path,
+      init: trustProject,
+      fn: async () => {
+        const session = await Session.create({ workspace: "project" })
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          model: { providerID: STRESS_PROVIDER_ID, modelID: STRESS_PROVIDER_MODEL },
+          agent: "research",
+          deadline: started + 10 * 60_000,
+          parts: [{ type: "text", text: "Say hello." }],
+        })
+        const steps = main(fixture.requests)
+        expect(steps).toHaveLength(2)
+        // The reminder is the last message of the first request, as a user
+        // message the transcript keeps; the second request extends it rather
+        // than replacing it, so the first request stays a cached prefix.
+        const users = (request: { messages: Array<{ role: string; content: unknown }> }) =>
+          request.messages.filter((message) => message.role === "user").map((message) => String(message.content))
+        expect(users(steps[0])).toHaveLength(2)
+        expect(users(steps[0])[1]).toMatch(/<system-reminder kind="status">[\s\S]*half[\s\S]*<\/system-reminder>/)
+        expect(users(steps[1])).toEqual(users(steps[0]))
+        const first = JSON.stringify(steps[0].messages)
+        expect(JSON.stringify(steps[1].messages).startsWith(first.slice(0, -1))).toBe(true)
+        // Persisted once, as a harness continuation; the unchanged status is
+        // not appended again on the second step.
+        const messages = await Session.messages({ sessionID: session.id })
+        const carriers = messages.filter(
+          (message) => message.info.role === "user" && message.info.internal?.type === "continuation",
+        )
+        expect(carriers).toHaveLength(1)
+        expect(
+          carriers[0]!.info.role === "user" &&
+            carriers[0]!.info.internal?.type === "continuation" &&
+            carriers[0]!.info.internal.kind,
+        ).toBe("harness")
+      },
+    })
+  } finally {
+    HarnessState.clock.now = () => Date.now()
     fixture.instance.stop(true)
   }
 })

@@ -26,7 +26,7 @@ Four flags shape a headless run:
 | `--delegation off\|light\|standard\|high` | How freely the lead dispatches workers; the default is the saved preference. |
 | `--worker-model provider/model` | The model workers run on when their agent has none configured. |
 | `--autonomy interactive\|balanced\|autonomous` | How the lead treats decision points; `--auto-approve` defaults to `autonomous`. |
-| `--deadline <seconds>` | A wall-clock budget. The agent sees `Time budget` and `elapsed` in its environment, gets reminders at 50% and 85%, and is asked to continue when time remains and named outputs are missing. |
+| `--deadline <seconds>` | A wall-clock budget. The agent sees the `Time budget` in its environment, gets a reminder at 50% and at 85% that states the time used, and is asked to continue when time remains and named outputs are missing. |
 
 ```bash
 openscience run --format json --auto-approve --workspace project \

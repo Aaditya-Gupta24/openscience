@@ -8,6 +8,32 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+- Harness status (a budget reminder, the study's state, a change in the offered
+  tools) is appended to the transcript as a durable message the moment it
+  changes, and nothing rides as an ephemeral tail of the request any more. The
+  per-step `<system-reminder kind="status">` user message introduced in
+  v2.0.97 pinned OpenAI's cache reads to the system prompt: the provider
+  reuses a prefix only at the end of a message that is still there, so a
+  request whose last message changed every step re-read the whole conversation
+  each time. Measured on the managed route: cache reads stuck at 10.9K tokens
+  with the tail, growing every step without it. The running spend and elapsed
+  lines are gone from the model's view (the workspace shows them); the 50%/85%
+  time reminders and the soft-ceiling reminder carry their figures.
+- The deliverables check accepts an output in the project's files as well as
+  in the tool directory. An isolated session's agent rightly writes durable
+  outputs into the project; the check looked only in the session scratch,
+  reported them missing twice, and sent the agent off to duplicate them.
+- A worker's result arriving mid-turn no longer adds the "additional user
+  messages arrived" system line (it is the runtime's message, not a person's),
+  and a folder the agent reaches through a tool approval is no longer listed
+  under connected folders. Both rewrote the cached system prompt mid-turn.
+- The transcript keeps every answer a finished response ended with when the
+  harness continues the turn (a deliverables check, a worker's result), rather
+  than folding it away as narration under the final reply, and shows each
+  harness message as one grey note so the reader sees why the agent went on.
+
 ## v2.0.98 — 2026-09-15
 
 ### Fixed

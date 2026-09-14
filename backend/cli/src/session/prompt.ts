@@ -71,6 +71,8 @@ import { SessionCheckpoint } from "./checkpoint"
 import { ToolVisibility } from "@/tool/visibility"
 import { Experiments } from "@/experiments"
 import { HarnessState } from "@/harness/state"
+import { Toolset } from "./toolset"
+import { SessionTraceStore } from "./trace-store"
 import { SessionLoopState } from "./loop-state"
 import { FileLease } from "@/util/file-lease"
 import { Global } from "@/global"
@@ -1482,8 +1484,14 @@ export namespace SessionPrompt {
 
       const sessionMessages = clone(msgs)
 
-      const queued =
-        SessionCompaction.protectedContext(sessionMessages, lastUser.id).filter(SessionLoopState.external).length > 1
+      // Only what a person (or an API client) wrote counts as a queued
+      // request. A worker's result arrives through the same prompt path with
+      // synthetic text only; calling it an "additional user message" misled
+      // the model and, as a new system line, rewrote the cached prompt.
+      const authored = (message: MessageV2.WithParts) =>
+        SessionLoopState.external(message) &&
+        message.parts.some((part) => (part.type === "text" && !part.synthetic) || part.type !== "text")
+      const queued = SessionCompaction.protectedContext(sessionMessages, lastUser.id).filter(authored).length > 1
       const displaced =
         !!lastAssistant &&
         !owned &&
@@ -1492,14 +1500,47 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
-      // Stable facts join the system prompt; anything that changes between
-      // steps (time used, spend, study state) rides at the tail of the
-      // conversation instead, so the provider's prefix cache survives the step.
+      // Stable facts join the system prompt. Anything that changes between
+      // steps (a budget reminder, the study's state) is appended to the
+      // transcript as a durable harness message the moment it changes, and
+      // never rides as an ephemeral tail: OpenAI reuses a cached prefix only
+      // at the end of a message that is still there, so a request whose last
+      // message differs every step re-reads the whole conversation each time
+      // (measured: cache reads stuck at the system prompt with the tail, and
+      // growing step by step without it).
       const envLines: string[] = []
       const status: string[] = []
       await Plugin.trigger("env.lines", { sessionID, model }, { lines: envLines, status })
       const study = await studyReminder(sessionID)
       if (study) status.push(study)
+      const statusText = status.length ? statusReminder(status) : undefined
+      const harnessState = HarnessState.get(sessionID)
+      if (statusText && harnessState.statusDelivered !== statusText) {
+        harnessState.statusDelivered = statusText
+        await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: statusText })
+        continue
+      }
+      // The offered tools changed since this agent's previous request (a skill
+      // unlocked some, a permission masked others): say so once, durably, in
+      // the same way. The request that follows records the new set, so the
+      // next step sees no change.
+      const toolNotice = await SessionTraceStore.read(sessionID)
+        .then((state) =>
+          Toolset.notice(
+            Toolset.active(tools),
+            Toolset.previous(state.harness, {
+              messageID: processor.message.id,
+              profile: agent.name,
+              mode: agent.mode,
+            }),
+          ),
+        )
+        .catch(() => undefined)
+      if (toolNotice && harnessState.toolNoticeDelivered !== toolNotice) {
+        harnessState.toolNoticeDelivered = toolNotice
+        await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: toolNotice })
+        continue
+      }
       const slash = SystemPrompt.slashInvocation(route.text)
       const skillTool = !PermissionNext.disabled(["skill"], agent.permission).has("skill")
       const system = [
@@ -1678,7 +1719,6 @@ export namespace SessionPrompt {
           ...MessageV2.toModelMessages(sessionMessages, model, {
             keepRecentImages: SessionCompaction.recentImages(config),
           }),
-          ...(status.length ? [{ role: "user" as const, content: statusReminder(status) }] : []),
           ...(isLastStep
             ? [
                 {

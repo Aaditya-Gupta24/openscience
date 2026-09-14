@@ -89,15 +89,17 @@ export const CostUnit: Plugin = async () => {
       spend.cost += part.cost
       spend.tokens += part.tokens.input + part.tokens.output + part.tokens.reasoning
     },
+    // The running figure is for the workspace, which shows it live; the model
+    // hears about spend once, when the soft ceiling is reached. A line that
+    // changed every step would be appended to the transcript every step.
     async "env.lines"(input, output) {
       const state = HarnessState.get(input.sessionID)
       await Cost.seed(input.sessionID)
-      output.status.push(Cost.line(state.spend))
       const ceiling = HarnessState.costCeiling(await Config.get())
       if (ceiling === undefined || state.spend.cost + state.spend.workers < ceiling || state.spend.ceilingNoted) return
       state.spend.ceilingNoted = true
       output.status.push(
-        `Spend reminder: the soft ceiling of $${ceiling.toFixed(2)} is reached. Wrap up: finish the deliverables in hand and report what remains.`,
+        `Spend reminder: the soft ceiling of $${ceiling.toFixed(2)} is reached. ${Cost.line(state.spend)} Wrap up: finish the deliverables in hand and report what remains.`,
       )
     },
   }

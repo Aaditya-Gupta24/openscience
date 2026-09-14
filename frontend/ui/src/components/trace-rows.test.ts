@@ -163,4 +163,43 @@ describe("trace rows", () => {
     const texts = rows.filter((row) => row.kind === "text") as Extract<(typeof rows)[number], { kind: "text" }>[]
     expect(texts.map((row) => row.narration)).toEqual([true, false])
   })
+
+  test("an answer a finished response ended with stays the answer when the harness continues the turn", () => {
+    const first = { ...message, id: "msg_first", finish: "stop" } as AssistantMessage
+    const second = { ...message, id: "msg_second", finish: "stop" } as AssistantMessage
+    const rows = buildTraceRows([
+      { message: first, part: text("a1", "Let me look.") },
+      { message: first, part: tool("t1", "read") },
+      { message: first, part: text("a2", "Created the two tables: …") },
+      // The deliverables check wrote its note into the turn; the agent went on.
+      {
+        message: second,
+        part: {
+          ...text(
+            "n1",
+            "Before finishing, the deliverables checklist was checked mechanically. These outputs are not ready: results/x.csv.",
+          ),
+          synthetic: true,
+        } as Part,
+      },
+      { message: second, part: tool("t2", "bash") },
+      { message: second, part: text("a3", "Both files exist now.") },
+    ])
+    const kinds = rows.map((row) => row.kind)
+    expect(kinds).toEqual(["text", "explored", "text", "note", "explored", "text"])
+    const texts = rows.filter((row) => row.kind === "text") as Extract<(typeof rows)[number], { kind: "text" }>[]
+    // "Let me look." is narration; the completed answer and the final answer both stay.
+    expect(texts.map((row) => row.narration)).toEqual([true, false, false])
+    const note = rows[3] as Extract<(typeof rows)[number], { kind: "note" }>
+    expect(note.text).toStartWith("Before finishing, the deliverables checklist")
+    // Text a response that went on to call tools ended with is still narration.
+    const working = { ...message, id: "msg_work", finish: "tool-calls" } as AssistantMessage
+    const plain = buildTraceRows([
+      { message: working, part: text("w1", "Now the plot.") },
+      { message: working, part: tool("t3", "bash") },
+      { message: second, part: text("w2", "Done.") },
+    ])
+    const plainTexts = plain.filter((row) => row.kind === "text") as Extract<(typeof plain)[number], { kind: "text" }>[]
+    expect(plainTexts.map((row) => row.narration)).toEqual([true, false])
+  })
 })

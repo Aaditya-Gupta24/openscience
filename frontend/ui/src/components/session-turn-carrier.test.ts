@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part, UserMessage } from "@synsci/sdk/v2"
+import { noteLabel } from "./trace-rows"
 import { isContinuationCarrier, turnOpener } from "./session-turn-carrier"
 
 const user = (id: string, internal?: UserMessage["internal"]): UserMessage => ({
@@ -59,4 +60,23 @@ describe("continuation carriers", () => {
     expect(turnOpener(messages, 0, parts)?.id).toBe("msg_1")
     expect(turnOpener([wake], 0, parts)).toBeUndefined()
   })
+})
+
+test("a harness note reads as one line: the worker's state, or the first sentence of a check", () => {
+  expect(
+    noteLabel(
+      '<task id="ses_w" state="completed">\n<summary>The comparison is ready; one source could not be retrieved. Details follow.</summary>\n<task_result>...</task_result>\n</task>',
+    ),
+  ).toBe("Worker completed: The comparison is ready; one source could not be retrieved.")
+  expect(noteLabel('<task id="ses_w" state="error"><summary></summary></task>')).toBe("Worker error")
+  expect(
+    noteLabel(
+      "Before finishing, the deliverables checklist was checked mechanically. These named outputs are not ready:\n- results/x.csv: does not exist",
+    ),
+  ).toBe("Before finishing, the deliverables checklist was checked mechanically.")
+  expect(
+    noteLabel(
+      '<system-reminder kind="status">\nTime reminder: 31m of the 1h time budget is used (half). Prioritize the remaining deliverables.\n</system-reminder>',
+    ),
+  ).toBe("Time reminder: 31m of the 1h time budget is used (half).")
 })

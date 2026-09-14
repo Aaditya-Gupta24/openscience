@@ -111,11 +111,27 @@ test("a skill's tools stay on offer in later turns for as long as its text is in
         expect(research.length).toBeGreaterThanOrEqual(3)
         // Before the load: the default set, no study tools.
         expect(research[0].tools).not.toContain("study")
+        expect(research[0].text).not.toContain("Tool availability changed")
         // After the load, in the same turn and in the next one.
         for (const request of research.slice(1)) {
           expect(request.tools).toContain("study")
           expect(request.tools).toContain("experiments")
         }
+        // The change is announced once, as a durable message the transcript
+        // keeps, so every later request carries the same words in the same
+        // place rather than a system line that comes and goes.
+        const announced = research
+          .slice(1)
+          .map((request) => (request.text.match(/Tool availability changed/g) ?? []).length)
+        expect(announced.every((count) => count === 1)).toBe(true)
+        expect(research[1].text).toContain('Added tools: [\\"experiments\\", \\"study\\"]')
+        const messages = await Session.messages({ sessionID: session.id })
+        const notices = messages.filter(
+          (message) =>
+            message.info.role === "user" &&
+            message.parts.some((part) => part.type === "text" && part.text.includes("Tool availability changed")),
+        )
+        expect(notices).toHaveLength(1)
       },
     })
   } finally {

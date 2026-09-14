@@ -13,6 +13,10 @@ import { toolChanges, writtenFiles, reasoningDisplayText } from "./tool-display"
 export type TraceRow =
   | { kind: "thought"; entries: ResearchTraceEntry[]; seconds?: number; readable: boolean }
   | { kind: "text"; entry: ResearchTraceEntry; narration: boolean }
+  /** A message the harness wrote into the turn (a worker's result, a
+   * deliverables check, a budget reminder), shown as one grey line so the
+   * reader sees why the agent went on after it had answered. */
+  | { kind: "note"; entry: ResearchTraceEntry; text: string }
   | { kind: "agent"; entry: ResearchTraceEntry }
   | { kind: "tool"; entry: ResearchTraceEntry }
   | { kind: "explored"; entries: ResearchTraceEntry[]; files: number; sources: number; commands: number }
@@ -60,15 +64,35 @@ function thoughtSeconds(part: Part) {
 const readableText = (entry: ResearchTraceEntry) =>
   entry.part.type === "reasoning" && !!reasoningDisplayText(entry.part.text ?? "")
 
+/** The text a completed answer ended with: the last text of a message whose
+ * response finished, rather than one that went on to call tools. When the
+ * harness continues the turn afterwards (a deliverables check, a budget
+ * reminder, a worker's result), that answer is still the answer the reader
+ * was given, not narration to fold away. */
+function answered(entries: ResearchTraceEntry[], index: number) {
+  const entry = entries[index]!
+  const finish = entry.message.finish
+  if (!finish || finish === "tool-calls" || finish === "unknown") return false
+  return !entries.some(
+    (other, position) => position > index && other.message.id === entry.message.id && other.part.type === "text",
+  )
+}
+
 export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
   const rows: TraceRow[] = []
   // Text that arrives before later work is narration: it belongs to the
   // trace, not to the response the collapsed turn shows. The last text is
-  // always the response, even when a late save or receipt follows it.
+  // always the response, even when a late save or receipt follows it, and so
+  // is every answer a finished response ended with.
   const lastWork = entries.findLastIndex((entry) => entry.part.type !== "text")
   const lastText = entries.findLastIndex((entry) => entry.part.type === "text")
   entries.forEach((entry, index) => {
     const part = entry.part
+    if (part.type === "text" && part.synthetic) {
+      const text = part.text.replace(/<\/?system-reminder[^>]*>/g, "").trim()
+      if (text) rows.push({ kind: "note", entry, text })
+      return
+    }
     if (part.type === "reasoning") {
       const previous = rows.at(-1)
       const seconds = thoughtSeconds(part)
@@ -86,7 +110,11 @@ export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
       return
     }
     if (part.type === "text") {
-      rows.push({ kind: "text", entry, narration: index < lastWork && index < lastText })
+      rows.push({
+        kind: "text",
+        entry,
+        narration: index < lastWork && index < lastText && !answered(entries, index),
+      })
       return
     }
     if (part.type !== "tool") {
@@ -160,4 +188,22 @@ export function thoughtLabel(seconds: number | undefined, live: boolean) {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
   return rest ? `Thought ${minutes}m ${rest}s` : `Thought ${minutes}m`
+}
+
+/** One line for a harness message: a worker's result names the worker, a
+ * check or reminder keeps its first sentence. */
+export function noteLabel(text: string) {
+  const task = text.match(/<task\b[^>]*\bstate="([^"]+)"/)
+  if (task) {
+    const state = task[1]
+    const summary = text.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]?.trim()
+    const first = summary?.split(/(?<=[.!?])\s+/)[0]?.trim()
+    return `Worker ${state}${first ? `: ${first}` : ""}`
+  }
+  const flat = text
+    .replace(/<\/?system-reminder[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  const first = flat.split(/(?<=[.!?])\s+/)[0]?.trim() ?? flat
+  return first.length > 160 ? `${first.slice(0, 157).trimEnd()}…` : first
 }

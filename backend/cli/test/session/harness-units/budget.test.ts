@@ -19,7 +19,7 @@ test("compute limits come from the cgroup when present", async () => {
   expect(host.gib).toBeGreaterThan(0)
 })
 
-test("compute is a stable env line; elapsed time and the 50%/85% reminders are per-step status", async () => {
+test("compute is a stable env line; the 50%/85% reminders fire once each and carry the figures", async () => {
   await using tmp = await tmpdir()
   await Bun.write(path.join(tmp.path, "cpu.max"), "400000 100000")
   await Bun.write(path.join(tmp.path, "memory.max"), String(16 * 1024 ** 3))
@@ -38,19 +38,22 @@ test("compute is a stable env line; elapsed time and the 50%/85% reminders are p
   }
   const first = await render()
   // The system prompt is the provider's cache prefix: only what never changes
-  // during the session may go there.
-  expect(first.lines).toEqual(["Compute: 4 CPUs, 16 GiB"])
-  expect(first.status).toEqual(["Time budget: 1h, elapsed 0m"])
+  // during the session may go there. Nothing rides along every step either;
+  // a status line is appended to the transcript only when it changes, so a
+  // running "elapsed" figure would be a new message every step.
+  expect(first.lines).toEqual(["Compute: 4 CPUs, 16 GiB", "Time budget: 1h"])
+  expect(first.status).toEqual([])
   now += 31 * 60_000
   const half = await render()
-  expect(half.lines).toEqual(["Compute: 4 CPUs, 16 GiB"])
-  expect(half.status[0]).toBe("Time budget: 1h, elapsed 31m")
-  expect(half.status[1]).toContain("half the budget")
-  expect((await render()).status.some((line) => line.includes("half the budget"))).toBe(false)
+  expect(half.lines).toEqual(["Compute: 4 CPUs, 16 GiB", "Time budget: 1h"])
+  expect(half.status).toHaveLength(1)
+  expect(half.status[0]).toContain("31m of the 1h time budget is used (half)")
+  expect((await render()).status).toEqual([])
   now += 22 * 60_000
   const late = await render()
-  expect(late.status[1]).toContain("85% of the budget")
-  expect((await render()).status).toHaveLength(1)
+  expect(late.status).toHaveLength(1)
+  expect(late.status[0]).toContain("53m of the 1h time budget is used (85%)")
+  expect((await render()).status).toEqual([])
 })
 
 test("a finished turn with failing deliverables and time left is asked to continue, once", async () => {

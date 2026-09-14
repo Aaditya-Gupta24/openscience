@@ -99,6 +99,46 @@ describe("DeliverablesUnit", () => {
     })
   })
 
+  test("an isolated session's deliverable counts wherever the environment said files may go: scratch or the project", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        const unit = await DeliverablesUnit({} as PluginInput)
+        await unit["chat.message"]!(
+          { sessionID: session.id, messageID: "msg_root" },
+          {
+            message: { id: "msg_root", sessionID: session.id, role: "user" } as never,
+            parts: [{ type: "text", text: "Save the table as results/churn.csv with columns bucket,rate." } as never],
+          },
+        )
+        const finish = async () => {
+          const output = { message: undefined as string | undefined }
+          await unit["loop.before_finish"]!(
+            { sessionID: session.id, messageID: "msg_a", turn: "msg_1", injections: 0 },
+            output,
+          )
+          return output.message
+        }
+        // The tool directory of an isolated session is its scratch; the agent
+        // wrote the durable output into the project's files instead, as the
+        // environment invites it to.
+        const scratch = await SessionFilesystem.toolDirectory(session.id)
+        expect(scratch).not.toBe(tmp.path)
+        expect(await finish()).toContain("results/churn.csv: does not exist")
+        HarnessState.get(session.id).deliverableRounds = 0
+        await Bun.write(path.join(tmp.path, "results/churn.csv"), "bucket,rate\n0-12,0.42\n")
+        expect(await finish()).toBeUndefined()
+        expect(HarnessState.get(session.id).deliverablesFailing).toBe(false)
+        // A file present in one place but empty there reports that, not "does not exist".
+        HarnessState.get(session.id).deliverables = ["results/other.csv"]
+        await Bun.write(path.join(scratch, "results/other.csv"), "")
+        expect(await finish()).toContain("results/other.csv: is empty")
+      },
+    })
+  })
+
   test("a specification on the first message yields one failure message at finish, at most twice", async () => {
     await using tmp = await tmpdir({ git: true })
     await Instance.provide({

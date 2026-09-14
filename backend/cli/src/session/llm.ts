@@ -242,22 +242,10 @@ export namespace LLM {
 
     const trace = input.trace
     const activeTools = Toolset.active(tools)
-    if (trace && !input.small) {
-      const previous = await SessionTraceStore.read(input.sessionID)
-        .then((state) =>
-          Toolset.previous(state.harness, {
-            messageID: trace.messageID,
-            profile: input.agent.name,
-            mode: input.agent.mode,
-          }),
-        )
-        .catch((error) => {
-          l.warn("failed to read previous tool availability", { error })
-          return undefined
-        })
-      const notice = Toolset.notice(activeTools, previous)
-      if (notice) system.push(notice)
-    }
+    // A change in the offered tools is announced by the loop as a durable
+    // message in the transcript, never as a system line for one request: a
+    // line that appears on the step of the change and vanishes on the next
+    // rewrote the cached system prompt twice per skill load.
     const harness = trace
       ? SessionHarness.snapshot({
           agent: input.agent,

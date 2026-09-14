@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import type { PluginInput } from "@synsci/plugin"
-import { CostUnit } from "../../../src/harness/cost"
+import { Cost, CostUnit } from "../../../src/harness/cost"
 import { HarnessState } from "../../../src/harness/state"
 import { Instance } from "../../../src/project/instance"
 import { Session } from "../../../src/session"
@@ -23,26 +23,29 @@ const step = (sessionID: string, cost: number, tokens: number) => ({
   },
 })
 
-test("spend accumulates from finished steps and renders as per-step status, never in <env>", async () => {
+test("spend accumulates from finished steps and stays out of <env> and out of the per-step status", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
       const unit = await CostUnit({} as PluginInput)
-      const lines = async () => {
+      const render = async () => {
         const output = { lines: [] as string[], status: [] as string[] }
         await unit["env.lines"]!({ sessionID: "ses_cost", model: {} as never }, output)
-        // A figure that changes every step would discard the cached prefix.
+        // A figure that changes every step would discard the cached prefix in
+        // <env>, and appended every step it would be a new message every step.
         expect(output.lines).toEqual([])
-        return output.status
+        expect(output.status).toEqual([])
       }
-      expect(await lines()).toEqual([
-        "Spent so far: $0.00 on this session's model calls (0 tokens) and $0.00 on its workers; compute jobs are counted separately.",
-      ])
+      await render()
       await unit.event!({ event: step("ses_cost", 0.4, 12_000) as never })
       await unit.event!({ event: step("ses_cost", 0.85, 30_000) as never })
       await unit.event!({ event: step("ses_other", 9, 1) as never })
-      expect((await lines())[0]).toStartWith("Spent so far: $1.25 on this session's model calls (42,000 tokens)")
+      await render()
+      const spend = HarnessState.get("ses_cost").spend
+      expect(spend.cost).toBeCloseTo(1.25, 8)
+      expect(spend.tokens).toBe(42_000)
+      expect(Cost.line(spend)).toStartWith("Spent so far: $1.25 on this session's model calls (42,000 tokens)")
     },
   })
 })
@@ -56,10 +59,13 @@ test("the soft ceiling adds a wrap-up reminder once and never stops the loop", a
       await unit.event!({ event: step("ses_cap", 1.5, 100) as never })
       const first = { lines: [] as string[], status: [] as string[] }
       await unit["env.lines"]!({ sessionID: "ses_cap", model: {} as never }, first)
-      expect(first.status[1]).toContain("soft ceiling of $1.00")
+      expect(first.status).toHaveLength(1)
+      expect(first.status[0]).toContain("soft ceiling of $1.00")
+      // The reminder is the one place the model reads the figures.
+      expect(first.status[0]).toContain("Spent so far: $1.50 on this session's model calls (100 tokens)")
       const second = { lines: [] as string[], status: [] as string[] }
       await unit["env.lines"]!({ sessionID: "ses_cap", model: {} as never }, second)
-      expect(second.status).toHaveLength(1)
+      expect(second.status).toHaveLength(0)
     },
   })
 })
@@ -90,12 +96,12 @@ test("a process that restarts mid-session picks the count up from the transcript
       const unit = await CostUnit({} as PluginInput)
       const output = { lines: [] as string[], status: [] as string[] }
       await unit["env.lines"]!({ sessionID: session.id, model: {} as never }, output)
-      expect(output.status[0]).toStartWith("Spent so far: $3.75 on this session's model calls (100,200 tokens)")
+      const spend = HarnessState.get(session.id).spend
+      expect(Cost.line(spend)).toStartWith("Spent so far: $3.75 on this session's model calls (100,200 tokens)")
       // Later steps add to the seeded figure instead of re-reading the transcript.
       await unit.event!({ event: step(session.id, 0.25, 1_000) as never })
-      const again = { lines: [] as string[], status: [] as string[] }
-      await unit["env.lines"]!({ sessionID: session.id, model: {} as never }, again)
-      expect(again.status[0]).toStartWith("Spent so far: $4.00 on this session's model calls (101,200 tokens)")
+      await unit["env.lines"]!({ sessionID: session.id, model: {} as never }, output)
+      expect(Cost.line(spend)).toStartWith("Spent so far: $4.00 on this session's model calls (101,200 tokens)")
     },
   })
 })
@@ -131,18 +137,19 @@ test("a worker's steps bill the lead that delegated to it, live and from the tra
       // and the worker's worker's half.
       const seeded = { lines: [] as string[], status: [] as string[] }
       await unit["env.lines"]!({ sessionID: lead.id, model: {} as never }, seeded)
-      expect(seeded.status[0]).toBe(
+      expect(Cost.line(HarnessState.get(lead.id).spend)).toBe(
         "Spent so far: $1.00 on this session's model calls (1,100 tokens) and $2.50 on its workers; compute jobs are counted separately.",
       )
+      expect(seeded.status).toEqual([])
       // A live worker step lands on the lead's worker figure, not its own.
       await unit.event!({ event: step(worker.id, 2, 10_000) as never })
       const live = { lines: [] as string[], status: [] as string[] }
       await unit["env.lines"]!({ sessionID: lead.id, model: {} as never }, live)
-      expect(live.status[0]).toStartWith(
-        "Spent so far: $1.00 on this session's model calls (1,100 tokens) and $4.50 on its workers",
-      )
-      // The ceiling counts the workers: $1 + $4.50 passes $5.
-      expect(live.status[1]).toContain("soft ceiling of $5.00")
+      // The ceiling counts the workers: $1 + $4.50 passes $5, and the reminder
+      // names both figures.
+      expect(live.status).toHaveLength(1)
+      expect(live.status[0]).toContain("soft ceiling of $5.00")
+      expect(live.status[0]).toContain("$1.00 on this session's model calls (1,100 tokens) and $4.50 on its workers")
     },
   })
 })

@@ -2,6 +2,7 @@ import path from "path"
 import fs from "node:fs/promises"
 import type { Hooks, Plugin } from "@synsci/plugin"
 import { SessionFilesystem } from "@/session/filesystem"
+import { Instance } from "@/project/instance"
 import { Session } from "@/session"
 import { HarnessState } from "./state"
 
@@ -138,6 +139,25 @@ export namespace Deliverables {
     return []
   }
 
+  /** Where a relative output may live: the tool directory first, then the
+   * project's files, without duplicates. */
+  export async function roots(sessionID: string): Promise<string[]> {
+    const tool = await SessionFilesystem.toolDirectory(sessionID).catch(() => undefined)
+    const project = Instance.directory
+    return [...new Set([tool, project].filter((value): value is string => !!value))]
+  }
+
+  /** The check of one named output across the places it may live: the first
+   * passing result wins; otherwise the first root's problems are reported,
+   * with "does not exist" only when it exists nowhere. */
+  export async function checkIn(roots: string[], name: string): Promise<Check> {
+    const results = await Promise.all(roots.map((root) => check(root, name)))
+    const passed = results.find((result) => result.problems.length === 0)
+    if (passed) return passed
+    const present = results.find((result) => !result.problems.includes("does not exist"))
+    return present ?? results[0] ?? { path: name, problems: ["does not exist"] }
+  }
+
   /** Mechanical checks for one named output; an empty list means it passed. */
   export async function check(root: string, name: string): Promise<Check> {
     const file = path.isAbsolute(name) ? name : path.join(root, name)
@@ -203,9 +223,14 @@ export const DeliverablesUnit: Plugin = async () => {
     async "loop.before_finish"(input, output) {
       const state = HarnessState.get(input.sessionID)
       if (!state.deliverables.length) return
-      const root = await SessionFilesystem.toolDirectory(input.sessionID).catch(() => undefined)
-      if (!root) return
-      const checks = await Promise.all(state.deliverables.map((name) => Deliverables.check(root, name)))
+      // A relative output may sit in the tool directory or in the project's
+      // files: the environment names both, and an isolated session's agent
+      // rightly puts durable deliverables in the project rather than its
+      // scratch. A file that passes in either place is ready; checking the
+      // scratch alone sent one agent off to duplicate finished files there.
+      const roots = await Deliverables.roots(input.sessionID)
+      if (!roots.length) return
+      const checks = await Promise.all(state.deliverables.map((name) => Deliverables.checkIn(roots, name)))
       const failures = checks.filter((check) => check.problems.length)
       state.deliverablesFailing = failures.length > 0
       if (!failures.length || state.deliverableRounds >= 2) return

@@ -56,7 +56,15 @@ import { responseText } from "./session-turn-response"
 import { isContinuationCarrier } from "./session-turn-carrier"
 import { headerProgress, progressStatus } from "./session-turn-progress"
 import { collapsibleTracePart, elapsedLabel, visibleResearchTrace, type ResearchTraceEntry } from "./research-trace"
-import { buildTraceRows, editedChanges, editedLabel, exploredLabel, thoughtLabel, type TraceRow } from "./trace-rows"
+import {
+  buildTraceRows,
+  editedChanges,
+  editedLabel,
+  exploredLabel,
+  noteLabel,
+  thoughtLabel,
+  type TraceRow,
+} from "./trace-rows"
 import { liveActivity } from "./session-turn-live"
 import { Collapsible } from "./collapsible"
 import { MarkdownFileScope, useMarkdownFileResolvers } from "./markdown"
@@ -235,6 +243,10 @@ function TraceGroupRow(props: {
 
 function AssistantTrace(props: {
   messages: AssistantMessage[]
+  /** The runtime's own messages inside this turn (a worker's result, a
+   * harness reminder), in transcript order with the assistant messages they
+   * precede; each shows as one grey note in the trace. */
+  carriers?: MessageType[]
   expanded: boolean
   working: boolean
   pendingRequestCallID?: string
@@ -243,17 +255,32 @@ function AssistantTrace(props: {
   const emptyParts: PartType[] = []
   const pendingChildRequest = (sessionID: string) =>
     !!(data.store.permission?.[sessionID]?.[0] || data.store.question?.[sessionID]?.[0])
-  const entries = createMemo(() =>
-    visibleResearchTrace(
-      props.messages.flatMap((message) =>
-        (data.store.part[message.id] ?? emptyParts).map((part) => ({
+  const entries = createMemo(() => {
+    const carriers = props.carriers ?? []
+    // A carrier's note belongs before the replies it drew; it borrows the
+    // first of them as its message so the row has an owner in the trace.
+    const notes = (before: AssistantMessage) =>
+      carriers
+        .filter((carrier) => before.parentID === carrier.id)
+        .flatMap((carrier) =>
+          (data.store.part[carrier.id] ?? emptyParts)
+            .filter((part) => part.type === "text" && part.synthetic)
+            .map((part) => ({ message: before, part })),
+        )
+    const seen = new Set<string>()
+    return visibleResearchTrace(
+      props.messages.flatMap((message) => {
+        const own = (data.store.part[message.id] ?? emptyParts).map((part) => ({
           message,
           part,
           hidden: (part.type === "tool" && part.tool === "todoread") || isGeneratedTool(part),
-        })),
-      ),
-    ),
-  )
+        }))
+        if (seen.has(message.parentID)) return own
+        seen.add(message.parentID)
+        return [...notes(message), ...own]
+      }),
+    )
+  })
   // Collapsed, the turn shows what the reader asked for: the answer, plus
   // anything that still needs them (a failure, a pending request). Expanded,
   // the whole trace appears as rows, chronological, with narration in place.
@@ -262,6 +289,7 @@ function AssistantTrace(props: {
     if (props.expanded) return all
     return all.filter((row) => {
       if (row.kind === "text") return !row.narration
+      if (row.kind === "note") return true
       if (row.kind === "tool" || row.kind === "agent")
         return !collapsibleTracePart(row.entry.part, props.pendingRequestCallID, pendingChildRequest)
       return false
@@ -335,6 +363,17 @@ function AssistantTrace(props: {
                       )}
                     </For>
                   </TraceGroupRow>
+                )
+              }
+              if (kind === "note") {
+                const value = () => current() as Extract<TraceRow, { kind: "note" }>
+                return (
+                  <div data-slot="trace-entry" data-note="true">
+                    <div data-component="trace-row" data-slot="trace-note" title={value().text}>
+                      <Icon name="comment" size="small" data-slot="trace-note-icon" />
+                      <span data-slot="trace-note-text">{noteLabel(value().text)}</span>
+                    </div>
+                  </div>
                 )
               }
               const value = () => current() as Extract<TraceRow, { kind: "text" | "tool" | "agent" }>
@@ -519,6 +558,26 @@ export function SessionTurn(
       return result
     },
     emptyAssistant,
+    { equals: same },
+  )
+
+  // The runtime's messages this turn owns, for the trace's grey notes.
+  const carriers = createMemo(
+    () => {
+      const msg = message()
+      const messages = allMessages() ?? emptyMessages
+      const index = messageIndex()
+      if (!msg || index < 0) return emptyMessages
+      const result: MessageType[] = []
+      for (let i = index + 1; i < messages.length; i++) {
+        const item = messages[i]
+        if (!item || item.role !== "user") continue
+        if (!isContinuationCarrier(item, data.store.part[item.id])) break
+        result.push(item)
+      }
+      return result
+    },
+    emptyMessages,
     { equals: same },
   )
 
@@ -1024,6 +1083,7 @@ export function SessionTurn(
                         <MarkdownFileScope paths={linkedFiles()}>
                           <AssistantTrace
                             messages={assistantMessages()}
+                            carriers={carriers()}
                             expanded={expanded()}
                             working={working()}
                             pendingRequestCallID={requestTool()?.callID}

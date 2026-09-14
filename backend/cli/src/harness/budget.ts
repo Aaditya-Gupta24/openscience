@@ -49,29 +49,33 @@ export namespace Budget {
 
   /** The stable `<env>` line: what the machine offers. It never changes
    * during a session, so it can live in the cached system prompt. */
-  export function lines(machine: { cpus: number; gib: number }) {
-    return [`Compute: ${machine.cpus} CPUs, ${machine.gib} GiB`]
+  /** The facts that hold for the whole session and so may sit in the cached
+   * system prompt: the machine, and the time budget's total when there is
+   * one (its deadline is fixed when the turn that set it begins). */
+  export function lines(machine: { cpus: number; gib: number }, state?: HarnessState.Session) {
+    const budget =
+      state?.deadline && state.startedAt ? [`Time budget: ${duration(state.deadline - state.startedAt)}`] : []
+    return [`Compute: ${machine.cpus} CPUs, ${machine.gib} GiB`, ...budget]
   }
 
-  /** The per-step facts: elapsed time against the budget and the one-shot
-   * reminders at 50% and 85%. Rendered at the tail of the context, never in
-   * the system prompt, because they change between steps. */
+  /** The one-shot reminders, each carrying the figures it is about. There is
+   * no standing "elapsed" line: a value that changes every step would be
+   * appended to the transcript every step. */
   export function status(state: HarnessState.Session, now: number) {
     if (!state.deadline || !state.startedAt) return []
     const total = state.deadline - state.startedAt
     const elapsed = Math.max(0, now - state.startedAt)
-    const out = [`Time budget: ${duration(total)}, elapsed ${duration(elapsed)}`]
     const fraction = total > 0 ? elapsed / total : 1
+    const used = `${duration(elapsed)} of the ${duration(total)} time budget is used`
     if (fraction >= 0.85 && !state.budgetReminders.has(85)) {
       state.budgetReminders.add(85)
-      out.push(
-        "Time reminder: 85% of the budget is used. Finish the deliverables you can and write real partial results.",
-      )
-    } else if (fraction >= 0.5 && !state.budgetReminders.has(50)) {
-      state.budgetReminders.add(50)
-      out.push("Time reminder: half the budget is used. Prioritize the remaining deliverables.")
+      return [`Time reminder: ${used} (85%). Finish the deliverables you can and write real partial results.`]
     }
-    return out
+    if (fraction >= 0.5 && !state.budgetReminders.has(50)) {
+      state.budgetReminders.add(50)
+      return [`Time reminder: ${used} (half). Prioritize the remaining deliverables.`]
+    }
+    return []
   }
 
   export function remaining(state: HarnessState.Session, now: number) {
@@ -92,7 +96,7 @@ export const BudgetUnit: Plugin = async () => {
     },
     async "env.lines"(input, output) {
       const state = HarnessState.get(input.sessionID)
-      output.lines.push(...Budget.lines(await Budget.compute()))
+      output.lines.push(...Budget.lines(await Budget.compute(), state))
       output.status.push(...Budget.status(state, HarnessState.clock.now()))
     },
     async "loop.before_finish"(input, output) {

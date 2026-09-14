@@ -175,18 +175,19 @@ test("actual provider requests and durable snapshots agree after model, mask and
       try {
         const first = await invoke("gpt-snapshot")
         expect(first.names).toEqual(["apply_patch", "read"])
-        expect(first.messages).not.toContain("Tool availability changed")
         const switched = await invoke("claude-snapshot")
         expect(switched.names).toEqual(["edit", "read", "write"])
-        expect(switched.messages).toContain('Added tools: [\\"edit\\", \\"write\\"]')
-        expect(switched.messages).toContain('Removed tools: [\\"apply_patch\\"]')
-        expect((await invoke("claude-snapshot")).messages).not.toContain("Tool availability changed")
+        // The stream itself never writes a tool-availability line into the
+        // system prompt: the loop announces a change durably, and a system
+        // line for one request would rewrite the cached prompt twice.
+        for (const request of [first, switched, await invoke("claude-snapshot")]) {
+          expect(request.messages).not.toContain("Tool availability changed")
+        }
         const masked = await invoke("claude-snapshot", true)
         expect(masked.names).toEqual(["edit"])
-        expect(masked.messages).toContain('Removed tools: [\\"read\\", \\"write\\"]')
         const restored = await invoke("claude-snapshot")
         const retried = await invoke("claude-snapshot", false, restored.messageID, 2)
-        expect(restored.messages).toContain('Added tools: [\\"read\\", \\"write\\"]')
+        expect(restored.names).toEqual(["edit", "read", "write"])
         expect(retried.messages).toBe(restored.messages)
         expect(captured).toHaveLength(6)
       } finally {

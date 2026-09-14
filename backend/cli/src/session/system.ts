@@ -306,9 +306,12 @@ export namespace SystemPrompt {
       (grant) => grant.source === "parent" && !grant.time.revoked && grant.path === folder,
     )
     const projectAccess = context[1]
+    // The folders the person connected. A grant the agent earned through a
+    // tool approval mid-turn is not one of them, and listing it here would
+    // rewrite the cached system prompt the moment it appeared: the agent
+    // already knows what it reached from the tool's own result.
     const sources = filesystem.grants.filter(
-      (grant) =>
-        !grant.time.consumed && !grant.time.revoked && (grant.source === "api" || grant.source === "permission"),
+      (grant) => !grant.time.consumed && !grant.time.revoked && grant.source === "api",
     )
     const access =
       projectAccess.mode === "ask"

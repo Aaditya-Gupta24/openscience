@@ -798,6 +798,25 @@
     }
   }
 
+  /* A message the harness wrote into the turn reads as one grey line, like
+     the tool rows, so the reader sees why the agent went on after answering. */
+  [data-slot="trace-entry"][data-note="true"] [data-component="trace-row"] {
+    color: var(--text-weak);
+    font-size: var(--font-size-small);
+    cursor: default;
+  }
+
+  [data-slot="trace-note-icon"] {
+    flex-shrink: 0;
+    color: var(--icon-weak);
+  }
+
+  [data-slot="trace-note-text"] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Prose is the answer wherever it falls, so it is the bright text; the grey
      rows around it are what the model did. Narration keeps a tighter rhythm. */
   [data-slot="trace-entry"][data-narration="true"] [data-slot="text-part-body"] {
