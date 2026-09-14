@@ -976,6 +976,11 @@ export function SessionTurn(
     return !!previous && !previous.time.completed
   })
   const statusText = createMemo(() => {
+    // A pending approval or question is a wait on the reader, not work in
+    // flight: "Running Python · 6m 50s" over an unanswered approval card read
+    // as a hang.
+    if (nextPermission()) return i18n.t("ui.sessionTurn.status.awaitingApproval")
+    if (nextQuestion()) return i18n.t("ui.sessionTurn.status.awaitingAnswer")
     const live = phase()
     if (live) return i18n.t(live.key, live.params)
     if (queued()) return i18n.t("ui.sessionTurn.status.queued")
@@ -1089,7 +1094,9 @@ export function SessionTurn(
                             pendingRequestCallID={requestTool()?.callID}
                           />
                         </MarkdownFileScope>
-                        <Show when={response()}>
+                        {/* Copy is for the finished answer; while the turn works,
+                            narration is not something to copy yet. */}
+                        <Show when={response() && !working()}>
                           <div
                             data-slot="session-turn-response-copy-wrapper"
                             data-copied={copy.copied ? "true" : undefined}

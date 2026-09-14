@@ -169,6 +169,19 @@ function getDirectory(path: string | undefined) {
   return relativizeProjectPaths(_getDirectory(path), data.directory)
 }
 
+/** The folder a search ran in, for tools whose `path` is already a directory
+ * (glob, grep, list). `getDirectory` is for file paths and returns the parent,
+ * which here showed the folder above the one searched. Inside the project the
+ * folder reads relative to it, the project itself as "./". */
+function getSearchDirectory(path: string | undefined) {
+  const data = useData()
+  const trimmed = (path || "/").replace(/[\/\\]+$/, "")
+  const root = data.directory?.replace(/[\/\\]+$/, "")
+  if (root && trimmed === root) return "./"
+  if (root && trimmed.startsWith(`${root}/`)) return `${trimmed.slice(root.length + 1)}/`
+  return `${trimmed}/`
+}
+
 export function getSessionToolParts(store: ReturnType<typeof useData>["store"], sessionId: string): ToolPart[] {
   const messages = store.message[sessionId]?.filter((m) => m.role === "assistant")
   if (!messages) return []
@@ -1121,7 +1134,7 @@ ToolRegistry.register({
         icon="bullet-list"
         trigger={{
           title: toolVerb(i18n, "list", props.status, "ui.tool.list"),
-          subtitle: getDirectory(props.input.path || "/"),
+          subtitle: getSearchDirectory(props.input.path),
         }}
       >
         <Show when={props.output}>
@@ -1146,7 +1159,7 @@ ToolRegistry.register({
         icon="magnifying-glass-menu"
         trigger={{
           title: toolVerb(i18n, "glob", props.status, "ui.tool.glob"),
-          subtitle: getDirectory(props.input.path || "/"),
+          subtitle: getSearchDirectory(props.input.path),
           args: props.input.pattern ? ["pattern=" + props.input.pattern] : [],
         }}
       >
@@ -1175,7 +1188,7 @@ ToolRegistry.register({
         icon="magnifying-glass-menu"
         trigger={{
           title: toolVerb(i18n, "grep", props.status, "ui.tool.grep"),
-          subtitle: getDirectory(props.input.path || "/"),
+          subtitle: getSearchDirectory(props.input.path),
           args,
         }}
       >

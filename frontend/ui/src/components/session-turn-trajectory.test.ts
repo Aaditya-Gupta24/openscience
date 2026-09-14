@@ -953,6 +953,43 @@ describe("chronological activity in a turn", () => {
     expect(live.querySelector('[data-slot="basic-tool-tool-time"]')).toBeNull()
   })
 
+  test("a search row names the folder it searched, relative to the project", async () => {
+    const message = assistant()
+    const glob = (id: string, path: string): ToolPart => ({
+      id,
+      sessionID,
+      messageID: message.id,
+      type: "tool",
+      callID: `call_${id}`,
+      tool: "glob",
+      state: {
+        status: "running",
+        input: { pattern: "**/*.csv", path },
+        title: "csv",
+        time: { start: Date.now() - 1_000 },
+      },
+    })
+    const prompt: TextPart = { id: "prt_prompt", sessionID, messageID: user.id, type: "text", text: "Find the data" }
+    const store: Store = {
+      ...empty(),
+      session_status: { [sessionID]: { type: "busy" } },
+      message: { [sessionID]: [user, message] },
+      part: {
+        [user.id]: [prompt],
+        [message.id]: [glob("prt_g1", "/research"), glob("prt_g2", "/research/data"), glob("prt_g3", "/tmp/other")],
+      },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.querySelectorAll('[data-component="tool-part-wrapper"]').length === 3)
+    const rows = host.querySelectorAll('[data-component="tool-part-wrapper"]')
+    // The searched folder itself, never its parent: the project reads as "./".
+    expect([...rows].map((row) => row.querySelector('[data-slot="basic-tool-tool-subtitle"]')?.textContent)).toEqual([
+      "./",
+      "data/",
+      "/tmp/other/",
+    ])
+  })
+
   test("a call that just finished keeps its own row and receipt while the turn works", async () => {
     const message = assistant()
     const running: ToolPart = {
@@ -1836,6 +1873,41 @@ describe("trace control", () => {
     session_status: { [sessionID]: state },
     message: { [sessionID]: [user, message] },
     part: { [user.id]: [], [message.id]: items },
+  })
+
+  test("a pending approval reads as a wait on the reader, not as a call still running", async () => {
+    const message = assistant()
+    const python: ToolPart = {
+      id: "prt_install",
+      sessionID,
+      messageID: message.id,
+      type: "tool",
+      callID: "call_install",
+      tool: "python",
+      state: {
+        status: "running",
+        input: { code: "pip install scikit-learn", title: "Install scikit-learn" },
+        title: "Install scikit-learn",
+        time: { start: Date.now() - 400_000 },
+      },
+    }
+    const store = live(message, [python], { type: "busy" })
+    store.permission = {
+      [sessionID]: [
+        {
+          id: "per_1",
+          sessionID,
+          permission: "environment_mutation",
+          patterns: ["digest"],
+          metadata: {},
+          always: [],
+          tool: { messageID: message.id, callID: "call_install" },
+        },
+      ],
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.querySelector('[data-slot="session-turn-status-text"]') !== null)
+    expect(host.querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Waiting for your approval")
   })
 
   test("a working turn keeps an explicit, keyboard-operable Show/Hide disclosure beside its live status", async () => {

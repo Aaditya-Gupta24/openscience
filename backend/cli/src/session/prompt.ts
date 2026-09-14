@@ -1515,6 +1515,9 @@ export namespace SessionPrompt {
       if (study) status.push(study)
       const statusText = status.length ? statusReminder(status) : undefined
       const harnessState = HarnessState.get(sessionID)
+      // Nothing to say clears the memory, so the same remark is made again
+      // the next time its situation arises rather than being swallowed.
+      if (!statusText) harnessState.statusDelivered = undefined
       if (statusText && harnessState.statusDelivered !== statusText) {
         harnessState.statusDelivered = statusText
         await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: statusText })
@@ -1554,6 +1557,10 @@ export namespace SessionPrompt {
           ? [await SystemPrompt.coreSkills(agent.permission)].filter((value): value is string => !!value)
           : []),
         ...reminders.system,
+        // A remark about the transcript's shape, for the rare turn a person
+        // added to while it ran. It stays a system line: the reply must still
+        // answer the person's message, not a note about it, so the one re-read
+        // of the prefix it costs is accepted.
         ...(displaced
           ? [
               "The latest assistant message belongs to an earlier user turn. The ordinary user message before it was not part of that assistant's request and remains unanswered; treat it as the current request.",
