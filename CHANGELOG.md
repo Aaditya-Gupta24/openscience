@@ -8,6 +8,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.98 — 2026-09-15
+
 ### Fixed
 
 - Every request through the managed gateway failed with 422
