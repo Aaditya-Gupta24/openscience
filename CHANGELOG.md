@@ -8,6 +8,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.97 — 2026-09-14
+
 ### Changed
 
 - The harness is OpenCode's Build path with science in skills, agents, headers
