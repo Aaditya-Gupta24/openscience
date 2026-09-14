@@ -10,6 +10,14 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+- An isolated session's environment says that relative paths resolve in its
+  scratch and that a project file needs its full path; the agent had been
+  spending its first steps finding out.
+
+## v2.0.99 — 2026-09-15
+
+### Fixed
+
 - Harness status (a budget reminder, the study's state, a change in the offered
   tools) is appended to the transcript as a durable message the moment it
   changes, and nothing rides as an ephemeral tail of the request any more. The

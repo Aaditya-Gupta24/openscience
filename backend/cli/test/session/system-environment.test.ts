@@ -96,7 +96,7 @@ describe("session environment prompt", () => {
             } else {
               expect(before.workspace).not.toBe(project.path)
               expect(prompt).toContain(
-                `Session scratch: ${before.workspace} (temporary and isolated to this conversation)`,
+                `Session scratch: ${before.workspace} (temporary and isolated to this conversation; relative paths resolve here, so name a project file by its full path under Project files)`,
               )
               expect(prompt).toContain("Use Session scratch by default for one-off downloads")
               expect(prompt).not.toContain("Use the project directory by default for local work")

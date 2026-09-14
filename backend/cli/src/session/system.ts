@@ -337,7 +337,9 @@ export namespace SystemPrompt {
               `  Session scratch: ${workspace} (temporary and isolated to this conversation; for caches and side outputs)`,
             ]
           : isolated
-            ? [`  Session scratch: ${workspace} (temporary and isolated to this conversation)`]
+            ? [
+                `  Session scratch: ${workspace} (temporary and isolated to this conversation; relative paths resolve here, so name a project file by its full path under Project files)`,
+              ]
             : [`  Tool working directory: ${workspace} (project directory; durable and shared across this project)`]),
         `  Results: immutable project-wide deliverables saved with the artifact tool`,
         `  Access mode: ${access}`,
