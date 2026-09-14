@@ -8,6 +8,14 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+- Every request through the managed gateway failed with 422
+  `unsupported_managed_request_option` in v2.0.97: the gateway validates
+  request options against its own list and refused the `session_id` and
+  `prompt_cache_key` routing keys added in that release. The keys now travel
+  only on direct OpenRouter routes until the gateway accepts them.
+
 ## v2.0.97 — 2026-09-14
 
 ### Changed

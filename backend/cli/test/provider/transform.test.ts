@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ProviderTransform } from "../../src/provider/transform"
+import { managedOpenRouterBaseURL } from "../../src/openscience/synced-env-policy"
 
 const OUTPUT_TOKEN_MAX = 32000
 
@@ -102,6 +103,16 @@ describe("ProviderTransform.options - setCacheKey", () => {
     })
     expect(claude.session_id).toBe(sessionID)
     expect(claude.prompt_cache_key).toBeUndefined()
+    // The managed gateway refuses request options it does not know (422
+    // unsupported_managed_request_option): neither key travels on that route.
+    const managed = ProviderTransform.options({
+      model: openrouter("openai/gpt-6-astra"),
+      sessionID,
+      providerOptions: { baseURL: managedOpenRouterBaseURL() },
+    })
+    expect(managed.session_id).toBeUndefined()
+    expect(managed.prompt_cache_key).toBeUndefined()
+    expect(managed.usage).toEqual({ include: true })
   })
 
   test("should set store=false for openai provider", () => {

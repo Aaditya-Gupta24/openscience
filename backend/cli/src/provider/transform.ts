@@ -970,8 +970,14 @@ export namespace ProviderTransform {
       // full price. `session_id` is OpenRouter's explicit sticky-routing key;
       // `prompt_cache_key` travels on to OpenAI, whose cache routing uses it
       // the same way. One key per session, for as long as the session lives.
-      result["session_id"] = input.sessionID
-      if (input.model.api.id.startsWith("openai/")) result["prompt_cache_key"] = input.sessionID
+      // The managed gateway validates request options against its own list
+      // and refuses unknown ones with 422, so on that route the keys stay off
+      // until the gateway accepts them.
+      const managed = isAtlasProxyURL(input.model.api.url) || isAtlasProxyURL(input.providerOptions?.["baseURL"])
+      if (!managed) {
+        result["session_id"] = input.sessionID
+        if (input.model.api.id.startsWith("openai/")) result["prompt_cache_key"] = input.sessionID
+      }
       // OpenRouter streams reasoning through its unified `reasoning` /
       // `reasoning_details` fields, but ONLY when reasoning is explicitly
       // requested — without a `reasoning` object the upstream reasons silently
