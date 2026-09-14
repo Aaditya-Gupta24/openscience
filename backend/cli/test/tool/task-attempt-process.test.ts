@@ -345,7 +345,11 @@ describe("durable Task attempts across Bun processes", () => {
       processes.add(active)
       await wait(activeReady)
       const ready = Date.now()
-      await Bun.sleep(180)
+      // Long enough that the attempt is charging even on a slow runner, where
+      // the step's opening snapshot can hold the call's registration for a
+      // few hundred milliseconds; the accounting, not reaction time, is the
+      // subject here.
+      await Bun.sleep(700)
       active.kill("SIGKILL")
       await within(active.exited)
 
