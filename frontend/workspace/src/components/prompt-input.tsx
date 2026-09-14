@@ -88,6 +88,7 @@ import {
 } from "./prompt-capabilities"
 import { canRestoreFailedSubmission } from "./prompt-submission"
 import { getNodeLength, isPillNode, setCursorPosition } from "./prompt-editor-cursor"
+import { applyHighlight, clearHighlight, slashTokenRanges } from "./prompt-highlight"
 import { submitComposerPrompt, type ComposerPromptInput } from "./prompt-runtime"
 import { requestFailure, requestStatus } from "@/utils/request-error"
 import {
@@ -554,6 +555,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const placeholder = createMemo(() => {
     if (submitting()) return "Sending…"
     if (store.mode === "shell") return language.t("prompt.placeholder.shell")
+    // Enter adds to the running turn; only the button and Esc stop it, so a
+    // message typed mid-turn is never lost to an accidental abort.
+    if (working() && !store.intent && commentCount() === 0) return language.t("prompt.placeholder.working")
     if (store.intent === "plan") return "Describe your task to generate a plan…"
     if (store.intent === "goal") return "Describe your goal and the measurable outcome…"
     if (commentCount() > 1) return language.t("prompt.placeholder.summarizeComments")
@@ -1045,6 +1049,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       : slashCommands()
     return slashMatches(items, query, SLASH_QUERY_LIMIT)
   }
+
+  // A selected skill or command stays plain text in the prompt but reads as a
+  // token: every known `/trigger` in any composer on the page is painted
+  // through one document-level highlight, recomputed after each prompt change.
+  const SLASH_HIGHLIGHT = "composer-slash"
+  const paintSlashTokens = () => {
+    const triggers = new Set(slashCommands().map((item) => item.trigger))
+    const editors = document.querySelectorAll<HTMLElement>('[data-component="prompt-input"]')
+    const ranges = Array.from(editors).flatMap((editor) => slashTokenRanges(editor, triggers))
+    applyHighlight(SLASH_HIGHLIGHT, ranges)
+  }
+  createEffect(
+    on([() => prompt.current(), slashCommands], () => {
+      requestAnimationFrame(paintSlashTokens)
+    }),
+  )
+  onCleanup(() => clearHighlight(SLASH_HIGHLIGHT))
 
   const setIntent = (intent: SlashMode | null) => {
     setStore("intent", intent)
@@ -1811,14 +1832,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     // worktree) before it has a real session ID. Keep that bootstrap single-
     // flight while the composer is showing its immediate acknowledgement.
     if (submitting()) return
-
-    // While a response is active this control is Stop, regardless of whether
-    // the user has started drafting the next message. Preserve that draft and
-    // terminate the active response instead of accidentally submitting it.
-    if (working()) {
-      abort()
-      return
-    }
 
     const currentPrompt = prompt.current()
     const text = action ? `/${action}` : currentPrompt.map((part) => ("content" in part ? part.content : "")).join("")
@@ -3068,6 +3081,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 class="workspace-composer__send rounded-full"
                 data-composer-action={working() ? "stop" : prompt.dirty() ? "send" : "idle"}
                 aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+                onClick={(event: MouseEvent) => {
+                  // The button is Stop while a response runs; Enter in the
+                  // editor still submits, so the draft joins the turn instead.
+                  if (!working()) return
+                  event.preventDefault()
+                  void abort()
+                }}
               />
             </Tooltip>
           </div>

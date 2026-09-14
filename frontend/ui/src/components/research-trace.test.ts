@@ -176,7 +176,9 @@ describe("literal research trace", () => {
     if (loaded.part.type === "tool") loaded.part.state.input = { name: "figures" }
     const calls = [searched, loaded]
     expect(visibleResearchTrace(calls)).toEqual(calls)
-    expect(collapsibleTracePart(loaded.part)).toBe(false)
+    // A finished load folds with the rest of the activity; only a load that
+    // failed, or one still running, needs the reader while the trace is folded.
+    expect(collapsibleTracePart(loaded.part)).toBe(true)
     expect(collapsibleTracePart(searched.part)).toBe(true)
     expect(collapsibleTracePart(entry("loading", "skill", "Loaded skill: figures", "running").part)).toBe(true)
     expect(collapsibleTracePart(entry("failed", "skill", "Permission denied", "error").part)).toBe(false)
@@ -314,6 +316,37 @@ describe("parseTaskHandoff", () => {
       ],
       headed: true,
     })
+  })
+
+  test("reads the task envelope: summary note, findings, receipts and task_id stripped", () => {
+    const output = [
+      '<task id="ses_child" state="completed">',
+      "<summary>Completed with 1 failed tool attempt; review its limitations.</summary>",
+      "<task_result>",
+      "## Outcome",
+      "",
+      "Sources agree on the slope.",
+      "",
+      "Execution receipts: 1 shell calls, 1 with outer exit 0, 0 failed. Full receipts remain in the child trace.",
+      "",
+      "task_id: ses_child",
+      "</task_result>",
+      "</task>",
+    ].join("\n")
+    expect(parseTaskHandoff(output)).toEqual({
+      notes: ["Completed with 1 failed tool attempt; review its limitations."],
+      text: "## Outcome\n\nSources agree on the slope.",
+      outputs: [],
+      headed: true,
+    })
+    const failed = [
+      '<task id="ses_x" state="error">',
+      "<task_error>",
+      "Provider disconnected",
+      "</task_error>",
+      "</task>",
+    ]
+    expect(parseTaskHandoff(failed.join("\n")).text).toBe("Provider disconnected")
   })
 
   test("keeps plain findings untouched and reports that they need a label", () => {

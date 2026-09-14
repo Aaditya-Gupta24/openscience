@@ -248,9 +248,10 @@ test.each(["search_unavailable", "search_output_unavailable"])(
       failedToolCalls: 1,
       partialToolCalls: 0,
       handoff: report,
-      handoffTruncated: false,
     })
-    expect(result.output).toContain("1 failed tool attempt")
+    // The note is a count, not a verdict: it must not send the lead back to re-verify the work.
+    expect(result.output).toContain("1 of 2 tool calls failed along the way")
+    expect(result.output).not.toContain("review its limitations")
     expect(result.output).toContain(report)
     expect(result.output).not.toContain("remain partial or unsettled")
     expect(result.metadata.summary).toEqual([

@@ -8,6 +8,170 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Changed
+
+- The harness is OpenCode's Build path with science in skills, agents, headers
+  and switchable units. Tool visibility follows permissions: Research is offered
+  a fixed default set and everything else is unlocked by a loaded skill's
+  `allowed-tools` or an agent rule; keyword-based tool selection and the
+  quick/direct/inspection routes are gone. `apply_patch` replaces `edit`/`write`
+  for GPT-family models, `research_search` is offered only with a search
+  provider, `question` only where a client can ask.
+- Research takes a model-family header (`anthropic`, `gpt-astra`, `gpt`,
+  `codex`, `gemini`, `default`) selected by wire model id, each carrying the same
+  science sections: evidence and files, methods and deliverables (named outputs
+  become a checklist that is checked before finishing; every clause of the
+  question is binding; no placeholder values), manuscripts and figures.
+- Agents are `research`, `plan`, `explore`, the specialists `ml`, `biology`,
+  `physics`, `chemistry`, `data` (one template plus a domain skill index), and
+  the internal `compaction`, `title`, `summary`. No built-in agent has a model;
+  `agent.<name>.model`, `.variant` and `.skills` configure one. The `execute`,
+  `task`, `write`, `critique`, `physics-critique` and `literature-review`
+  profiles are retired; review is the `/review` command.
+- The Task tool follows OpenCode's contract: `subagent_type` is an agent name,
+  `task_id` resumes a worker, `subagent_depth` (default 1) bounds nesting,
+  workers work in the lead's directory, results return in a `<task_result>`
+  envelope (a failing worker returns its partial text as `<task_error>`), and
+  `background: true` runs a worker detached and wakes the lead when it ends.
+  There is no worker concurrency cap and no isolated worker workspace.
+- Compaction pins the session's first user message verbatim ahead of every
+  summary, adds Deliverables (verbatim) and Findings so far to the handoff, and
+  never prunes `todowrite` results.
+- `openscience run` gains `--delegation`, `--worker-model`, `--autonomy` and
+  `--deadline`; under `--auto-approve` delegation stays on, worker events stream
+  with a `parentID`, worker usage rolls into `done.children`, questions are
+  answered with their recommended option and a denied tool call continues the
+  loop.
+- `/init` writes the project's research context (question, data, conventions,
+  deliverables); `/review`, `/reproduce` and `/literature` are new commands;
+  `/resume` and the research-contract, scientific-capability, batch, todoread and
+  planwrite tools leave the model surface.
+
+### Added
+
+- Harness units behind `harness.<unit>` switches (all on): `redirect` (a tripped
+  repetition guard becomes one strategy-change message), `deliverables`
+  (mechanical checks of named outputs before the turn ends), `budget` (CPUs,
+  memory and time budget in the environment, reminders at 50% and 85%), `cost`
+  (spend so far and an optional soft ceiling), `headless-policy`,
+  `durable-jobs`, `workers`. Plugins get two new hook points, `loop.before_finish`
+  and `loop.guard`, plus `env.lines`. Only facts that hold for the whole session
+  (compute) go into the system prompt; time used, spend, one-shot reminders and
+  study state ride in a per-step status block at the tail of the request, so
+  the provider's prompt cache survives every step (a spend figure in the system
+  prompt was discarding the cached prefix on each step of a turn).
+- Every OpenRouter request carries the session as its `session_id` (OpenRouter's
+  sticky-routing key) and, for OpenAI models, as `prompt_cache_key`, so one
+  session's steps reach the same upstream endpoint and the same cache. Left to
+  the default routing hash, which every OpenScience session shares, a session
+  saw its 200K-token prompt re-read at full price on nearly every step.
+- A figure a tool returns (a `read` of a PNG, a rendered plot) now reaches
+  transports whose tool results are strings only (OpenRouter, openai-compatible,
+  the Copilot fork) as an image in a user message right after the result, with a
+  pointer in the result. Those SDKs stringify anything else, so the base64 was
+  billed as prompt text: one 500 KB PNG cost 170K input tokens on every step
+  until it was pruned. Models that cannot view images get a one-line note.
+- A tool call the provider SDK executes before the session has recorded its
+  streamed placeholder now waits for that placeholder instead of minting its
+  own part; a fast call no longer sorts ahead of the thought that produced it,
+  which on the OpenRouter route had replayed the reasoning as a stray assistant
+  message after the tool result.
+- The public runtime event journal is written behind the bus instead of ahead
+  of it: captures are placed in publish order and batched into one write per
+  50 ms window, and a replay cursor waits for the pending captures before it
+  reads. The journal used to be rewritten whole on every event before any
+  subscriber saw it, which on a long session froze the workspace for minutes
+  after a wave of worker events and then delivered them all at once.
+- Old tool results are pruned only when the provider's prompt cache has gone
+  cold (thirty minutes without a request) or when capacity requires it, no longer
+  at the end of every turn. A prune rewrites earlier context, and the provider
+  re-reads everything after the rewrite at full price, so a wake-up inside the
+  cache window (a worker finishing, a study update) now keeps its prefix.
+- Up to twenty recent images travel in full with each request (was one); past
+  the cap the older half are released together, so a session with many figures
+  rewrites its prefix once per ten figures rather than once per figure. The
+  cap of one dated from when a figure's base64 was billed as prompt text.
+- A model that prices long prompts in tiers budgets its context at the first
+  pricing boundary by default (272K for GPT-6 Astra, where every input rate
+  doubles), so the conversation compacts a little before the cliff; the model
+  settings' **Full** option opts a model into its whole window, and the choice
+  is stored per model. A session that ran on in the higher tier paid twice the
+  rate on every step.
+- The spend line the model reads counts its workers separately from its own
+  calls (`Spent so far: $1.00 on this session's model calls … and $2.50 on its
+workers`), the soft ceiling applies to the sum, and a study's cost budget
+  counts the lead's workers. A delegating lead spends most of a study's money
+  in its workers, and the earlier figure left them out.
+- A summary request rides the conversation's own prefix: the same header,
+  system blocks and tools (offered, not callable), the same rendering, then
+  the handoff instruction as the one new message, so the provider serves the
+  head from the cache the conversation wrote. A 240K-token compaction on
+  Astra read at the full rate ($2.4) under the compaction agent's own header;
+  it now reads at the cache rate. A configured `agent.compaction.model` that
+  differs from the conversation's model keeps the standalone request.
+- Reasoning is replayed only for the work since the person's last message, and
+  OpenRouter's per-token `reasoning.summary` fragments never travel. One step's
+  summary came back as 450 items and 50 KB, every tool call in the step
+  carried the whole list, and GPT-5.6+ renders earlier turns' encrypted
+  reasoning into context and bills it on every step: this session's requests
+  were 57% replayed reasoning. A worker's result or a study update is not a
+  turn boundary, so it does not disturb the cached prefix mid-work.
+- A study whose wake-up the provider refused (an empty account, a rejected key)
+  pauses with the refusal as its reason instead of knocking on the session
+  every tick; resume it once the cause is fixed.
+- The environment names the model's knowledge cutoff from the model catalog and
+  the gap to today, and tells the model to look up the current generation before
+  pinning a model, library version, baseline or protocol.
+- A delegated worker can read and write in the lead's working directory even
+  when that directory is the lead's private session scratch; its environment
+  says whose directory it works in. The deliverables check no longer runs in a
+  worker (a brief is the lead's instruction, not the user's specification) and
+  no longer counts files a request says to read as outputs.
+- A background worker's Task card stays live until the worker finishes and then
+  shows the worker's real outcome and duration; its completion joins the turn
+  that dispatched it instead of opening a headless second turn in the
+  transcript, and the note on a result with failed tool calls is a count rather
+  than a verdict.
+- The transcript keeps one hierarchy: the agent's prose in bright text, and
+  everything it did in grey rows beneath one header per turn (thoughts with
+  their text when the provider shares it, files read, searches, commands,
+  edits, delegations, questions). Rows and tool lines share one type size and
+  colour; skill loads fold with the rest. Reasoning that streamed while you
+  watched stays readable after it ends. The header is one plain line from the
+  first second to the last: it names the call in flight ("Running pytest -q")
+  while the turn works and "Worked for 4m 12s" when it is done.
+- Enter while a response is running adds the message to the current turn
+  instead of stopping the response; the send button is Stop and Escape still
+  stops. The runtime API accepts a prompt during a live run as a follow-up
+  that joins that run (same `runID`), and an exact retry of the follow-up
+  replays it.
+- A skill's tools stay on offer for as long as its text is in the model's
+  context, across turns, instead of lapsing at the next request; the
+  autoresearch, delegation and peer-review skills describe the current Task
+  contract (`subagent_type`, `task_id`, `background`) rather than the retired
+  `specialist` parameter and `execute`/`critique` profiles.
+- The spend line survives a server restart: it is seeded from the transcript
+  once per session, and says what it covers (this session's model calls, not
+  workers or compute).
+- An interrupted `question` says that nothing was chosen or recorded and to ask
+  again; an interrupted read says nothing changed; only side-effecting tools
+  keep the "inspect the current state" warning.
+- `apply_patch` reports a formatter's rewrite as the changed line ranges rather
+  than the whole diff (the UI keeps the diff); `todowrite` confirms with counts
+  and the in-progress items instead of echoing the list.
+- `compute_job` `targets` includes a readiness block: whether remote compute is
+  configured, whether outbound network and downloads are permitted, which
+  secret references a job can carry, and that chat provider keys are not
+  forwarded into jobs.
+- `recall`: search this session's earlier messages, tool results and saved tool
+  outputs by regular expression, including turns compaction summarized away.
+- The `execution-hygiene` core skill and eleven convention skills
+  (statistics, Lean 4, Coq, cheminformatics definitions, structure analysis,
+  patents, geoscience data, energy systems, astronomy inference, atomistic
+  workflows, analysis reports), authored from public documentation with sources.
+- Harbor adapter kwargs `delegation`, `worker_model`, `autonomy`, `deadline`;
+  trajectories include worker steps and usage.
+
 ## v2.0.96 — 2026-09-13
 
 ### Added

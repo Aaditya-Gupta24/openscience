@@ -35,7 +35,10 @@ export namespace SessionFilesystem {
   // `skill` the read access a loaded skill's directory receives. Both are
   // runtime dependencies, not folders the user connected, and the UI lists
   // them apart from `permission` and `api` grants.
-  export const Source = z.enum(["workspace", "project", "skill", "permission", "api", "tool", "handoff"])
+  /** `parent`: the lead session's working directory, shared with a delegated
+   * child so its files land where the lead works. It is the one grant allowed
+   * to cross the per-session workspace boundary in both directions. */
+  export const Source = z.enum(["workspace", "project", "skill", "permission", "api", "tool", "handoff", "parent"])
   export type Source = z.infer<typeof Source>
 
   export const Grant = z.object({
@@ -296,14 +299,13 @@ export namespace SessionFilesystem {
     if (!boundary) return
     if (!Filesystem.contains(boundary.root, target) || Filesystem.contains(boundary.workspace, target)) return
     if (
-      access === "read" &&
       record.grants.some(
         (grant) =>
-          grant.source === "handoff" &&
           grant.scope === "session" &&
           !grant.time.consumed &&
           !grant.time.revoked &&
-          Filesystem.contains(grant.path, target),
+          Filesystem.contains(grant.path, target) &&
+          (grant.source === "parent" ? permits(grant, access) : grant.source === "handoff" && access === "read"),
       )
     )
       return
@@ -616,6 +618,53 @@ export namespace SessionFilesystem {
   }
 
   /** Internal exact-file capability for app-managed truncated tool output. */
+  /**
+   * A delegated child works in its parent's directory: the same tool working
+   * directory, read and write, so the files it produces are the parent's
+   * deliverables without a handoff step. Only a direct child in the same
+   * project can receive the grant, and only for the parent's current working
+   * directory; no other session or external path can be named.
+   */
+  export async function shareWorkingDirectory(input: { parentSessionID: string; childSessionID: string }) {
+    const [parent, child] = await Promise.all([ensure(input.parentSessionID), ensure(input.childSessionID)])
+    if (parent.projectID !== child.projectID || parent.directory !== child.directory) {
+      throw new DeniedError({ sessionID: input.childSessionID, path: parent.directory, access: "write" })
+    }
+    const target = await toolDirectory(input.parentSessionID)
+    if (target === (await toolDirectory(input.childSessionID))) return
+    const grant: Grant = {
+      id: `fsg_${crypto.randomUUID()}`,
+      path: target,
+      access: "write",
+      scope: "session",
+      source: "parent",
+      time: { created: Date.now() },
+    }
+    const result = await Storage.update<State>(key(input.childSessionID), (draft) => {
+      // A project-root grant on the same path cannot be the working root and
+      // cannot cross into the lead's private scratch, so add ours beside it.
+      const duplicate = draft.grants.find(
+        (item) =>
+          item.source === "parent" &&
+          item.path === target &&
+          item.access === "write" &&
+          item.scope === "session" &&
+          !item.time.revoked,
+      )
+      if (duplicate) {
+        grant.id = duplicate.id
+        grant.time = duplicate.time
+      } else {
+        draft.grants.push(grant)
+      }
+      draft.workingRoot = target
+      draft.revision++
+    })
+    const stored = result.grants.find((item) => item.id === grant.id) ?? grant
+    await changed(input.childSessionID, Instance.project.id, stored)
+    return stored
+  }
+
   export async function grantToolOutput(input: { sessionID: string; path: string }) {
     const state = await ensure(input.sessionID)
     const root = await canonical(input.path)
@@ -1010,7 +1059,10 @@ export namespace SessionFilesystem {
             !grant.time.consumed &&
             !grant.time.revoked &&
             grant.scope !== "once" &&
-            (grant.source === "permission" || grant.source === "api" || grant.source === "project"),
+            (grant.source === "permission" ||
+              grant.source === "api" ||
+              grant.source === "project" ||
+              grant.source === "parent"),
         )
         .map((grant) => grant.path),
     ])
@@ -1045,7 +1097,7 @@ export namespace SessionFilesystem {
     return record.grants
       .filter(
         (grant) =>
-          (grant.source === "api" || grant.source === "permission") &&
+          (grant.source === "api" || grant.source === "permission" || grant.source === "parent") &&
           grant.scope !== "once" &&
           permits(grant, "write"),
       )

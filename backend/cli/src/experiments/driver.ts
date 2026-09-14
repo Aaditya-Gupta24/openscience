@@ -1,4 +1,5 @@
 import { Experiments } from "."
+import { Cost } from "@/harness/cost"
 import { JobBroker } from "@/compute/job-broker"
 import { Instance } from "@/project/instance"
 import { Session } from "@/session"
@@ -144,14 +145,18 @@ export namespace StudyDriver {
     return JobBroker.logPath(jobID, await computeOptions(sessionID))
   }
 
+  /** The study's model spend: the lead's own steps and every worker it
+   * delegated to, since a delegating lead spends most of a study's money in
+   * its workers. */
   async function sessionCost(sessionID: string) {
     const custom = deps().cost
     if (custom) return custom(sessionID)
     const messages = await Session.messages({ sessionID, limit: 2000 })
-    return messages.reduce((total, message) => {
+    const own = messages.reduce((total, message) => {
       const cost = message.info.role === "assistant" ? message.info.cost : 0
       return total + (typeof cost === "number" && Number.isFinite(cost) ? cost : 0)
     }, 0)
+    return own + (await Cost.workers(sessionID))
   }
 
   function idle(sessionID: string) {
@@ -415,6 +420,29 @@ export namespace StudyDriver {
     // Any wake-up restarts the idle window: the agent needs time to act on it.
     current.lastNudgeAt = now
     await Experiments.updateStudy(study.id, { turns: study.turns + 1 })
+    // A wake that the provider refused (an empty account, a rejected key)
+    // would be refused again next tick; every retry is another failed turn in
+    // the transcript. Pause instead and say why, so the study resumes once
+    // the cause is fixed rather than knocking on a closed door every minute.
+    const failure = await refusedTurn(study.sessionID)
+    if (!failure) return
+    current.pending.length = 0
+    await Experiments.updateStudy(study.id, { status: "paused" })
+    await Experiments.addEvent(
+      study.id,
+      "paused",
+      `the session's turn failed (${failure}); fix the cause, then resume the study`,
+    )
+  }
+
+  /** The provider's refusal, if the session's newest turn ended in one. */
+  async function refusedTurn(sessionID: string) {
+    const messages = await Session.messages({ sessionID, limit: 6 }).catch(() => [])
+    const last = messages.findLast((message) => message.info.role === "assistant")
+    if (!last || last.info.role !== "assistant" || !last.info.error) return
+    const data = (last.info.error as { data?: { message?: unknown } }).data
+    const message = typeof data?.message === "string" ? data.message : last.info.error.name
+    return message.replace(/\s+/g, " ").slice(0, 200)
   }
 
   /** Called by the study tool when a run starts, so the follower begins

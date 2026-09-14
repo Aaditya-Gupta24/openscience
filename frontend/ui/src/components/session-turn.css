@@ -592,18 +592,28 @@
      not as a control, until hovered. */
   [data-slot="session-turn-collapsible-trigger-content"] {
     max-width: 100%;
-    min-height: 32px;
+    min-height: 28px;
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px;
-    margin: -6px 0 -6px -8px;
+    padding: 4px 0;
+    margin: 0;
     border-radius: var(--radius-xs);
     color: var(--text-weak);
     font-size: var(--font-size-medium);
     font-weight: var(--font-weight-regular);
     line-height: 20px;
     cursor: pointer;
+
+    /* The line reads as text, like the rows under it; hovering brightens the
+       words, nothing fills in behind them. */
+    &[data-component="button"],
+    &[data-component="button"]:hover:not(:disabled),
+    &[data-component="button"]:focus-visible:not(:disabled),
+    &[data-component="button"]:active:not(:disabled) {
+      background-color: transparent;
+      box-shadow: none;
+    }
 
     /* The chevron follows the label, the way a disclosure reads in Cursor. */
     > [data-component="icon"] {
@@ -709,15 +719,16 @@
     }
   }
 
-  /* One level for every row of the trace: 13/20, regular weight, verb in the
-     body colour and detail in the muted one. */
+  /* One level for every row of the trace: 13/20, regular weight, grey. The
+     answer is the white text; everything the model did to get there is quieter,
+     and brightens only under the pointer. */
   [data-component="trace-row"] {
     min-height: 28px;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 8px 4px 0;
-    color: var(--text-base);
+    color: var(--text-weak);
     font-size: var(--font-size-medium);
     font-weight: var(--font-weight-regular);
     line-height: 20px;
@@ -768,30 +779,34 @@
     color: var(--text-base);
   }
 
-  /* Narration between tool bursts reads as part of the trace, quieter than
-     the final answer. */
+  /* Every line of activity, tool rows included, shares the trace row's type:
+     13/20, regular, grey, brighter under the pointer. The tool's own title and
+     argument stop competing with the prose. */
+  [data-slot="session-turn-response-section"] {
+    [data-slot="basic-tool-tool-title"],
+    [data-slot="basic-tool-tool-subtitle"],
+    [data-slot="basic-tool-tool-arg"] {
+      font-size: var(--font-size-medium);
+      font-weight: var(--font-weight-regular);
+      line-height: 20px;
+      color: var(--text-weak);
+    }
+
+    [data-slot="basic-tool-tool-trigger-content"]:hover [data-slot="basic-tool-tool-title"],
+    [data-component="trace-row"]:hover {
+      color: var(--text-base);
+    }
+  }
+
+  /* Prose is the answer wherever it falls, so it is the bright text; the grey
+     rows around it are what the model did. Narration keeps a tighter rhythm. */
   [data-slot="trace-entry"][data-narration="true"] [data-slot="text-part-body"] {
     margin: 8px 0;
   }
 
-  [data-slot="trace-entry"][data-narration="true"] [data-component="markdown"],
-  [data-slot="trace-entry"][data-narration="true"] [data-component="markdown"] :is(p, li) {
-    color: var(--text-weak);
-  }
-
-  [data-slot="session-turn-live-status"] {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text-weak);
-    font-size: var(--font-size-small);
-
-    [data-component="spinner"] {
-      width: 12px;
-      height: 12px;
-      flex-shrink: 0;
-    }
+  [data-slot="trace-entry"] [data-component="markdown"],
+  [data-slot="trace-entry"] [data-component="markdown"] :is(p, li) {
+    color: var(--text-strong);
   }
 
   [data-slot="session-turn-duration"] {

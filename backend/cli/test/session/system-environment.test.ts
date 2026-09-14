@@ -51,17 +51,6 @@ describe("session environment prompt", () => {
     })
   })
 
-  test("core prompt requires durable state without model-invented research ceilings", () => {
-    const prompt = SystemPrompt.instructions()
-
-    expect(prompt).toContain("You are OpenScience, a local-first Research agent.")
-    expect(prompt).toContain("Before costly multi-stage work, define and maintain `research_contract`")
-    expect(prompt).toContain("save required Results")
-    expect(prompt).toContain("Never set a `max_*` field unless the user gave that exact numeric limit")
-    expect(prompt).toContain("Create user-visible provenance records only when explicitly requested")
-    expect(prompt).toContain("Use the default tool working directory described by the environment")
-  })
-
   test.each(["isolated", "project"] as const)(
     "%s workspace guidance reflects durable authority without changing trust or permissions",
     async (workspace) => {
@@ -88,7 +77,7 @@ describe("session environment prompt", () => {
             const before = await ExecutionAuthority.decide({ sessionID: session.id, capability: "shell" })
             const trust = await ProjectTrust.status(Instance.project)
             const prompt = [
-              SystemPrompt.instructions(),
+              SystemPrompt.header({ api: { id: "test" } }),
               ...(await SystemPrompt.environment({ api: { id: "test" }, providerID: "test" }, session.id)),
             ].join("\n")
 
@@ -121,4 +110,38 @@ describe("session environment prompt", () => {
       })
     },
   )
+})
+
+describe("knowledge cutoff line", () => {
+  test("names the catalog cutoff, the gap to today, and the decisions it bites", () => {
+    const today = new Date("2026-09-14T00:00:00Z")
+    const line = SystemPrompt.cutoff("2026-04-30", today)
+    expect(line).toStartWith("Knowledge cutoff: 2026-04-30 (per the model catalog), about 5 months before today.")
+    expect(line).toContain("look up the current generation before pinning a model, version, baseline or protocol")
+    expect(SystemPrompt.cutoff("2026-06", today)).toContain("about 3 months before today")
+    expect(SystemPrompt.cutoff("2026-09-01", today)).toContain(", within the last month")
+  })
+
+  test("an unlisted cutoff still tells the model its training predates today", () => {
+    const line = SystemPrompt.cutoff(undefined)
+    expect(line).toStartWith("Knowledge cutoff: not listed for this model; assume it is months before today.")
+    expect(SystemPrompt.cutoff("soon")).toStartWith("Knowledge cutoff: not listed for this model")
+  })
+
+  test("the environment block carries the line beside the date for every session", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const session = await Session.create({})
+        const env = (
+          await SystemPrompt.environment(
+            { api: { id: "test" }, providerID: "test", knowledge: "2026-02-16" },
+            session.id,
+          )
+        ).join("\n")
+        expect(env).toMatch(/Today's date: .*\n  Knowledge cutoff: 2026-02-16 \(per the model catalog\)/)
+      },
+    })
+  })
 })

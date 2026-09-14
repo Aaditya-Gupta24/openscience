@@ -53,9 +53,11 @@ import { createStore } from "solid-js/store"
 import { createAutoScroll } from "../hooks"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { responseText } from "./session-turn-response"
+import { isContinuationCarrier } from "./session-turn-carrier"
 import { headerProgress, progressStatus } from "./session-turn-progress"
 import { collapsibleTracePart, elapsedLabel, visibleResearchTrace, type ResearchTraceEntry } from "./research-trace"
 import { buildTraceRows, editedChanges, editedLabel, exploredLabel, thoughtLabel, type TraceRow } from "./trace-rows"
+import { liveActivity } from "./session-turn-live"
 import { Collapsible } from "./collapsible"
 import { MarkdownFileScope, useMarkdownFileResolvers } from "./markdown"
 
@@ -137,6 +139,17 @@ function isAttachment(part: PartType | undefined) {
   )
 }
 
+/** The child session a running delegation is bound to, if any. */
+function childSessionOf(parts: readonly PartType[]) {
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index]
+    if (part?.type !== "tool" || part.tool !== "task" || part.state.status !== "running") continue
+    const child = "metadata" in part.state ? part.state.metadata?.sessionId : undefined
+    return typeof child === "string" && child ? child : undefined
+  }
+  return undefined
+}
+
 function isGeneratedTool(part: PartType | undefined): part is ToolPart {
   return part?.type === "tool" && part.tool === "artifact" && part.state.status === "completed"
 }
@@ -157,9 +170,14 @@ function TraceGroupRow(props: {
   children: JSX.Element
 }) {
   const [manual, setManual] = createSignal<boolean>()
-  // Finished calls remain a readable summary during long runs. Only live
-  // reasoning expands automatically; the reader's own choice always wins.
-  const open = () => manual() ?? !!props.live
+  // Reasoning that streamed while the reader watched stays readable after it
+  // ends; finishing must not fold text away under someone reading it. A
+  // thought loaded from history opens on request. The reader's own choice wins.
+  const [streamed, setStreamed] = createSignal(false)
+  createEffect(() => {
+    if (props.live) setStreamed(true)
+  })
+  const open = () => manual() ?? (!!props.live || streamed())
   // A burst of one call is that call's own row: nothing to fold, so it never
   // sits inside a collapsible that a finished turn would close over it.
   if (props.header === false) {
@@ -449,7 +467,7 @@ export function SessionTurn(
     const messages = allMessages() ?? emptyMessages
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i]
-      if (msg?.role === "user") return msg.id
+      if (msg?.role === "user" && !isContinuationCarrier(msg, data.store.part[msg.id])) return msg.id
     }
     return undefined
   })
@@ -484,12 +502,19 @@ export function SessionTurn(
       const index = messageIndex()
       if (index < 0) return emptyAssistant
 
+      // A continuation the runtime wrote (a worker's completion, a harness
+      // nudge) keeps the turn open: the replies it draws are this turn's work.
+      const owned = new Set([msg.id])
       const result: AssistantMessage[] = []
       for (let i = index + 1; i < messages.length; i++) {
         const item = messages[i]
         if (!item) continue
-        if (item.role === "user") break
-        if (item.role === "assistant" && item.parentID === msg.id) result.push(item as AssistantMessage)
+        if (item.role === "user") {
+          if (!isContinuationCarrier(item, data.store.part[item.id])) break
+          owned.add(item.id)
+          continue
+        }
+        if (item.role === "assistant" && owned.has(item.parentID)) result.push(item as AssistantMessage)
       }
       return result
     },
@@ -870,10 +895,32 @@ export function SessionTurn(
     if (!status) return
     return [i18n.t(status.key, status.params), status.hint ? i18n.t(status.hint) : ""].filter(Boolean).join(" ")
   })
+  // The line names the call in flight ("Reading study.json"), the way the
+  // trace row will once the call lands; one clock, the turn's, sits beside it.
+  const activity = createMemo(() => {
+    const latest = assistantMessages().at(-1)
+    if (!latest || latest.time.completed) return
+    const own = liveActivity(data.store.part[latest.id] ?? emptyParts)
+    if (!own || !own.label.startsWith("Delegating")) return own
+    // A worker in flight: follow its live call when the store has its session.
+    const child = childSessionOf(data.store.part[latest.id] ?? emptyParts)
+    const childParts = child
+      ? (data.store.message[child] ?? emptyMessages).flatMap((message) => data.store.part[message.id] ?? emptyParts)
+      : []
+    const inner = child ? liveActivity(childParts) : undefined
+    return inner ? { label: `${own.label} · ${inner.label}` } : own
+  })
+  const queued = createMemo(() => {
+    if (!working() || assistantMessages().length) return false
+    const messages = allMessages() ?? emptyMessages
+    const previous = findLast(messages, (message) => message.role === "assistant") as AssistantMessage | undefined
+    return !!previous && !previous.time.completed
+  })
   const statusText = createMemo(() => {
     const live = phase()
     if (live) return i18n.t(live.key, live.params)
-    return rawStatus() ?? i18n.t("ui.sessionTurn.status.thinking")
+    if (queued()) return i18n.t("ui.sessionTurn.status.queued")
+    return activity()?.label ?? rawStatus() ?? i18n.t("ui.sessionTurn.status.thinking")
   })
 
   return (
@@ -920,7 +967,7 @@ export function SessionTurn(
                         "Worked for 2m 3s" and folds the whole trace. */}
                     <Show when={working() || hasSteps()}>
                       <div data-slot="session-turn-trace-control" data-working={working() ? "true" : undefined}>
-                        <Show when={hasSteps()}>
+                        <Show when={true}>
                           <Button
                             type="button"
                             data-slot="session-turn-collapsible-trigger-content"
@@ -965,15 +1012,6 @@ export function SessionTurn(
                               </span>
                             </Show>
                           </Button>
-                        </Show>
-                        <Show when={working() && !hasSteps()}>
-                          <div data-slot="session-turn-live-status" aria-live="off" title={detail() ?? statusText()}>
-                            <Spinner />
-                            <span data-slot="session-turn-status-text">{statusText()}</span>
-                            <span data-slot="session-turn-duration" aria-live="off">
-                              {store.duration}
-                            </span>
-                          </div>
                         </Show>
                       </div>
                     </Show>

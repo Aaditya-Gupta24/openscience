@@ -887,6 +887,14 @@ export namespace Config {
   export const Agent = z
     .object({
       model: z.string().optional(),
+      variant: z
+        .string()
+        .optional()
+        .describe("Model variant (reasoning effort) used when this agent runs on its own configured model"),
+      skills: z
+        .array(z.string())
+        .optional()
+        .describe("Skill categories indexed in this agent's <domain-skills> block (specialist agents)"),
       temperature: z.number().optional(),
       top_p: z.number().optional(),
       prompt: z.string().optional(),
@@ -918,6 +926,8 @@ export namespace Config {
       const knownKeys = new Set([
         "name",
         "model",
+        "variant",
+        "skills",
         "prompt",
         "description",
         "temperature",
@@ -1266,6 +1276,27 @@ export namespace Config {
         .describe(
           "Default agent to use when none is specified. Must be a primary agent. Falls back to 'research' if not set or if the specified agent is invalid.",
         ),
+      subagent_depth: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("How many levels of subagents a session may nest (default 1: only the lead dispatches workers)"),
+      harness: z
+        .object({
+          "headless-policy": z.boolean().optional(),
+          redirect: z.boolean().optional(),
+          deliverables: z.boolean().optional(),
+          budget: z.boolean().optional(),
+          cost: z
+            .union([z.boolean(), z.object({ max_usd: z.number().positive().optional() })])
+            .optional()
+            .describe("Spend visibility beside the time budget; an optional soft ceiling injects a wrap-up reminder"),
+          "durable-jobs": z.boolean().optional(),
+          workers: z.boolean().optional(),
+        })
+        .optional()
+        .describe("Harness units, each on by default; set one to false to remove its behaviour"),
       billing: z
         .object({
           llm: z
@@ -1426,7 +1457,7 @@ export namespace Config {
             .nonnegative()
             .optional()
             .describe(
-              "How many of the most recent images are sent in full with each model request; older images become text placeholders that can be read again (default: 1)",
+              "How many recent images travel in full with each model request; once the cap is exceeded the older half are released together and become text placeholders that can be read again (default: 20)",
             ),
         })
         .optional(),

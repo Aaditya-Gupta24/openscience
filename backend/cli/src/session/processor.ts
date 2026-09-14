@@ -12,6 +12,7 @@ import { Plugin } from "@/plugin"
 import { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
+import { HarnessState } from "@/harness/state"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
@@ -24,13 +25,10 @@ import { ManagedPricing } from "@/provider/managed-pricing"
 import { SessionTraceStore } from "./trace-store"
 import type { NamedError } from "@synsci/util/error"
 import { ToolRetryGuard } from "./tool-retry-guard"
-import { SessionResearch } from "./research"
 import { SearchDedupe } from "./search-dedupe"
 import { SessionLoopState } from "./loop-state"
 import type { Tool } from "@/tool/tool"
 import { InvalidCall } from "@/tool/invalid-call"
-import { ToolSelection } from "./tool-selection"
-import { Instance } from "@/project/instance"
 import { CredentialRevocation } from "@/credentials/revocation"
 import { abortedToolPart } from "./tool-outcome"
 import { outputWatchdog, watchOutput } from "./output-watchdog"
@@ -45,6 +43,9 @@ export namespace SessionProcessor {
   // attempts under the capped backoff in retry.ts surface a dead provider in
   // about two minutes instead of most of an hour.
   const MAX_RETRY_ATTEMPTS = 5
+  /** How long execute() waits for the consumer to record a call's streamed
+   * placeholder before it registers the call itself. */
+  const ARRIVAL_GRACE_MS = 1_000
   const log = Log.create({ service: "session.processor" })
 
   /** Provider reasoning can contain a private-payload placeholder, including
@@ -439,6 +440,24 @@ export namespace SessionProcessor {
     const names = new Map<string, string>()
     const applying = new Set<string>()
     const settled = new Set<string>()
+    // Resolved when the consumer records a call's streamed placeholder. The
+    // provider SDK schedules execute() the moment it parses a call, often
+    // before the consumer has reached that call's tool-input-start event; the
+    // placeholder's id is what orders the part among the step's thoughts, so
+    // a fresh id minted here would sort a fast call ahead of the reasoning
+    // that produced it, and the next request would replay them out of order.
+    const arrivals = new Map<string, { promise: Promise<void>; resolve: () => void }>()
+    function arrival(callID: string) {
+      const existing = arrivals.get(callID)
+      if (existing) return existing
+      let resolve = () => {}
+      const promise = new Promise<void>((done) => {
+        resolve = done
+      })
+      const created = { promise, resolve }
+      arrivals.set(callID, created)
+      return created
+    }
 
     async function apply(callID: string) {
       const outcome = outcomes.get(callID)
@@ -528,6 +547,7 @@ export namespace SessionProcessor {
         return settled.has(callID)
       },
       pending(part: MessageV2.ToolPart, write?: () => Promise<unknown>) {
+        arrival(part.callID).resolve()
         // The provider SDK invokes execute() on its own schedule, so the call
         // may already be registered as running (or settled) by the time the
         // consumer reaches its tool-input-start event. A second registration
@@ -625,10 +645,14 @@ export namespace SessionProcessor {
           return existing.promise as Promise<T>
         }
         const startedAt = Date.now()
-        const previous = toolcalls[callID]
         const canonical = names.get(callID)
-        const register = (() => {
-          if (!canonical || !input.identity || previous?.state.status === "running") return Promise.resolve()
+        const register = (async () => {
+          if (!canonical || !input.identity) return
+          if (!toolcalls[callID]) {
+            await Promise.race([arrival(callID).promise, Bun.sleep(ARRIVAL_GRACE_MS)])
+          }
+          const previous = toolcalls[callID]
+          if (previous?.state.status === "running") return
           // Reuse the streamed placeholder's identity and wait for its write so
           // the running receipt cannot be overtaken by the pending one.
           const placeholder = pendingWrites.get(callID) ?? Promise.resolve()
@@ -647,7 +671,8 @@ export namespace SessionProcessor {
             },
           }
           toolcalls[callID] = part
-          return placeholder.then(() => input.updatePart(part)).then(() => undefined)
+          await placeholder
+          await input.updatePart(part)
         })()
         const execution = Promise.resolve()
           .then(() => register)
@@ -734,6 +759,7 @@ export namespace SessionProcessor {
   }) {
     let snapshot: string | undefined
     let blocked = false
+    let guardTrip: { kind: "tool_errors"; tool: string } | undefined
     let shouldBreakOnDeny = true
     let attempt = 0
     let transientRetries = 0
@@ -786,6 +812,22 @@ export namespace SessionProcessor {
     const result = {
       get message() {
         return input.assistantMessage
+      },
+      /** The repetition guard this step tripped, when `process` returned "guard". */
+      get guard() {
+        return guardTrip
+      },
+      /** No unit redirected the trip: end the turn the way the guard always did. */
+      async stopOnGuard(trip: { kind: "tool_errors"; tool: string }) {
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: input.assistantMessage.id,
+          sessionID: input.sessionID,
+          type: "text",
+          synthetic: true,
+          text: toolErrorStopMessage(trip.tool),
+          time: { start: Date.now(), end: Date.now() },
+        } satisfies MessageV2.TextPart)
       },
       partFromToolCall(toolCallID: string) {
         return toolOutcomes.part(toolCallID)
@@ -854,7 +896,9 @@ export namespace SessionProcessor {
           const source = await resolveCredentialSource(input.model.providerID, input.model.id)
           // One immutable funding choice spans preflight and every retry/step.
           const funding = await fundingSnapshot(source)
-          const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+          const config = await Config.get()
+          const shouldBreak =
+            config.experimental?.continue_loop_on_deny !== true && !HarnessState.continueOnDeny(config, input.sessionID)
           return { source, funding, shouldBreak }
         })().catch((error) => {
           progress("error")
@@ -921,39 +965,7 @@ export namespace SessionProcessor {
               },
               ...(credentialSource === "managed" && funding ? { funding } : {}),
             }
-            // The conversation-first Research agent does not create or require
-            // legacy research contracts, so an old persisted contract must not
-            // silently reintroduce bounded-run finalization or block a turn.
-            // Keep the gate for specialist/legacy agents that still opt into
-            // that contract explicitly.
-            const runtime: SessionResearch.RuntimeDecision = ToolSelection.minimalResearchAgent(streamInput.agent.name)
-              ? ({ decision: "allow" } as const)
-              : await SessionResearch.runtimePreflight(input.sessionID)
-            if (runtime.decision === "block") {
-              throw new Error(SessionResearch.exhaustionMessage(runtime))
-            }
-
-            const finalizing = runtime.decision === "finalize"
-            const finalTurn = runtime.decision === "finalize" && runtime.finalizationCall === 2
-            const textOnly = runtime.textOnly === true || finalTurn
-            const request = finalizing
-              ? {
-                  ...streamInput,
-                  // The first reserved turn may save/checkpoint work. The last
-                  // one is deliberately text-only so an agent cannot consume
-                  // the entire reserve on another tool loop and strand the user
-                  // without a usable partial result.
-                  tools: textOnly ? {} : streamInput.tools,
-                  system: [
-                    ...streamInput.system,
-                    runtime.textOnly
-                      ? `Cumulative research-runtime usage jumped directly past its hard limit (${runtime.reason ?? "configured limit reached"}). This is the single emergency finalization response. No tools are available. Return the best verified result or explicit partial result now, with the exact checkpoint or continuation state.`
-                      : finalTurn
-                        ? `This is the last reserved finalization turn for the research runtime budget (${runtime.reason ?? "configured limit reached"}). No tools are available. Return the best verified result or explicit partial result now, with the exact checkpoint or continuation state.`
-                        : `The research contract runtime budget is at its finalization boundary (${runtime.reason ?? "configured limit reached"}). Do not open new branches or launch optional work. Preserve machine outputs and return the best verified result or explicit partial result now.`,
-                  ],
-                }
-              : streamInput
+            const request = streamInput
             const stream = await Provider.withRequestContext(requestContext, () =>
               LLM.stream({
                 ...request,
@@ -1438,10 +1450,14 @@ export namespace SessionProcessor {
               (part): part is MessageV2.ToolPart => part.type === "tool" && part.state.status === "error",
             )
             if (lastError && lastError.state.status === "error") {
-              const history = turnParts(
-                await Array.fromAsync(MessageV2.stream(input.sessionID)),
-                input.assistantMessage.parentID,
+              const all = await Array.fromAsync(MessageV2.stream(input.sessionID))
+              // A harness redirect opens a fresh window: failures before it were
+              // already answered, so only those after it count toward the next trip.
+              const redirect = all.find(
+                (message) => message.info.role === "user" && SessionLoopState.messageKind(message.info) === "harness",
               )
+              const scoped = redirect ? all.filter((message) => message.info.id > redirect.info.id) : all
+              const history = turnParts(scoped, input.assistantMessage.parentID)
               const action = toolErrorLoopAction(history, lastError.tool)
               if (action !== "none" && !lastError.state.error.includes(toolErrorGuidance(lastError.tool))) {
                 await Session.updatePart({
@@ -1452,18 +1468,9 @@ export namespace SessionProcessor {
                   },
                 })
               }
-              if (action === "stop") {
-                blocked = true
-                await Session.updatePart({
-                  id: Identifier.ascending("part"),
-                  messageID: input.assistantMessage.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  synthetic: true,
-                  text: toolErrorStopMessage(lastError.tool),
-                  time: { start: Date.now(), end: Date.now() },
-                } satisfies MessageV2.TextPart)
-              }
+              // The loop decides what a tripped guard means: a harness unit may
+              // redirect the model instead of ending the turn.
+              if (action === "stop") guardTrip = { kind: "tool_errors", tool: lastError.tool }
             }
           }
           input.assistantMessage.time.completed = Date.now()
@@ -1471,6 +1478,7 @@ export namespace SessionProcessor {
           progress(input.assistantMessage.error ? "error" : "done")
           if (overflow) return "overflow"
           if (needsCompaction) return "compact"
+          if (guardTrip) return "guard"
           if (blocked) return "stop"
           if (input.assistantMessage.error) return "stop"
           return "continue"

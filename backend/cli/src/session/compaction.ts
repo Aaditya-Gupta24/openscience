@@ -21,6 +21,7 @@ import { SessionFilesystem } from "./filesystem"
 import { SessionLoopState } from "./loop-state"
 import { TokenUsage } from "@synsci/util/token-usage"
 import { NamedError } from "@synsci/util/error"
+import type { Tool as AITool } from "ai"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -46,7 +47,10 @@ export namespace SessionCompaction {
   // How many of the most-recent images to keep in full in the model request. Older
   // images are replaced with a text placeholder (they stay on disk, re-readable) so a
   // session that reads many figures can't bloat the window with re-shipped base64.
-  export const KEEP_RECENT_IMAGES = 1
+  /** Images travel as images on every route now, at a few thousand tokens
+   * each, so the window can hold a working set of figures; the previous cap of
+   * one dated from when a figure's base64 was billed as prompt text. */
+  export const KEEP_RECENT_IMAGES = 20
 
   /** `compaction.recentImages` widens that window for figure-heavy sessions on
    * models with room for it; the default is unchanged. */
@@ -64,10 +68,30 @@ export namespace SessionCompaction {
   // OpenCode's automatic budget: leave a response reserve, or a 20k buffer below
   // an explicit input cap. Unknown/small local model windows retain their fallback
   // and half-window clamp so missing metadata cannot cause compaction every turn.
+  /** The context a turn budgets when the request names none. A catalog that
+   * prices the window in tiers puts a cliff at the first boundary (Astra
+   * doubles every input rate past 272K), and once a session crosses it, every
+   * later step pays the higher rate on its whole prompt. Compacting a little
+   * before the boundary keeps the session on the cheap side; a turn that
+   * names the full window opts out. */
+  export function defaultContext(model: Provider.Model, capacity: number): number {
+    const base = model.cost
+    const tiered = (base?.tiers ?? [])
+      .filter(
+        (tier) =>
+          tier.threshold < capacity && (tier.input > (base?.input ?? 0) || tier.cache.read > (base?.cache?.read ?? 0)),
+      )
+      .map((tier) => tier.threshold)
+    const legacy = base?.experimentalOver200K && capacity > 200_000 ? [200_000] : []
+    const boundary = [...tiered, ...legacy].sort((a, b) => a - b)[0]
+    return boundary ?? capacity
+  }
+
   export function usableContext(
     model: Provider.Model,
     config: Config.Info,
     requestedContext?: number,
+    options?: { tiers?: boolean },
   ): { context: number; usable: number } {
     const positive = (value: number | undefined) =>
       value !== undefined && Number.isSafeInteger(value) && value > 0 ? value : undefined
@@ -77,7 +101,13 @@ export namespace SessionCompaction {
     // Custom/OpenAI-compatible model metadata is less strict than per-turn
     // context input. Invalid limits must not enlarge a budget or make it zero.
     const capacity = positive(model.limit.context) ?? positive(config.compaction?.fallbackContext) ?? FALLBACK_CONTEXT
-    const context = Math.min(capacity, requestedContext ?? capacity)
+    // The pricing boundary is a budget for compaction, not a limit the model
+    // has: a caller asking for the window itself (`tiers: false`) learns what
+    // a single request may hold.
+    const context = Math.min(
+      capacity,
+      requestedContext ?? (options?.tiers === false ? capacity : defaultContext(model, capacity)),
+    )
     const maximum = positive(SessionPrompt.OUTPUT_TOKEN_MAX) ?? 32_000
     const cap = Math.min(positive(model.limit.output) ?? maximum, maximum)
     const output = Math.min(cap, Math.floor(context / 2))
@@ -294,6 +324,16 @@ export namespace SessionCompaction {
     return "continue" as const
   }
 
+  /** The oldest ordinary user message: the instruction every compaction pins. */
+  export function rootUser(messages: MessageV2.WithParts[]) {
+    return messages.find(
+      (message) =>
+        message.info.role === "user" &&
+        !("internal" in message.info && message.info.internal) &&
+        message.parts.some((part) => part.type === "text" && !part.synthetic && !part.ignored && part.text.trim()),
+    )
+  }
+
   // Newest prior handoff text in the transcript, or undefined if this session has never
   // been compacted before. Walking backwards finds the most recent summary message without
   // scanning the whole (potentially long) history once one is found.
@@ -322,8 +362,14 @@ export namespace SessionCompaction {
   const HANDOFF_STRUCTURE = `## Objective
 - [the user's EXPLICIT request — what THEY actually asked for, verbatim if short. NOT tangents, hunches, anomalies you noticed, or follow-up ideas you had while working]
 
+## Deliverables (verbatim)
+- [every output the request or its specification names, copied exactly: paths, formats, columns/keys, units, rounding, naming, exclusions, method constraints; mark each done / pending / blocked. Write "(none specified)" if the request names no outputs]
+
 ## Constraints & Decisions
 - [rules/preferences that must hold, decisions made and WHY, key assumptions — the things a fresh agent would otherwise get wrong]
+
+## Findings so far
+- [each result with its number, units and uncertainty, the command or file it came from, and whether it is verified; distinguish observed from inferred]
 
 ## Work State
 ### Done (verified)
@@ -546,10 +592,48 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     return { tailStartId: messages[cut].info.id }
   }
 
+  /** The exact system blocks, tools and agent of a session's newest provider
+   * request. A summary request built from the same parts shares the cached
+   * prefix of the conversation it summarizes, so a 240K-token compaction reads
+   * at the cache rate instead of paying the full rate for its own prompt. */
+  type Assembly = {
+    system: string[]
+    tools: Record<string, AITool>
+    agent: Agent.Info
+    model: { providerID: string; id: string }
+  }
+
+  const assemblies = Instance.state(() => new Map<string, Assembly>())
+
+  export function remember(sessionID: string, assembly: Assembly) {
+    assemblies().set(sessionID, assembly)
+  }
+
+  export function forget(sessionID: string) {
+    assemblies().delete(sessionID)
+  }
+
+  /** How the summary request introduces itself when it rides the conversation
+   * under the agent's own header rather than the compaction agent's. */
+  export const HANDOFF_PREAMBLE = [
+    "Pause the task. This message is a context handoff request from the harness, not part of the work.",
+    "Produce the structured handoff below so another agent can continue without re-reading the transcript. Do not call tools, do not continue the conversation, and do not answer questions from it.",
+    "Follow the exact output structure requested. Keep every section, preserve exact file paths, identifiers, commands and numeric results, copy deliverables verbatim, and prefer terse bullets over paragraphs. Respond in the language of the conversation.",
+  ].join(" ")
+
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
+  /** How long a provider keeps a cached prefix warm without traffic: OpenAI
+   * guarantees thirty minutes on GPT-5.6 and later (five to ten on earlier
+   * models), Anthropic five. Past this, a request pays for its prefix again
+   * whether or not the transcript changed, so a routine prune costs nothing
+   * extra; inside it, the same prune costs a full read. Erring long is cheap
+   * (stale output rides along at the cache rate); erring short is a full read. */
+  export const CACHE_WINDOW_MS = 30 * 60_000
 
-  const PRUNE_PROTECTED_TOOLS = ["skill", "artifact"]
+  // Skill loads, Results and the deliverables checklist are never pruned:
+  // each is small and the model steers by them.
+  const PRUNE_PROTECTED_TOOLS = ["skill", "artifact", "todowrite"]
 
   // goes backwards through parts until there are 40_000 tokens worth of tool
   // calls. then erases output of previous tool calls. idea is to throw away old
@@ -689,29 +773,47 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
         buildHandoffPrompt({ previousSummary: previousSummary(input.messages), focus: input.focus }),
         ...compacting.context,
       ].join("\n\n")
+    // When the conversation's newest request is known and the summary runs on
+    // the same model, the summary rides that request's exact prefix: same
+    // header, system blocks, tools (offered, not callable) and rendering, so
+    // the provider serves the head from its cache. A configured compaction
+    // model, or a process that has not sent a request yet, takes the
+    // standalone path.
+    const remembered = assemblies().get(input.sessionID)
+    const shared =
+      remembered && remembered.model.providerID === model.providerID && remembered.model.id === model.id
+        ? remembered
+        : undefined
+    const config = await Config.get()
     const result = await processor.process({
-      // Compaction is an isolated internal call. Preserve the source system
-      // controls on the durable carrier for the resumed main turn, but do not
-      // replay them into the compaction agent where child/custom guidance can
-      // conflict with the handoff contract and consume context twice.
-      user: { ...userMessage, system: undefined },
-      agent,
+      // The standalone call is isolated: preserve the source system controls on
+      // the durable carrier for the resumed main turn, but do not replay them
+      // into the compaction agent where child/custom guidance can conflict with
+      // the handoff contract. The shared call keeps them, as its prefix must.
+      user: shared ? userMessage : { ...userMessage, system: undefined },
+      agent: shared ? shared.agent : agent,
       abort: input.abort,
       sessionID: input.sessionID,
-      tools: {},
-      system: [],
+      tools: shared ? shared.tools : {},
+      ...(shared ? { toolChoice: "none" as const } : {}),
+      system: shared ? shared.system : [],
       messages: [
-        // Strip ALL media from the summary request — the summarizer never needs the
-        // images and re-ingesting base64 can blow the summary call's own budget. Summarize
-        // only the head (P3.2) — the tail is kept verbatim in the transcript and re-spliced
-        // back in after the summary via tailStartId/filterCompacted.
-        ...MessageV2.toModelMessages(head, model, { stripMedia: true }),
+        // Summarize only the head (P3.2): the tail is kept verbatim in the
+        // transcript and re-spliced after the summary via tailStartId /
+        // filterCompacted. The shared call renders the head exactly as the
+        // conversation does; the standalone call strips media the summarizer
+        // never needs.
+        ...MessageV2.toModelMessages(
+          head,
+          model,
+          shared ? { keepRecentImages: recentImages(config) } : { stripMedia: true },
+        ),
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: promptText,
+              text: shared ? [HANDOFF_PREAMBLE, promptText].join("\n\n") : promptText,
             },
           ],
         },
@@ -796,6 +898,7 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
         focus: input.focus,
         handoffFile: input.handoffFile,
         trigger: input.trigger,
+        rootID: rootUser(messages)?.info.id,
       })
     },
   )

@@ -220,6 +220,9 @@ export namespace MessageV2 {
     // What asked for this compaction — carried through to summary telemetry so we can
     // tell proactive (0.75 threshold) from reactive (overflow backstop) from manual.
     trigger: z.enum(["proactive", "overflow", "manual"]).optional(),
+    /** The session's root user message, pinned verbatim ahead of the summary
+     * in every compacted view so the original instruction survives. */
+    rootID: z.string().optional(),
   }).meta({
     ref: "CompactionPart",
   })
@@ -407,7 +410,7 @@ export namespace MessageV2 {
           // Legacy reviewer continuations still parse so 2.x session archives
           // remain readable; SessionLoopState normalizes both to ordinary task
           // continuations and no reviewer workflow is launched.
-          kind: z.enum(["output", "contract", "review", "review-summary", "compaction", "task", "context"]),
+          kind: z.enum(["output", "contract", "review", "review-summary", "compaction", "task", "context", "harness"]),
           text: z.string(),
           epoch: z.string(),
           transaction: z.string(),
@@ -452,6 +455,9 @@ export namespace MessageV2 {
     tier: z.string().optional(),
     context: z.number().int().positive().optional(),
     inference: Inference.Info.optional(),
+    /** Wall-clock deadline for the work this turn starts (epoch ms). The
+     * budget unit renders time budget and elapsed time from it. */
+    deadline: z.number().int().positive().optional(),
   }).meta({
     ref: "UserMessage",
   })
@@ -622,6 +628,26 @@ export namespace MessageV2 {
     return "continue"
   }
 
+  /** The replay copy of an OpenRouter reasoning record. The stream delivers a
+   * model's reasoning summary as one `reasoning.summary` item per token, each
+   * wrapped in a hundred bytes of JSON, and every tool call in the step carries
+   * the whole list: one step's summary came back as 450 items and 50 KB. The
+   * upstream needs the signed or encrypted items to continue reasoning; the
+   * summaries are display data, so they stay in the transcript and leave the
+   * request. */
+  export function replayableOpenRouterReplay(metadata: Record<string, unknown> | undefined) {
+    const openrouter = metadata?.openrouter
+    if (!openrouter || typeof openrouter !== "object") return metadata
+    const details = (openrouter as { reasoning_details?: unknown }).reasoning_details
+    if (!Array.isArray(details)) return metadata
+    const kept = details.filter(
+      (detail) =>
+        !(detail && typeof detail === "object" && (detail as { type?: unknown }).type === "reasoning.summary"),
+    )
+    if (kept.length === details.length) return metadata
+    return { ...metadata, openrouter: { ...(openrouter as Record<string, unknown>), reasoning_details: kept } }
+  }
+
   function replayableOpenRouterMetadata(metadata: Record<string, unknown> | undefined) {
     const openrouter = metadata?.openrouter
     if (!openrouter || typeof openrouter !== "object") return false
@@ -634,6 +660,51 @@ export namespace MessageV2 {
       if (typeof item.format !== "string" || !item.format.toLowerCase().includes("anthropic")) return true
       return typeof item.signature === "string" && item.signature.length > 0
     })
+  }
+
+  export const TOOL_MEDIA_PROMPT = "Images from the tool results above:"
+
+  /** Which images, in order of appearance, still travel in full under a cap.
+   * A plain "newest N" window would retire one older image for every new one,
+   * and each retirement rewrites an earlier message, which ends the provider's
+   * cached prefix there. Instead the window fills to the cap and then releases
+   * its older half at once, so a session with many figures pays for that
+   * rewrite once per half-window rather than once per figure. */
+  export function retainedImages(order: readonly string[], cap: number): Set<string> {
+    if (cap <= 0) return new Set()
+    const kept: string[] = []
+    for (const id of order) {
+      kept.push(id)
+      if (kept.length > cap) kept.splice(0, kept.length - Math.max(1, Math.ceil(cap / 2)))
+    }
+    return new Set(kept)
+  }
+
+  /** Whether this model's SDK can carry media inside a tool result. Chat
+   * Completions-style transports (OpenRouter, openai-compatible, the Copilot
+   * fork) accept only a string there and JSON-stringify anything else, so a
+   * figure's base64 would be billed as prompt text: a 500 KB PNG became
+   * 170K input tokens on every step until it was pruned. Those transports get
+   * the image as a user message instead, which every image-capable model
+   * reads at image prices. */
+  export function mediaInToolResult(model: Provider.Model, mime: string): boolean {
+    const npm = model.api.npm
+    if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") return true
+    if (npm === "@ai-sdk/openai" || npm === "@ai-sdk/azure") return true
+    if (npm === "@ai-sdk/amazon-bedrock" || npm === "@ai-sdk/xai") return mime.startsWith("image/")
+    if (npm === "@ai-sdk/google" || npm === "@ai-sdk/google-vertex") {
+      const id = model.api.id.toLowerCase()
+      return id.includes("gemini-3") && !id.includes("gemini-2")
+    }
+    return false
+  }
+
+  /** Whether the model can take this media as input at all, by the same
+   * coarse fallback the request transform applies to user attachments. */
+  function viewable(model: Provider.Model, mime: string): boolean {
+    if (mime.startsWith("image/")) return model.capabilities.input.image || model.capabilities.attachment
+    if (mime === "application/pdf") return model.capabilities.input.pdf || model.capabilities.attachment
+    return false
   }
 
   export function toModelMessages(
@@ -664,9 +735,8 @@ export namespace MessageV2 {
         if (part.type === "tool" && part.state.status === "completed" && !part.state.time.compacted)
           for (const attachment of part.state.attachments ?? []) add(attachment.mime, attachment.url)
       }
-    const retained = new Set(
-      options?.keepRecentImages === undefined ? order : order.slice(-Math.max(0, options.keepRecentImages)),
-    )
+    const retained =
+      options?.keepRecentImages === undefined ? new Set(order) : retainedImages(order, options.keepRecentImages)
     const emitted = new Set<string>()
     // Returns a placeholder string when this image occurrence should be dropped, else undefined.
     const dropImage = (mime: string, url: string, filename?: string): string | undefined => {
@@ -720,8 +790,24 @@ export namespace MessageV2 {
       return { type: "json", value: output as never }
     }
 
-    for (const msg of input) {
+    // Reasoning is replayed for the work in progress, everything since the
+    // person's last request, and dropped for the turns before it. Anthropic
+    // strips earlier turns' thinking server-side; OpenAI renders earlier turns'
+    // encrypted reasoning into context on GPT-5.6+ and bills it as input on
+    // every step, and this session carried 139 items of it. The transcript
+    // keeps the decisions. The boundary is the person's message, not any
+    // user-role message: a worker's result or a study update lands mid-work,
+    // and stripping there would rewrite the prefix the cache holds for
+    // nothing, while a person's request usually follows a pause that has
+    // cooled the cache anyway.
+    const lastUser = input.findLastIndex(
+      (msg) =>
+        msg.info.role === "user" &&
+        msg.parts.some((part) => (part.type === "text" && !part.synthetic) || part.type === "file"),
+    )
+    for (const [index, msg] of input.entries()) {
       if (msg.parts.length === 0) continue
+      const earlierTurn = index < lastUser
 
       if (msg.info.role === "user") {
         const userMessage: UIMessage = {
@@ -795,22 +881,23 @@ export namespace MessageV2 {
           role: "assistant",
           parts: [],
         }
+        const media: Array<{ mime: string; url: string; filename?: string }> = []
         // OpenRouter can route consecutive turns through different Anthropic
         // backends. Its stream puts an incomplete reasoning detail on the
         // reasoning part, then the complete signed detail on every tool call.
         // Forwarding all of those duplicates makes the next backend reject the
         // first unsigned thinking block. Preserve one canonical, signed copy.
         const openrouter =
-          model.providerID === "openrouter" && !differentModel
+          model.providerID === "openrouter" && !differentModel && !earlierTurn
             ? iife(() => {
                 const tool = msg.parts.findLast(
                   (part) => part.type === "tool" && replayableOpenRouterMetadata(part.metadata),
                 )
-                if (tool?.type === "tool") return tool.metadata
+                if (tool?.type === "tool") return replayableOpenRouterReplay(tool.metadata)
                 const reasoning = msg.parts.findLast(
                   (part) => part.type === "reasoning" && replayableOpenRouterMetadata(part.metadata),
                 )
-                if (reasoning?.type === "reasoning") return reasoning.metadata
+                if (reasoning?.type === "reasoning") return replayableOpenRouterReplay(reasoning.metadata)
                 return undefined
               })
             : undefined
@@ -837,11 +924,24 @@ export namespace MessageV2 {
               const isDuplicate = superseded.has(part.id)
               const rawAttachments = part.state.time.compacted || isDuplicate ? [] : (part.state.attachments ?? [])
               let droppedNote = ""
-              const attachments = rawAttachments.filter((a) => {
+              const shown = rawAttachments.filter((a) => {
                 const dropped = dropImage(a.mime, a.url, a.filename)
                 if (dropped) droppedNote += `\n${dropped}`
                 return !dropped
               })
+              // Media the provider's tool-result channel cannot carry travels
+              // in a user message right after this one; the result keeps a
+              // pointer so the model connects the two.
+              const carried = shown.filter((a) => mediaInToolResult(model, a.mime))
+              const relocated = shown.filter((a) => !mediaInToolResult(model, a.mime) && viewable(model, a.mime))
+              const blind = shown.length - carried.length - relocated.length
+              if (relocated.length) {
+                media.push(...relocated)
+                droppedNote += `\n[${relocated.length === 1 ? "1 image" : `${relocated.length} images`} from this result ${relocated.length === 1 ? "follows" : "follow"} in the next message]`
+              }
+              if (blind > 0) {
+                droppedNote += `\n[${blind === 1 ? "1 attachment" : `${blind} attachments`} omitted: this model cannot view ${blind === 1 ? "it" : "them"}; work from the data or the file itself]`
+              }
               const baseText = isDuplicate
                 ? DUPLICATE_OUTPUT
                 : part.state.time.compacted
@@ -849,10 +949,10 @@ export namespace MessageV2 {
                   : part.state.output
               const outputText = baseText + droppedNote
               const output =
-                attachments.length > 0
+                carried.length > 0
                   ? {
                       text: outputText,
-                      attachments,
+                      attachments: carried,
                     }
                   : outputText
 
@@ -915,7 +1015,7 @@ export namespace MessageV2 {
                     }),
               })
           }
-          if (part.type === "reasoning") {
+          if (part.type === "reasoning" && !earlierTurn) {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
@@ -934,6 +1034,21 @@ export namespace MessageV2 {
         }
         if (assistantMessage.parts.length > 0) {
           result.push(assistantMessage)
+          if (media.length > 0) {
+            result.push({
+              id: `${msg.info.id}-media`,
+              role: "user",
+              parts: [
+                { type: "text", text: TOOL_MEDIA_PROMPT },
+                ...media.map((attachment) => ({
+                  type: "file" as const,
+                  url: attachment.url,
+                  mediaType: attachment.mime,
+                  filename: attachment.filename,
+                })),
+              ],
+            })
+          }
         }
       }
     }
@@ -1367,6 +1482,20 @@ export namespace MessageV2 {
   }
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
+    const result = await filterCompactedLayout(stream)
+    const carrier = result.find(
+      (message) => message.info.role === "user" && message.parts.some((part) => part.type === "compaction"),
+    )
+    const rootID = carrier?.parts.find((part): part is CompactionPart => part.type === "compaction")?.rootID
+    if (!carrier || !rootID || result.some((message) => message.info.id === rootID)) return result
+    // The root instruction outlives every compaction: presented verbatim before
+    // the summary, so the model never works from a paraphrase of the task.
+    const root = await get({ sessionID: carrier.info.sessionID, messageID: rootID }).catch(() => undefined)
+    if (!root || root.info.role !== "user") return result
+    return [root, ...result]
+  }
+
+  async function filterCompactedLayout(stream: AsyncIterable<MessageV2.WithParts>) {
     const result = [] as MessageV2.WithParts[]
     const completed = new Set<string>() // carrier ids (parentIDs of completed summaries)
     let tailStartId: string | undefined // from the newest completed summary

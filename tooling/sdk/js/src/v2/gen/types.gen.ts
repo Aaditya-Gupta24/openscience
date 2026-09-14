@@ -126,21 +126,6 @@ export type EventAccountLogin = {
   }
 }
 
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
 export type EventFileWatcherUpdated = {
   type: "file.watcher.updated"
   properties: {
@@ -159,7 +144,7 @@ export type EventSessionFilesystemChanged = {
       path: string
       access: "read" | "write"
       scope: "once" | "session" | "project" | "installation"
-      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
       time: {
         created: number
         consumed?: number
@@ -169,40 +154,18 @@ export type EventSessionFilesystemChanged = {
   }
 }
 
-export type EventProjectAccessChanged = {
-  type: "project.access.changed"
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
   properties: {
-    status: {
-      projectID: string
-      root: string
-      revision: number
-      trustRevision: number
-      mode: "ask" | "approve" | "full"
-      requestedMode: "ask" | "approve" | "full"
-      source: "default" | "legacy" | "persisted"
-      trusted: boolean
-      managed: boolean
-      sandbox: {
-        enabled: boolean
-        network: "allow" | "deny"
-        allowWrite: Array<string>
-        onUnavailable: "warn" | "error" | "allow"
-        requireProjectTrust: boolean
-      }
-      sandboxStatus: {
-        available: boolean
-        backend: "seatbelt" | "bubblewrap" | "none"
-        reason?: string
-      }
-    }
-    narrowing: boolean
+    serverID: string
+    path: string
   }
 }
 
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
+export type EventLspUpdated = {
+  type: "lsp.updated"
   properties: {
-    branch?: string
+    [key: string]: unknown
   }
 }
 
@@ -244,7 +207,7 @@ export type UserMessage = {
       }
     | {
         type: "continuation"
-        kind: "output" | "contract" | "review" | "review-summary" | "compaction" | "task" | "context"
+        kind: "output" | "contract" | "review" | "review-summary" | "compaction" | "task" | "context" | "harness"
         text: string
         epoch: string
         transaction: string
@@ -285,6 +248,7 @@ export type UserMessage = {
     source: "managed" | "byok" | "chatgpt" | "local" | "oauth" | "unknown"
     effort: string
   }
+  deadline?: number
 }
 
 export type ProviderAuthError = {
@@ -670,6 +634,7 @@ export type CompactionPart = {
   focus?: string
   handoffFile?: string
   trigger?: "proactive" | "overflow" | "manual"
+  rootID?: string
 }
 
 export type Part =
@@ -701,6 +666,43 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventProjectAccessChanged = {
+  type: "project.access.changed"
+  properties: {
+    status: {
+      projectID: string
+      root: string
+      revision: number
+      trustRevision: number
+      mode: "ask" | "approve" | "full"
+      requestedMode: "ask" | "approve" | "full"
+      source: "default" | "legacy" | "persisted"
+      trusted: boolean
+      managed: boolean
+      sandbox: {
+        enabled: boolean
+        network: "allow" | "deny"
+        allowWrite: Array<string>
+        onUnavailable: "warn" | "error" | "allow"
+        requireProjectTrust: boolean
+      }
+      sandboxStatus: {
+        available: boolean
+        backend: "seatbelt" | "bubblewrap" | "none"
+        reason?: string
+      }
+    }
+    narrowing: boolean
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    branch?: string
   }
 }
 
@@ -924,6 +926,13 @@ export type EventSessionCompacted = {
   type: "session.compacted"
   properties: {
     sessionID: string
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
   }
 }
 
@@ -1214,13 +1223,6 @@ export type EventSessionError = {
   }
 }
 
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
-  }
-}
-
 export type Pty = {
   id: string
   title: string
@@ -1338,16 +1340,16 @@ export type Event =
   | EventProjectTrustChanged
   | EventAccountUpdated
   | EventAccountLogin
-  | EventLspClientDiagnostics
-  | EventLspUpdated
   | EventFileWatcherUpdated
   | EventSessionFilesystemChanged
-  | EventProjectAccessChanged
-  | EventVcsBranchUpdated
+  | EventLspClientDiagnostics
+  | EventLspUpdated
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventProjectAccessChanged
+  | EventVcsBranchUpdated
   | EventPermissionAsked
   | EventPermissionCancelled
   | EventPermissionReplied
@@ -1362,6 +1364,7 @@ export type Event =
   | EventQuestionCancelled
   | EventQuestionRejected
   | EventSessionCompacted
+  | EventFileEdited
   | EventTodoUpdated
   | EventExperimentRunUpdated
   | EventExperimentRunPoints
@@ -1376,7 +1379,6 @@ export type Event =
   | EventSessionDeleted
   | EventSessionDiff
   | EventSessionError
-  | EventFileEdited
   | EventPtyCreated
   | EventPtyUpdated
   | EventPtyExited
@@ -1828,6 +1830,14 @@ export type PermissionConfig =
 
 export type AgentConfig = {
   model?: string
+  /**
+   * Model variant (reasoning effort) used when this agent runs on its own configured model
+   */
+  variant?: string
+  /**
+   * Skill categories indexed in this agent's <domain-skills> block (specialist agents)
+   */
+  skills?: Array<string>
   temperature?: number
   top_p?: number
   prompt?: string
@@ -1878,6 +1888,7 @@ export type ProviderConfig = {
       name?: string
       family?: string
       release_date?: string
+      knowledge?: string
       attachment?: boolean
       reasoning?: boolean
       reasoning_options?: Array<
@@ -2183,6 +2194,29 @@ export type Config = {
    */
   default_agent?: string
   /**
+   * How many levels of subagents a session may nest (default 1: only the lead dispatches workers)
+   */
+  subagent_depth?: number
+  /**
+   * Harness units, each on by default; set one to false to remove its behaviour
+   */
+  harness?: {
+    "headless-policy"?: boolean
+    redirect?: boolean
+    deliverables?: boolean
+    budget?: boolean
+    /**
+     * Spend visibility beside the time budget; an optional soft ceiling injects a wrap-up reminder
+     */
+    cost?:
+      | boolean
+      | {
+          max_usd?: number
+        }
+    "durable-jobs"?: boolean
+    workers?: boolean
+  }
+  /**
    * Provider access configuration for Ace or user-owned credentials.
    */
   billing?: {
@@ -2309,7 +2343,7 @@ export type Config = {
      */
     tailTokens?: number
     /**
-     * How many of the most recent images are sent in full with each model request; older images become text placeholders that can be read again (default: 1)
+     * How many recent images travel in full with each model request; once the cap is exceeded the older half are released together and become text placeholders that can be read again (default: 20)
      */
     recentImages?: number
   }
@@ -2445,6 +2479,7 @@ export type Model = {
     [key: string]: string
   }
   release_date: string
+  knowledge?: string
   reasoningOptions?: Array<{
     [key: string]: unknown
   }>
@@ -2905,11 +2940,14 @@ export type Agent = {
     modelID: string
     providerID: string
   }
+  variant?: string
   prompt?: string
   options: {
     [key: string]: unknown
   }
   steps?: number
+  skills?: Array<string>
+  unlocks?: Array<string>
 }
 
 export type LspStatus = {
@@ -10002,7 +10040,7 @@ export type ProjectWorkingRootsResponses = {
     path: string
     access: "read" | "write"
     scope: "once" | "session" | "project" | "installation"
-    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
     time: {
       created: number
       consumed?: number
@@ -11578,7 +11616,7 @@ export type SessionFilesystemListResponses = {
       path: string
       access: "read" | "write"
       scope: "once" | "session" | "project" | "installation"
-      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
       time: {
         created: number
         consumed?: number
@@ -11649,7 +11687,7 @@ export type SessionFilesystemGrantResponses = {
     path: string
     access: "read" | "write"
     scope: "once" | "session" | "project" | "installation"
-    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
     time: {
       created: number
       consumed?: number
@@ -11702,7 +11740,7 @@ export type SessionFilesystemWorkingRootResponses = {
       path: string
       access: "read" | "write"
       scope: "once" | "session" | "project" | "installation"
-      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+      source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
       time: {
         created: number
         consumed?: number
@@ -11771,7 +11809,7 @@ export type SessionFilesystemRevokeResponses = {
     path: string
     access: "read" | "write"
     scope: "once" | "session" | "project" | "installation"
-    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff"
+    source: "workspace" | "project" | "skill" | "permission" | "api" | "tool" | "handoff" | "parent"
     time: {
       created: number
       consumed?: number
@@ -12043,6 +12081,7 @@ export type SessionPromptData = {
     variant?: string
     tier?: string
     context?: number
+    deadline?: number
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
   }
   path: {
@@ -12242,6 +12281,7 @@ export type SessionPromptAsyncData = {
     variant?: string
     tier?: string
     context?: number
+    deadline?: number
     parts: Array<TextPartInput | FilePartInput | AgentPartInput | ConversationPartInput | SubtaskPartInput>
   }
   path: {

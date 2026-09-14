@@ -459,6 +459,33 @@ describe("reasoning rows", () => {
     expect(again.textContent).not.toContain("Compact")
   })
 
+  test("reasoning that streamed while the reader watched stays readable once it ends", async () => {
+    const [store, setStore] = reactive.createStore<Store>({
+      ...empty(),
+      session_status: { [sessionID]: { type: "busy" } },
+      message: { [sessionID]: [user, assistant()] },
+      part: { [user.id]: [], msg_0002: [reasoning("prt_stay", { start: Date.now() - 2_000 })] },
+    })
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.querySelector('[data-slot="reasoning-part-body"] p') !== null)
+    expect(host.querySelector('[data-component="trace-group"][data-kind="thought"]')?.getAttribute("data-live")).toBe(
+      "true",
+    )
+    // The thought ends and the turn finishes: the text the reader was following
+    // does not fold away under them. A thought loaded later opens on request.
+    setStore("part", "msg_0002", 0, { ...reasoning("prt_stay", { start: Date.now() - 2_000, end: Date.now() }) })
+    setStore("message", sessionID, 1, { ...assistant(Date.now()) })
+    setStore("session_status", sessionID, { type: "idle" })
+    await settle()
+    expect(host.querySelector('[data-component="trace-group"][data-kind="thought"]')?.getAttribute("data-live")).toBe(
+      null,
+    )
+    expect(host.querySelector('[data-slot="reasoning-part-body"]')?.textContent).toContain(
+      "Comparing the two assay formats",
+    )
+    expect(host.querySelector('[data-component="trace-row"]')?.textContent).toMatch(/^Thought \d+s$/)
+  })
+
   test("completed turns start quietly collapsed and can open without a settings callback", async () => {
     const message = assistant(2_000)
     const store: Store = {
@@ -547,7 +574,7 @@ describe("skill load receipts", () => {
     },
   })
 
-  test("keeps an inspectable load visible in its completed turn, without claiming another load on the next turn", async () => {
+  test("keeps an inspectable load in its completed turn, folded with the rest of the activity, without claiming another load on the next turn", async () => {
     const first = assistant(2_000)
     const next: UserMessage = { ...user, id: "msg_0003" }
     const second: AssistantMessage = { ...assistant(4_000), id: "msg_0004", parentID: next.id }
@@ -571,9 +598,14 @@ describe("skill load receipts", () => {
     const host = mount(view, store)
     const earlier = host.querySelector(`[data-message="${user.id}"]`)!
     const later = host.querySelector(`[data-message="${next.id}"]`)!
-    expect(earlier.textContent).toContain("Loaded skill: matplotlib")
-    expect(earlier.querySelectorAll('[data-component="tool-part-wrapper"]')).toHaveLength(1)
+    // A load is activity like any other: folded with the turn, not an exception
+    // that stays out when everything else folds.
+    expect(earlier.querySelectorAll('[data-component="tool-part-wrapper"]')).toHaveLength(0)
     expect(later.querySelector('[data-tool-family="skills"]')).toBeNull()
+    const activity = earlier.querySelector<HTMLButtonElement>('[data-slot="session-turn-collapsible-trigger-content"]')!
+    activity.click()
+    await ready(() => earlier.querySelectorAll('[data-component="tool-part-wrapper"]').length === 2)
+    expect(earlier.textContent).toContain("Loaded skill: matplotlib")
     const receipt = earlier.querySelector('[data-tool-family="skills"]')!
     expect(receipt.querySelector('[data-component="tool-output"]')).toBeNull()
     const button = receipt.querySelector<HTMLButtonElement>("button")!
@@ -583,20 +615,16 @@ describe("skill load receipts", () => {
     expect(receipt.querySelector('[data-slot="skill-load-receipt"] pre')?.textContent).toContain("a".repeat(64))
     expect(receipt.querySelector('[data-slot="skill-load-receipt"] pre')?.textContent).toContain("/skills/matplotlib")
     expect(receipt.querySelector('[data-slot="skill-load-receipt"] pre')?.textContent).toContain('"truncated": false')
-    const activity = earlier.querySelector<HTMLButtonElement>('[data-slot="session-turn-collapsible-trigger-content"]')!
+    activity.click()
+    await ready(() => earlier.querySelectorAll('[data-component="tool-part-wrapper"]').length === 0)
     activity.click()
     await ready(() => earlier.querySelectorAll('[data-component="tool-part-wrapper"]').length === 2)
-    expect(earlier.querySelector('[data-tool-family="skills"]')).toBe(receipt)
-    activity.click()
-    await ready(() => earlier.querySelectorAll('[data-component="tool-part-wrapper"]').length === 1)
-    expect(earlier.querySelector('[data-tool-family="skills"]')).toBe(receipt)
-    expect(button.getAttribute("aria-expanded")).toBe("true")
+    expect(earlier.textContent).toContain("Loaded skill: matplotlib")
     expect(store.part[first.id][0]).toEqual(skill)
 
     cleanups.splice(0).forEach((cleanup) => cleanup())
     document.body.replaceChildren()
     const reopened = mount(view, store)
-    expect(reopened.querySelector(`[data-message="${user.id}"]`)?.textContent).toContain("Loaded skill: matplotlib")
     expect(reopened.querySelector(`[data-message="${next.id}"] [data-tool-family="skills"]`)).toBeNull()
   })
 
@@ -1310,7 +1338,7 @@ describe("execution inspection", () => {
     const status = () => host.querySelector('[data-slot="session-turn-status-text"]')?.textContent ?? ""
     const detail = () =>
       host.querySelector('[data-slot="session-turn-collapsible-trigger-content"]')?.getAttribute("title") ?? ""
-    await ready(() => status().includes("Running commands"))
+    await ready(() => status().includes("Running Inspect results"))
     setStore("session_progress", {
       [sessionID]: {
         sessionID,
@@ -1328,7 +1356,7 @@ describe("execution inspection", () => {
     })
     await settle()
     // A model waiting for an actively running tool is not a stalled provider.
-    expect(status()).toContain("Running commands")
+    expect(status()).toContain("Running Inspect results")
     setStore("part", first.id, 0, {
       ...command,
       state: { status: "pending", input: {}, raw: "" },
@@ -1337,7 +1365,7 @@ describe("execution inspection", () => {
     // The model is still generating arguments; no command is executing yet.
     // The header reads as thinking; the quiet stream is a hover away.
     expect(status()).toBe("Thinking")
-    expect(status()).not.toContain("Running commands")
+    expect(status()).not.toContain("Running Inspect")
     expect(detail()).toMatch(/No new output from openai\/gpt-5\.6-sol for (59|60)s/)
     expect(detail()).toContain("The response is still open.")
     setStore("part", first.id, 0, {
@@ -1369,7 +1397,7 @@ describe("execution inspection", () => {
     })
     await ready(() => detail().includes("Waiting for output from openai/gpt-5.6-sol (7s)"))
     expect(status()).toBe("Thinking")
-    expect(status()).not.toContain("Running commands")
+    expect(status()).not.toContain("Running Inspect")
     // A retry countdown is the one request phase worth its own words.
     setStore("session_progress", sessionID, {
       ...store.session_progress![sessionID],
@@ -1847,7 +1875,7 @@ describe("trace control", () => {
     expect(button.querySelector('[data-component="spinner"]')).not.toBeNull()
     expect(control(host)?.getAttribute("data-working")).toBe("true")
     expect(status(host)).toBeNull()
-    expect(button.querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Searching the codebase")
+    expect(button.querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Searching cite")
 
     button.click()
     await ready(() => host.querySelector('[data-component="reasoning-part"]') === null)
@@ -1855,7 +1883,7 @@ describe("trace control", () => {
     expect(button.getAttribute("aria-label")).toBe("Show reasoning and activity")
     expect(host.querySelector('[data-component="tool-part-wrapper"]')).toBeNull()
     // Collapsing the trace never hides the live request.
-    expect(button.querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Searching the codebase")
+    expect(button.querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Searching cite")
     button.click()
     await ready(() => host.querySelector('[data-component="reasoning-part"]') !== null)
     expect(button.getAttribute("aria-expanded")).toBe("true")
@@ -1909,15 +1937,85 @@ describe("trace control", () => {
     expect(button.textContent).toMatch(/^Worked for \d/)
   })
 
-  test("before any step exists there is nothing to disclose, only the request status", async () => {
+  test("a background worker's completion keeps the turn open: its replies join the same trace and total time", async () => {
+    // The turn dispatched a worker, said something, then the worker's result
+    // arrived as a runtime-written user message and drew two more steps.
+    const first: AssistantMessage = { ...assistant(4_000), id: "msg_0002" }
+    const wake: UserMessage = {
+      id: "msg_0003",
+      sessionID,
+      role: "user",
+      time: { created: 5_000 },
+      agent: "research",
+      model: { providerID: "test", modelID: "test" },
+      internal: { type: "prompt", epoch: "msg_0001" },
+    }
+    const second: AssistantMessage = {
+      ...assistant(9_000),
+      id: "msg_0004",
+      parentID: wake.id,
+      time: { created: 5_100, completed: 9_000 },
+    }
+    const envelope: TextPart = {
+      id: "prt_wake",
+      sessionID,
+      messageID: wake.id,
+      type: "text",
+      synthetic: true,
+      text: '<task id="ses_child" state="completed">\n<task_result>\nDone: 31 tests pass.\n</task_result>\n</task>',
+    }
+    const interim: TextPart = {
+      id: "prt_interim",
+      sessionID,
+      messageID: first.id,
+      type: "text",
+      text: "Dispatched the control-ledger worker; the stack is verified.",
+      time: { start: 3_000, end: 3_500 },
+    }
+    const final: TextPart = {
+      id: "prt_final",
+      sessionID,
+      messageID: second.id,
+      type: "text",
+      text: "The worker's ledger is in; one methodological issue surfaced.",
+      time: { start: 8_000, end: 8_900 },
+    }
+    const store: Store = {
+      ...empty(),
+      message: { [sessionID]: [user, first, wake, second] },
+      part: {
+        [user.id]: [],
+        [first.id]: [read("prt_merge_read_a", "study.json", 2_000), interim],
+        [wake.id]: [envelope],
+        [second.id]: [{ ...read("prt_merge_read_b", "control.py", 6_000), messageID: second.id }, final],
+      },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id }), store)
+    // One turn, one clock: it spans the worker's wake-up and the steps after it.
+    const button = toggle(host)
+    expect(button.textContent).toBe("Worked for 8s")
+    await ready(() => host.textContent!.includes("The worker's ledger is in"))
+    // Collapsed, the earlier prose is narration; the newest text is the answer.
+    expect(host.textContent).not.toContain("Dispatched the control-ledger worker")
+    // The envelope the runtime wrote is never shown as if the user had typed it.
+    expect(host.textContent).not.toContain("<task id=")
+    button.click()
+    await ready(() => host.querySelectorAll('[data-component="tool-part-wrapper"]').length === 2)
+    await ready(() => host.textContent!.includes("Dispatched the control-ledger worker"))
+  })
+
+  test("before any step exists the same header line already carries the request status", async () => {
     const message = assistant()
     const host = mount(
       () => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }),
       live(message, [], { type: "busy" }),
     )
-    await ready(() => status(host) !== null)
-    expect(host.querySelector('[data-slot="session-turn-collapsible-trigger-content"]')).toBeNull()
-    expect(status(host)?.textContent).toContain("Thinking")
+    // One element from the first second to the last: nothing swaps in when
+    // the first step lands.
+    await ready(() => toggle(host) !== null)
+    expect(status(host)).toBeNull()
+    expect(toggle(host).querySelector('[data-slot="session-turn-status-text"]')?.textContent).toBe("Thinking")
+    expect(toggle(host).querySelector('[data-component="spinner"]')).not.toBeNull()
   })
 })
 
