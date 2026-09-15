@@ -288,17 +288,17 @@ export const FileRoutes = lazy(() =>
       ),
       async (c) => {
         const query = c.req.valid("query")
-        const project =
+        const session =
           query.projectPreview === "true"
-            ? await authorized(ProjectPreview.resolve(query.path, query.sessionID))
-            : undefined
-        const exists = project && (await Bun.file(project).exists())
-        const resolved =
-          query.projectPreview === "true"
-            ? exists
-              ? project
-              : undefined
+            ? undefined
             : await authorized(File.resolveReference(query.path, { sessionID: query.sessionID }))
+        // Receipts for files the agent wrote under Project files resolve
+        // through the project's own authority when no session grant covers
+        // them; otherwise a report written there would vanish from the turn's
+        // file list while the scratch copies of its pages stayed.
+        const project = session ? undefined : await authorized(ProjectPreview.resolve(query.path, query.sessionID))
+        const exists = project ? await Bun.file(project).exists() : false
+        const resolved = session ?? (exists ? project : undefined)
         const writable = resolved
           ? await authorized(SessionFilesystem.allows({ sessionID: query.sessionID, path: resolved, access: "write" }))
           : null

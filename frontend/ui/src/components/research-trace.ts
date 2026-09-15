@@ -75,6 +75,24 @@ function lifecycle(part: Part) {
 
 /** Collapsing activity must not bury deliverables, skill load receipts, failures,
  * or a question the user is still answering. Keep their original IDs mounted. */
+/**
+ * What a finished, answered turn still shows when collapsed: a Result it
+ * saved and a request that is still open. A failure the agent recovered from
+ * is part of the story, not a loose end, and reads in the expanded trace.
+ */
+export function settledCollapsible(
+  part: Part,
+  pendingRequestCallID?: string,
+  pendingChildRequest?: (sessionID: string) => boolean,
+) {
+  if (part.type !== "tool") return part.type === "reasoning"
+  if (part.callID === pendingRequestCallID) return false
+  const child = part.tool === "task" && "metadata" in part.state ? part.state.metadata?.sessionId : undefined
+  if (typeof child === "string" && pendingChildRequest?.(child)) return false
+  if (part.state.status === "completed" && part.state.metadata?.artifact) return false
+  return true
+}
+
 export function collapsibleTracePart(
   part: Part,
   pendingRequestCallID?: string,

@@ -2,10 +2,10 @@ import z from "zod"
 import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "./tool"
+import { displayPath } from "./display-path"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
-import { Instance } from "../project/instance"
 import { Identifier } from "../id/id"
 import { assertExternalDirectory, isAuthorizedPath, sessionToolDirectory } from "./external-directory"
 import { InstructionPrompt } from "../session/instruction"
@@ -180,7 +180,7 @@ export const ReadTool = Tool.define("read", {
     }
 
     filepath = (await authorized?.revalidate()) ?? filepath
-    const title = path.relative(Instance.worktree, filepath)
+    const title = await displayPath(filepath, ctx.sessionID)
 
     const file = Bun.file(filepath)
     // Exclude SVG (XML-based) and vnd.fastbidsheet (.fbs extension, commonly FlatBuffers schema files)

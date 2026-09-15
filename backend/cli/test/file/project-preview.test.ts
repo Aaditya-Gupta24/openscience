@@ -75,6 +75,29 @@ describe("managed project preview authority", () => {
     })
   }
 
+  test("a receipt for a file the agent wrote under Project files resolves without projectPreview", async () => {
+    await managed(async (session, directory) => {
+      const report = path.join(directory, "report", "main.pdf")
+      await Bun.write(report, "%PDF-1.5\nfixture\n")
+      const response = await FileRoutes().request(
+        `/file/resolve?${new URLSearchParams({ path: report, sessionID: session.id })}`,
+      )
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ path: report, writable: false, scope: "project" })
+      // Reading it back through the session path works the same way, and
+      // still grants the session nothing.
+      const grants = await SessionFilesystem.list(session.id)
+      const source = await File.rawSource(report, { sessionID: session.id })
+      expect(await new Response(source.stream()).text()).toBe("%PDF-1.5\nfixture\n")
+      await source.close()
+      expect(await SessionFilesystem.list(session.id)).toEqual(grants)
+      const missing = await FileRoutes().request(
+        `/file/resolve?${new URLSearchParams({ path: path.join(directory, "report", "absent.pdf"), sessionID: session.id })}`,
+      )
+      expect(await missing.json()).toEqual({ path: null, writable: null, scope: null })
+    })
+  })
+
   test("does not resolve a sibling project, sibling scratch, external path, or symlink escape", async () => {
     const sibling = await ManagedProject.create("Sibling fixture")
     await using external = await tmpdir({ init: (dir) => Bun.write(path.join(dir, "secret.md"), "private fixture") })

@@ -519,6 +519,88 @@ describe("reasoning rows", () => {
     await ready(() => host.querySelector('[data-component="reasoning-part"]') === null)
   })
 
+  test("a failure the turn recovered from stays inside the collapsed trace once the answer is in", async () => {
+    const message = assistant(2_000)
+    const failed: ToolPart = {
+      ...read("prt_failed_run", "", 1_000),
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "python3 analysis.py", description: "Run reproducible churn EDA" },
+        title: "Run reproducible churn EDA",
+        output: "ValueError: RGBA sequence should have length 3 or 4",
+        metadata: { exit: 1, output: "ValueError: RGBA sequence should have length 3 or 4" },
+        time: { start: 1_000, end: 1_001 },
+      },
+    }
+    const refused: ToolPart = {
+      ...read("prt_refused_fetch", "", 1_002),
+      tool: "webfetch",
+      state: {
+        status: "error",
+        input: { url: "https://www.ibm.com/docs/telco", format: "markdown" },
+        error: "Request failed with status code: 403",
+        time: { start: 1_002, end: 1_003 },
+      },
+    }
+    const rerun: ToolPart = {
+      ...read("prt_rerun", "", 1_004),
+      tool: "bash",
+      state: {
+        status: "completed",
+        input: { command: "python3 analysis.py", description: "Rerun churn EDA" },
+        title: "Rerun churn EDA",
+        output: "ok",
+        metadata: { exit: 0, output: "ok" },
+        time: { start: 1_004, end: 1_005 },
+      },
+    }
+    const answer: TextPart = {
+      id: "prt_answer",
+      sessionID,
+      messageID: message.id,
+      type: "text",
+      text: "The report is compiled and every figure audited.",
+    }
+    const store: Store = {
+      ...empty(),
+      message: { [sessionID]: [user, message] },
+      part: { [user.id]: [], [message.id]: [failed, refused, rerun, answer] },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.textContent?.includes(answer.text) === true)
+    // Collapsed: the answer, and none of the red rows the agent already dealt with.
+    expect(host.querySelectorAll('[data-component="tool-part-wrapper"]')).toHaveLength(0)
+    expect(host.textContent).not.toContain("Failed")
+    host.querySelector<HTMLButtonElement>('[data-slot="session-turn-collapsible-trigger-content"]')!.click()
+    await ready(() => host.textContent?.includes("Run reproducible churn EDA") === true)
+    expect(host.textContent).toContain("Failed")
+    expect(host.textContent).toContain("ibm.com")
+  })
+
+  test("a turn that is still working keeps its failures in view", async () => {
+    const message = { ...assistant(2_000), time: { created: 2_000 } } as AssistantMessage
+    const refused: ToolPart = {
+      ...read("prt_refused_fetch", "", 1_002),
+      tool: "webfetch",
+      state: {
+        status: "error",
+        input: { url: "https://www.ibm.com/docs/telco", format: "markdown" },
+        error: "Request failed with status code: 403",
+        time: { start: 1_002, end: 1_003 },
+      },
+    }
+    const store: Store = {
+      ...empty(),
+      message: { [sessionID]: [user, message] },
+      part: { [user.id]: [], [message.id]: [refused] },
+      session_status: { [sessionID]: { type: "busy" } },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.textContent?.includes("Failed") === true)
+    expect(host.querySelectorAll('[data-component="tool-part-wrapper"]')).toHaveLength(1)
+  })
+
   test("private-only steps render nothing and never expose continuation or replace readable text", async () => {
     const message = assistant(2_000)
     const visible = reasoning("prt_visible", { start: 1_000, end: 2_000 })

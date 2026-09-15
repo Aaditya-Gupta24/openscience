@@ -552,7 +552,11 @@ const loadJsParser = retryable(async () => {
   return new Marked(
     {
       renderer: {
-        link({ href, title, text }) {
+        link(token) {
+          const { href, title } = token
+          // Link text is Markdown too: `[**Report (PDF)**](report.pdf)` must
+          // not show its asterisks.
+          const text = token.tokens?.length ? this.parser.parseInline(token.tokens) : token.text
           const titleAttr = title ? ` title="${title}"` : ""
           // Models link local results as file: or sandbox: URLs. The sanitizer drops that
           // scheme outright, so hand the plain path on instead; the file-link

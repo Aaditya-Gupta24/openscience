@@ -1,4 +1,5 @@
 import { QuestionTool } from "./question"
+import { ImageRoute } from "./image-route"
 import { BashTool } from "./bash"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -271,7 +272,12 @@ export namespace ToolRegistry {
      * makes its query tools callable without switching agents. */
     unlocked: ReadonlySet<string> = new Set(),
   ) {
-    const [tools, extensions, searchable] = await Promise.all([all(), customIDs(), researchSearchConfigured()])
+    const [tools, extensions, searchable, imageRoute] = await Promise.all([
+      all(),
+      customIDs(),
+      researchSearchConfigured(),
+      ImageRoute.resolve().catch(() => undefined),
+    ])
     const usePatch = usesPatch(model.modelID)
     const result = await Promise.all(
       tools
@@ -285,6 +291,10 @@ export namespace ToolRegistry {
           // Without a search provider the tool can only report that it is
           // unavailable; a description the model cannot follow is noise.
           if (t.id === "research_search") return searchable
+          // Likewise without an image account: the environment already says
+          // image generation is unavailable, and a skill that unlocks the
+          // tool anyway would only add a failing call and a tool-set change.
+          if (t.id === "generate_image") return !!imageRoute
           // Community code search retains its existing provider/flag rule.
           if (t.id === "codesearch") return Flag.OPENSCIENCE_ENABLE_EXA
           if (!agent) return true

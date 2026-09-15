@@ -617,7 +617,19 @@ export namespace File {
     }
     if (!options?.sessionID) return open(await contained(file, "read"))
     const sessionID = options.sessionID
-    const authorized = await SessionFilesystem.authorize({ sessionID, path: file, access: "read" })
+    // A file under Project files is the project's own durable material. Tools
+    // treat the directory as internal, so a session that wrote a report there
+    // must be able to read it back through this path too (artifact saves,
+    // receipts, previews) even though no session grant names the directory.
+    const authorized = await SessionFilesystem.authorize({ sessionID, path: file, access: "read" }).catch(
+      async (error: unknown) => {
+        if (!SessionFilesystem.DeniedError.isInstance(error)) throw error
+        const preview = await ProjectPreview.resolve(file, sessionID).catch(() => undefined)
+        if (!preview) throw error
+        return undefined
+      },
+    )
+    if (!authorized) return rawSource(file, { ...options, projectPreview: true })
     if (FileTrash.protectedPath(authorized.path)) {
       throw new HTTPException(403, { message: "Recovery data is protected" })
     }

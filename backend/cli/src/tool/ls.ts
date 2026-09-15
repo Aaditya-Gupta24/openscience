@@ -1,8 +1,8 @@
 import z from "zod"
 import { Tool } from "./tool"
+import { displayPath } from "./display-path"
 import * as path from "path"
 import DESCRIPTION from "./ls.txt"
-import { Instance } from "../project/instance"
 import { Ripgrep } from "../file/ripgrep"
 import { assertExternalDirectory, isAuthorizedPath, sessionToolDirectory } from "./external-directory"
 
@@ -120,7 +120,7 @@ export const ListTool = Tool.define("list", {
     const output = `${searchPath}/\n` + renderDir(".", 0)
 
     return {
-      title: path.relative(Instance.worktree, searchPath),
+      title: await displayPath(searchPath, ctx.sessionID),
       metadata: {
         count: files.length,
         truncated: files.length >= LIMIT,

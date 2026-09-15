@@ -55,7 +55,13 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { responseText } from "./session-turn-response"
 import { isContinuationCarrier } from "./session-turn-carrier"
 import { headerProgress, progressStatus } from "./session-turn-progress"
-import { collapsibleTracePart, elapsedLabel, visibleResearchTrace, type ResearchTraceEntry } from "./research-trace"
+import {
+  collapsibleTracePart,
+  elapsedLabel,
+  settledCollapsible,
+  visibleResearchTrace,
+  type ResearchTraceEntry,
+} from "./research-trace"
 import {
   buildTraceRows,
   editedChanges,
@@ -249,6 +255,9 @@ function AssistantTrace(props: {
   carriers?: MessageType[]
   expanded: boolean
   working: boolean
+  /** The turn ended in an answer, not a fault: failures along the way were
+   * dealt with, so collapsed they stay inside the trace. */
+  settled?: boolean
   pendingRequestCallID?: string
 }) {
   const data = useData()
@@ -282,16 +291,21 @@ function AssistantTrace(props: {
     )
   })
   // Collapsed, the turn shows what the reader asked for: the answer, plus
-  // anything that still needs them (a failure, a pending request). Expanded,
-  // the whole trace appears as rows, chronological, with narration in place.
+  // anything that still needs them (a failure, a pending request). Once the
+  // turn has ended in an answer, a failure it recovered from along the way
+  // needs nobody, so only saved Results and open requests stay; the whole
+  // story is one click away. Expanded, the whole trace appears as rows,
+  // chronological, with narration in place.
   const rows = createMemo(() => {
     const all = buildTraceRows(entries())
     if (props.expanded) return all
     return all.filter((row) => {
       if (row.kind === "text") return !row.narration
-      if (row.kind === "note") return true
-      if (row.kind === "tool" || row.kind === "agent")
+      if (row.kind === "note") return !props.settled
+      if (row.kind === "tool" || row.kind === "agent") {
+        if (props.settled) return !settledCollapsible(row.entry.part, props.pendingRequestCallID, pendingChildRequest)
         return !collapsibleTracePart(row.entry.part, props.pendingRequestCallID, pendingChildRequest)
+      }
       return false
     })
   })
@@ -1091,6 +1105,7 @@ export function SessionTurn(
                             carriers={carriers()}
                             expanded={expanded()}
                             working={working()}
+                            settled={!working() && !error() && !!response()}
                             pendingRequestCallID={requestTool()?.callID}
                           />
                         </MarkdownFileScope>

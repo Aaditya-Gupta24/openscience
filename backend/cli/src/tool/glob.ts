@@ -1,9 +1,9 @@
 import z from "zod"
 import path from "path"
 import { Tool } from "./tool"
+import { displayPath } from "./display-path"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
-import { Instance } from "../project/instance"
 import { assertExternalDirectory, sessionToolDirectory } from "./external-directory"
 
 export const GlobTool = Tool.define("glob", {
@@ -70,7 +70,7 @@ export const GlobTool = Tool.define("glob", {
     }
 
     return {
-      title: path.relative(Instance.worktree, search),
+      title: await displayPath(search, ctx.sessionID),
       metadata: {
         count: files.length,
         truncated,

@@ -10,6 +10,47 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+From a QA pass over one EDA-and-LaTeX-report session on v2.0.101:
+
+- **A finished turn no longer looks broken by the failures it recovered
+  from.** Once the answer is in, the collapsed turn shows the answer, saved
+  Results and open requests; a bash exit 1 the agent fixed on the next step,
+  a 403 from a docs page, or a bibliography validator that flagged one entry
+  read inside the expanded trace, where they belong. While the turn is
+  working, failures stay in view.
+- **"Files written this turn" lists the deliverables.** A report the agent
+  wrote under Project files from an isolated session resolved to nothing in
+  the receipt check (the session held no grant for the project directory),
+  so the footer showed the scratch page rasters and not `report.pdf`.
+  Receipts, previews and Result saves of files under Project files now
+  resolve through the project's own authority.
+- **Tool rows name scratch and skill files by where they live.** A read of a
+  page raster in session scratch showed `../../workspaces/prj_…/ses_…/…` and
+  a skill asset `../../.cache/openscience/bundled-skills/<hash>/…`; they now
+  read `scratch/report-page-01.png` and `skill:paper-writing/assets/…`.
+- **Markdown inside link text renders.** `[**Report (PDF)**](report.pdf)`
+  showed its asterisks.
+- **`generate_image` is offered only when an image account is connected**,
+  so loading the schematics skill on managed billing no longer adds a tool
+  that can only fail, a tool-set change note, and a prompt-cache miss.
+- Tool-set change notes list names plainly ("Tools added: query_pubmed")
+  instead of a JSON array.
+
+### Changed
+
+- **Releases are about an hour faster.** The release rehearsal no longer
+  stages fifteen packages on registry.npmjs.org and waits for the registry
+  to commit them (twelve minutes on a good day, an hour on a bad one) before
+  the gate jobs could install; every gate job now installs the exact
+  candidate through a localhost registry serving the tarballs the workflow
+  just built (`tooling/repo/candidate-registry.ts`), with the real resolver,
+  platform selection and integrity checks. The rehearsal takes about eight
+  minutes; npm is staged once, in the publish workflow.
+
+## v2.0.101 — 2026-09-15
+
+### Fixed
+
 Failures traced through one EDA-and-LaTeX-report session that showed eleven
 red rows in a single turn:
 

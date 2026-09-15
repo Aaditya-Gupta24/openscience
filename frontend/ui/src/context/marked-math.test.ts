@@ -26,6 +26,14 @@ $$`)
     expect(document(html).querySelectorAll(".katex-display")).toHaveLength(2)
   })
 
+  test("renders emphasis and code inside link text", async () => {
+    const html = await parseMarkdown("See [**Anatomy of Attrition** (`report.pdf`)](report.pdf) now.")
+    expect(html).toContain("<strong>Anatomy of Attrition</strong>")
+    expect(html).toContain("<code>report.pdf</code>")
+    expect(html).not.toContain("**")
+    expect(html).toContain('href="report.pdf"')
+  })
+
   test("recognizes display math adjacent to prose, in lists, and quoted passages", async () => {
     const html = await parseMarkdown(String.raw`Result follows:
 \[x^2\]

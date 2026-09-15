@@ -122,7 +122,7 @@ test("a skill's tools stay on offer in later turns for as long as its text is in
         // place rather than a system line that comes and goes.
         const announced = research.slice(1).map((request) => (request.text.match(/Tools added:/g) ?? []).length)
         expect(announced.every((count) => count === 1)).toBe(true)
-        expect(research[1].text).toContain('Tools added: [\\"experiments\\", \\"study\\"]')
+        expect(research[1].text).toContain("Tools added: experiments, study.")
         const messages = await Session.messages({ sessionID: session.id })
         const notices = messages.filter(
           (message) =>

@@ -21,11 +21,10 @@ export namespace Toolset {
   function list(names: string[]) {
     const shown: string[] = []
     for (const name of names) {
-      const value = JSON.stringify(name)
-      if (shown.length === 20 || shown.join(", ").length + value.length > 384) break
-      shown.push(value)
+      if (shown.length === 20 || shown.join(", ").length + name.length > 384) break
+      shown.push(name)
     }
-    return `[${shown.join(", ")}]${shown.length < names.length ? ` (${names.length - shown.length} more)` : ""}`
+    return `${shown.join(", ")}${shown.length < names.length ? ` (${names.length - shown.length} more)` : ""}`
   }
 
   export function notice(current: string[], previous?: string[]) {
