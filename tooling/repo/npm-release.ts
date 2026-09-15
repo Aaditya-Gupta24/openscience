@@ -44,7 +44,10 @@ export class NpmArtifactConflict extends Error {}
 export class NpmPermissionError extends Error {}
 
 const publishAttempts = [1, 2, 3, 4, 5] as const
-const defaultVisibilityAttempts = 180
+/** Registry replication of a freshly staged version has taken more than
+ * twenty minutes on ordinary days; each attempt is the retry delay plus one
+ * `npm view`, so this window is about forty minutes per visibility pass. */
+const defaultVisibilityAttempts = 600
 /** Registry writes run this many at a time, matching tooling/repo/publish.ts. */
 const batchSize = 5
 

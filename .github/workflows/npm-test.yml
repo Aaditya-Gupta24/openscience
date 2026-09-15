@@ -162,7 +162,7 @@ jobs:
       - version
       - build-cli
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     # The only job that publishes with npm provenance, which needs an OIDC token.
     permissions:
       contents: read
