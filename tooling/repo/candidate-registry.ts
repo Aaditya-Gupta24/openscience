@@ -102,7 +102,7 @@ export async function packageJson(file: string): Promise<Record<string, unknown>
 
 async function shasum(file: string) {
   const hash = createHash("sha1")
-  for await (const chunk of Bun.file(file).stream()) hash.update(chunk)
+  for await (const chunk of createReadStream(file)) hash.update(chunk as Buffer)
   return hash.digest("hex")
 }
 
