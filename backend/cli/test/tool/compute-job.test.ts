@@ -568,7 +568,10 @@ test("a study's runs ask under the study's approval, and a staged copy is refres
         credentials: { ...modal, tokenId: "ak", tokenSecret: "as" },
         provider,
       }).init()
-      const ctx = { ...context(session.id, asked), extra: { studyApproval: "study:stu_1" } }
+      const ctx = { ...context(session.id, asked), extra: { studyApproval: "study:stu_1", studyStaging: "refresh" } }
+      // The agent left a same-named directory in scratch before the study
+      // existed; the study's root under Project files is still what runs.
+      await Bun.write(path.join(workspace, "autoresearch_churn", "notes.txt"), "scratch notes\n")
       const workload = {
         name: "Churn: baseline",
         purpose: "Study run.",
@@ -583,8 +586,9 @@ test("a study's runs ask under the study's approval, and a staged copy is refres
       expect(asked).toHaveLength(1)
       expect(asked[0]).toMatchObject({ permission: "modal", patterns: ["study:stu_1"], always: ["study:stu_1"] })
       const uploads = (first.metadata.job?.modal?.uploads ?? []).map((file: { path: string }) => file.path)
-      expect(uploads).toEqual(["train.py"])
+      expect(uploads).toEqual(["notes.txt", "train.py"])
       expect(await Bun.file(path.join(workspace, "autoresearch_churn", "train.py")).text()).toBe("VERSION = 1\n")
+      expect(await Bun.file(path.join(workspace, "autoresearch_churn", "notes.txt")).exists()).toBe(true)
       // A delivered output sits in the copy; the study then changes the code.
       await Bun.write(path.join(workspace, "autoresearch_churn", "outputs", "metrics.json"), "{}")
       await Bun.write(path.join(source, "train.py"), "VERSION = 2\n")
@@ -593,7 +597,10 @@ test("a study's runs ask under the study's approval, and a staged copy is refres
       // and what earlier runs delivered into it is still there.
       expect(await Bun.file(path.join(workspace, "autoresearch_churn", "train.py")).text()).toBe("VERSION = 2\n")
       expect(await Bun.file(path.join(workspace, "autoresearch_churn", "outputs", "metrics.json")).exists()).toBe(true)
-      expect(second.metadata.job?.modal?.uploads?.[0]?.sha256).not.toBe(first.metadata.job?.modal?.uploads?.[0]?.sha256)
+      const shaOf = (result: typeof first) =>
+        (result.metadata.job?.modal?.uploads ?? []).find((file: { path: string }) => file.path === "train.py")?.sha256
+      expect(shaOf(second)).toBeDefined()
+      expect(shaOf(second)).not.toBe(shaOf(first))
     },
   })
 })

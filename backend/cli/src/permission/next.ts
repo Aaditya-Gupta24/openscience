@@ -274,17 +274,24 @@ export namespace PermissionNext {
 
   // Paid actions and permanent environment mutations never inherit an allow
   // through wildcard matching. Compute and package changes may reuse only an
-  // explicit approval for the exact immutable plan digest; broad configured
-  // allows remain unable to authorize either boundary.
+  // explicit approval for the exact immutable plan digest, or for one study's
+  // runs (a bounded envelope the person approved by budget, runs and GPU
+  // class); broad configured allows remain unable to authorize either boundary.
   const REMOTE_PLAN = new Set(["modal", "remote_compute"])
   const EXACT_PLAN = new Set([...REMOTE_PLAN, "environment_mutation"])
   const SPEND = ["atlas", "websearch", ...EXACT_PLAN]
   const PLAN_DIGEST = /^[a-f0-9]{64}$/
+  const STUDY_SCOPE = /^study:stu_[A-Za-z0-9]+$/
 
   function spendFilter(permission: string, rules: Ruleset): Ruleset {
     if (!SPEND.includes(permission)) return rules
     if (EXACT_PLAN.has(permission)) {
-      return rules.filter((rule) => rule.action !== "allow" || PLAN_DIGEST.test(rule.pattern))
+      return rules.filter(
+        (rule) =>
+          rule.action !== "allow" ||
+          PLAN_DIGEST.test(rule.pattern) ||
+          (REMOTE_PLAN.has(permission) && STUDY_SCOPE.test(rule.pattern)),
+      )
     }
     return rules.filter((rule) => rule.action !== "allow" || rule.permission === permission)
   }

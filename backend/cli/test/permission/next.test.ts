@@ -928,6 +928,64 @@ test("modal approvals can be scoped only to one exact immutable plan", async () 
   })
 })
 
+test("a study's approval covers its runs for the session, and nothing wider", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const scope = "study:stu_0a3fa1209001B6h1pLz8QMUHLo"
+      // The study is approved once, for this session.
+      const created = PermissionNext.ask({
+        id: "permission_study_create",
+        sessionID: "session_study",
+        permission: "modal",
+        patterns: [scope],
+        metadata: {},
+        always: [scope],
+        ruleset: [],
+      })
+      await PermissionNext.reply({ requestID: "permission_study_create", reply: "session" })
+      await expect(created).resolves.toBeUndefined()
+
+      // Each run then dispatches under it without a card.
+      await expect(
+        PermissionNext.ask({
+          sessionID: "session_study",
+          permission: "modal",
+          patterns: [scope],
+          metadata: {},
+          always: [scope],
+          ruleset: [],
+        }),
+      ).resolves.toBeUndefined()
+
+      // Another study, a plain digest, or a configured wildcard still ask.
+      const other = PermissionNext.ask({
+        id: "permission_study_other",
+        sessionID: "session_study",
+        permission: "modal",
+        patterns: ["study:stu_other"],
+        metadata: {},
+        always: ["study:stu_other"],
+        ruleset: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      await PermissionNext.reply({ requestID: "permission_study_other", reply: "reject" })
+      await expect(other).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+      const digest = PermissionNext.ask({
+        id: "permission_study_digest",
+        sessionID: "session_study",
+        permission: "modal",
+        patterns: ["c".repeat(64)],
+        metadata: {},
+        always: ["c".repeat(64)],
+        ruleset: [],
+      })
+      await PermissionNext.reply({ requestID: "permission_study_digest", reply: "reject" })
+      await expect(digest).rejects.toBeInstanceOf(PermissionNext.RejectedError)
+    },
+  })
+})
+
 test("SSH approvals require an exact remote plan while local compute remains configurable", async () => {
   await using tmp = await tmpdir({ git: true })
   await Instance.provide({

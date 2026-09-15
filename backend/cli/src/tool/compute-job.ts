@@ -446,6 +446,10 @@ async function stageProjectDirectory(input: {
   uploads?: string[]
   explicitUploads: boolean
   exclude?: readonly string[]
+  /** Overlay the project's files even onto a scratch directory this tool did
+   * not stage: a study's root under Project files is authoritative, and the
+   * agent may have left a same-named directory in scratch. */
+  refresh?: boolean
 }): Promise<string | undefined> {
   if (path.isAbsolute(input.cwd) || input.cwd.split(/[\\/]/).includes("..")) {
     throw new Error(
@@ -470,10 +474,11 @@ async function stageProjectDirectory(input: {
   // outputs earlier runs delivered into the copy stay. A directory the agent
   // made in scratch itself has no marker and is left alone.
   const staged = current.info?.isDirectory()
-    ? await fs
+    ? input.refresh ||
+      (await fs
         .stat(path.join(current.target, STAGED_MARKER))
         .then(() => true)
-        .catch(() => false)
+        .catch(() => false))
     : false
   if (current.info?.isDirectory() && !staged) return
   if (current.info && !current.info.isDirectory()) {
@@ -582,6 +587,7 @@ async function request(
   options: ResolvedOptions,
   capability?: JobBroker.CapabilityBinding,
   capabilityExecution?: JobBroker.CapabilityExecution,
+  refresh = false,
 ): Promise<PreparedRequest> {
   const cwd = input.cwd
     ? await relativeWorkingDirectory({
@@ -615,6 +621,7 @@ async function request(
         uploads,
         explicitUploads: input.uploads !== undefined,
         exclude: input.exclude_uploads,
+        refresh,
       })
     : undefined
   return {
@@ -749,6 +756,7 @@ export function createComputeJobTool(base?: JobBroker.Options) {
           resolved,
           capability.success ? capability.data : undefined,
           capabilityExecution.success ? capabilityExecution.data : undefined,
+          ctx.extra?.studyStaging === "refresh",
         )
         const value = prepared.value
         const plan = await JobBroker.plan(value, resolved)
