@@ -77,7 +77,7 @@ const ComputeWorkload = z
       .max(2_000)
       .optional()
       .describe(
-        "Relative working directory. Remote compute uses Session scratch when it exists there, or snapshots approved regular files from the same relative Project-files directory before planning. Omit for the workspace root.",
+        'Directory the job runs in, relative to Session scratch or Project files, e.g. "autoresearch_churn" with command "python train.py". Uses the Session-scratch directory when it exists, else snapshots the same Project-files directory. An absolute path inside either root is accepted; the Project-files root and outside paths are not. Omit for the workspace root.',
       ),
     target: ComputeTarget,
     resources: JobBroker.Resources.optional(),
@@ -396,6 +396,42 @@ async function directory(root: string, relative: string) {
   return { target, canonical, info }
 }
 
+/**
+ * The working directory as the staging code wants it: relative to the two
+ * roots. A model that just read a file by its full path names the job's
+ * directory the same way; an absolute path inside Session scratch or Project
+ * files is the same request as its relative form, so it is converted rather
+ * than refused. The Project-files root itself has no relative form and is
+ * refused with the directory to name instead.
+ */
+export async function relativeWorkingDirectory(input: {
+  cwd: string
+  projectDirectory: string
+  workspace: string
+}): Promise<string> {
+  const hint =
+    'Give the directory that holds the code, relative to Session scratch or Project files (for example cwd "autoresearch_churn" with command "python train.py"). No compute job was dispatched.'
+  if (!path.isAbsolute(input.cwd)) {
+    if (input.cwd.split(/[\\/]/).includes("..")) {
+      throw new Error(`Compute working directory cannot contain '..': ${input.cwd}. ${hint}`)
+    }
+    return input.cwd
+  }
+  const target = (await Filesystem.canonical(input.cwd)) ?? path.resolve(input.cwd)
+  for (const root of [input.workspace, input.projectDirectory]) {
+    const canonical = await Filesystem.canonical(root)
+    if (!canonical || !Filesystem.contains(canonical, target)) continue
+    const relative = path.relative(canonical, target)
+    if (relative === "") {
+      throw new Error(
+        `Compute working directory is the ${root === input.workspace ? "Session scratch" : "Project files"} root itself: ${input.cwd}. ${hint}`,
+      )
+    }
+    return relative
+  }
+  throw new Error(`Compute working directory is outside Session scratch and Project files: ${input.cwd}. ${hint}`)
+}
+
 async function stageProjectDirectory(input: {
   cwd: string
   projectDirectory: string
@@ -506,16 +542,23 @@ async function request(
   capability?: JobBroker.CapabilityBinding,
   capabilityExecution?: JobBroker.CapabilityExecution,
 ): Promise<PreparedRequest> {
+  const cwd = input.cwd
+    ? await relativeWorkingDirectory({
+        cwd: input.cwd,
+        projectDirectory: options.projectDirectory,
+        workspace: options.workspace,
+      })
+    : undefined
   const uploads =
     input.uploads ??
     (input.target.kind === "modal"
       ? ["**/*"]
-      : input.target.kind === "ssh" && input.cwd
-        ? [`${input.cwd.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "")}/**/*`]
+      : input.target.kind === "ssh" && cwd
+        ? [`${cwd.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "")}/**/*`]
         : undefined)
-  const staged = input.cwd
+  const staged = cwd
     ? await stageProjectDirectory({
-        cwd: input.cwd,
+        cwd,
         projectDirectory: options.projectDirectory,
         workspace: options.workspace,
         target: input.target,
@@ -531,7 +574,7 @@ async function request(
       name: input.name,
       purpose: input.purpose,
       command: input.command,
-      cwd: input.cwd,
+      cwd,
       target: input.target,
       resources: input.resources,
       modules: input.modules,

@@ -461,6 +461,77 @@ test("snapshots an existing Project-files cwd into Session scratch before a Moda
   })
 })
 
+test("an absolute Project-files directory is the same request as its relative form; the root and outside paths are refused with the directory to name", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const root = path.join(tmp.path, "compute")
+  const source = path.join(tmp.path, "autoresearch_churn")
+  await fs.mkdir(source, { recursive: true })
+  await Bun.write(path.join(source, "train.py"), "print('train')\n")
+  const modal = {
+    app: "openscience-test",
+    image: "python:3.12-slim",
+    network: "none" as const,
+    timeoutMinutes: 10,
+    concurrency: 1,
+  }
+  const provider = {
+    volume: (project: string, id: string) => `test-${Bun.hash(`${project}\0${id}`)}`,
+    run: async () => ({ code: 0, outputs: [] }),
+    recover: async () => ({ code: 0, outputs: [] }),
+    find: async () => undefined,
+    close: async () => undefined,
+    release: async () => undefined,
+  } satisfies ComputeJobs.ModalProvider
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await trustProject()
+      const session = await Session.create({})
+      const workspace = await SessionFilesystem.workspace(session.id)
+      const asked: Asked[] = []
+      const tool = await createComputeJobTool({
+        root,
+        modal,
+        credentials: { ...modal, tokenId: "ak", tokenSecret: "as" },
+        provider,
+      }).init()
+      const plan = (cwd: string) =>
+        tool.execute(
+          {
+            action: "plan",
+            name: "Churn GPU smoke test",
+            purpose: "Fit the baseline on the accelerator.",
+            command: "python train.py --model blend",
+            cwd,
+            target: { kind: "modal" },
+            gpu: "none",
+          },
+          context(session.id, asked),
+        )
+
+      // The model read train.py by its full path and named the job's
+      // directory the same way: that is the relative "autoresearch_churn".
+      const preview = await plan(source)
+      expect(preview.metadata.compute_job.plan).toMatchObject({
+        provider: "modal",
+        cwd: path.join(workspace, "autoresearch_churn"),
+        workspace_cwd: "autoresearch_churn",
+        uploads: [expect.objectContaining({ path: "train.py" })],
+      })
+
+      // The Project-files root has no relative form: say what to name instead.
+      await expect(plan(tmp.path)).rejects.toThrow(/Project files root itself.*cwd "autoresearch_churn"/)
+      // And a directory outside both roots stays outside.
+      await expect(plan(path.join(path.dirname(tmp.path), "somewhere-else"))).rejects.toThrow(
+        /outside Session scratch and Project files/,
+      )
+      await expect(plan("../elsewhere")).rejects.toThrow(/cannot contain '\.\.'/)
+      expect(asked).toEqual([])
+    },
+  })
+})
+
 test("remote Project-files staging excludes symlinks, denied paths, and ignored large directories", async () => {
   if (process.platform === "win32") return
   await using tmp = await tmpdir({ git: true })
@@ -762,8 +833,10 @@ test("rejects an unavailable or absolute compute cwd before approval and dispatc
       await expect(tool.execute({ ...workload, cwd: "missing-analysis" }, context(session.id, asked))).rejects.toThrow(
         'Compute working directory "missing-analysis" does not exist in Session scratch or Project files',
       )
+      // The Project-files root is not a working directory; the refusal names
+      // the shape to use instead of restating the rule.
       await expect(tool.execute({ ...workload, cwd: tmp.path }, context(session.id, asked))).rejects.toThrow(
-        "Compute working directory must be relative to Session scratch",
+        /Project files root itself.*relative to Session scratch or Project files/,
       )
       expect(asked).toEqual([])
       expect(await ComputeJobs.list({ root, projectDirectory: tmp.path, workspace })).toEqual([])

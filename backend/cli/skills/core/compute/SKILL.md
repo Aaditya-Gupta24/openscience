@@ -68,6 +68,12 @@ without checking that setting.
 - [ ] `plan` (remote) then `start` with name, purpose, command, cwd, artifacts, checkpoint.
 - [ ] `wait`; read `logs` on failure; `artifacts` on success.
 
+**Working directory.** `cwd` is the directory that holds the code, named relative to
+Session scratch or Project files (`autoresearch_churn`, then `command: "python train.py"`).
+Remote targets snapshot that Project-files directory into Session scratch before planning,
+so the job sees the files as they are at dispatch. The Project-files root itself is not a
+working directory; point at the subdirectory.
+
 **Probe.** Ten training steps or one batch locally, timed, tells you the throughput; scale
 to the full run and add 20%. Memory: a single forward and backward pass at the target
 batch size. If the probe cannot run locally, read the model card or the paper for
