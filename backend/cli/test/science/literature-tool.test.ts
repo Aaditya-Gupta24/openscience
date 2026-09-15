@@ -174,7 +174,7 @@ describe("literature read", () => {
       if (url.includes("openalex.org")) return new Response(GATED)
       hits.push(url)
       if (url.startsWith("https://example.com")) return new Response("forbidden", { status: 403 })
-      return new Response(tinyPDF(["Text from the repository copy"]), {
+      return new Response(new Blob([tinyPDF(["Text from the repository copy"]) as BlobPart]), {
         headers: { "content-type": "application/pdf" },
       })
     })
