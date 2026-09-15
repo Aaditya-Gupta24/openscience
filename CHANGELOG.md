@@ -8,6 +8,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.100 — 2026-09-15
+
 ### Fixed
 
 Findings from watching a one-hour autoresearch study run on Modal end to end:
