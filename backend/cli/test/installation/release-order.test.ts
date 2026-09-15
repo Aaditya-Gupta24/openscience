@@ -102,15 +102,18 @@ test("the release gate expects every rehearsal gate job by exact name", async ()
   expect(smoke.strategy?.matrix.include?.map((item) => item.name)).toEqual(list(publish, "smokes"))
   expect(canary.strategy?.matrix.capability).toHaveLength(5)
   expect(canary.strategy?.matrix.os).toHaveLength(3)
-  expect(publish).toContain(
-    '"publish-test",\n              "packaged-e2e",\n              "musl-baseline-smoke",\n              "promote-test",',
-  )
+  expect(publish).toContain('"npm-preflight",\n              "packaged-e2e",\n              "musl-baseline-smoke",')
   expect(publish).toContain("`scientific capability canary (${os}, ${capability})`")
   expect(publish).toContain("`os-smoke (${os})`")
-  for (const name of ["publish-test", "packaged-e2e", "musl-baseline-smoke", "promote-test"]) {
+  for (const name of ["npm-preflight", "packaged-e2e", "musl-baseline-smoke"]) {
     expect(rehearsal.jobs[name]).toBeDefined()
     expect(rehearsal.jobs[name].name).toBeUndefined()
   }
+  // The rehearsal no longer stages on npm; the gate must not wait for jobs
+  // that do not exist.
+  expect(rehearsal.jobs["publish-test"]).toBeUndefined()
+  expect(rehearsal.jobs["promote-test"]).toBeUndefined()
+  expect(publish).not.toContain('"promote-test"')
 })
 
 test("a stale release tag cannot create or preflight a draft", async () => {
@@ -301,11 +304,18 @@ test("the rehearsal builds and packs on one runner, keeps both immutable caches,
   expect(parsed.jobs["prepare-npm"]).toBeUndefined()
   expect(parsed.jobs.version.needs).toBeUndefined()
   expect(parsed.jobs["build-cli"].needs).toBe("version")
-  expect(parsed.jobs["publish-test"].needs).toEqual(["version", "build-cli"])
+  expect(parsed.jobs["npm-preflight"].needs).toEqual(["version", "build-cli"])
+  // Every gate job installs the packed candidate from this run's artifact
+  // through the localhost registry; none waits on npm.
+  for (const name of ["packaged-e2e", "os-smoke", "musl-baseline-smoke", "scientific-capability-canary"]) {
+    expect(parsed.jobs[name].needs).toEqual(["version", "build-cli"])
+  }
+  expect(workflow).toContain("name: npm-candidate-${{ needs.version.outputs.version }}")
+  expect(workflow.match(/uses: \.\/\.github\/actions\/candidate-registry/g)).toHaveLength(3)
+  expect(workflow).not.toContain("npm-test-release.ts stage")
   expect(workflow.indexOf("Require the protected default branch")).toBeLessThan(workflow.indexOf("id: version"))
   expect(workflow.match(/key: npm-test-cli-v2-/g)).toHaveLength(2)
-  expect(workflow.match(/key: npm-test-artifacts-v2-/g)).toHaveLength(4)
-  expect(workflow).toContain("fail-on-cache-miss: true")
+  expect(workflow.match(/key: npm-test-artifacts-v2-/g)).toHaveLength(2)
   for (const file of [".github/workflows/npm-test.yml", ".github/workflows/e2e.yml"]) {
     const text = await read(file)
     expect(text).toContain("name: Cache Playwright browsers")
