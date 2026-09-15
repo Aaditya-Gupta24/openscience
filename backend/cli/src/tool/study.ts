@@ -185,7 +185,7 @@ export const StudyTool = Tool.define("study", {
       const criteria = KillCriteria.parse(params.kill_criteria ?? "")
       if (criteria.unparsed.length) {
         throw new Error(
-          `Could not read kill criteria: ${criteria.unparsed.map((clause) => `"${clause.replace(/[.!]+$/, "")}"`).join(", ")}. Use forms like "1 hour", "5000 steps", "val_loss plateaus for 500 steps", "val_loss > 5 for 100 steps", joined by OR.`,
+          `Could not read kill criteria: ${criteria.unparsed.map((clause) => `"${clause.replace(/[.!]+$/, "")}"`).join(", ")}. Use forms like "1 hour", "5000 steps", "val_loss plateaus for 500 steps", "val_loss > 5 for 100 steps", joined by OR. A NaN guard is not needed: non-finite values are never recorded as points.`,
         )
       }
       const slots = params.target?.kind === "local" || !params.target ? await GpuInventory.slots() : []

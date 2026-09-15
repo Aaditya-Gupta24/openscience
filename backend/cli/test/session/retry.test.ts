@@ -313,6 +313,31 @@ describe("SessionProcessor.providerFailureAction", () => {
       name: "APIError",
       data: { isRetryable: false, metadata: { code: "managed_request_timeout", action: "resubmit" } },
     })
+    // Not a retry of the same key, but the step may go once more as a new
+    // request; a dispatched or sealed verdict may not.
+    expect(SessionRetry.resubmittable(error)).toBe(true)
+    expect(SessionRetry.resubmittable(wrap(body))).toBe(true)
+  })
+
+  test("only the gateway's no-progress verdict is resubmittable", () => {
+    for (const code of [
+      "managed_outcome_unknown",
+      "idempotent_stream_already_started",
+      "managed_response_incomplete",
+    ]) {
+      const error = new MessageV2.APIError({
+        message: "verdict",
+        statusCode: 409,
+        isRetryable: false,
+        responseBody: JSON.stringify({ error: { code, type: code, message: "verdict" } }),
+      }).toObject()
+      expect(SessionRetry.resubmittable(error)).toBe(false)
+    }
+    expect(
+      SessionRetry.resubmittable(
+        new MessageV2.APIError({ message: "Bad Gateway", statusCode: 502, isRetryable: true }).toObject(),
+      ),
+    ).toBe(false)
   })
 
   test.each([

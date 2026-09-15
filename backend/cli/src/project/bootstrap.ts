@@ -477,8 +477,15 @@ export async function InstanceBootstrap() {
     ])
   })
 
+  // Only a grant that went away narrows authority. A grant that arrived (a
+  // skill loaded beside a running command, a folder the person just
+  // connected) widens it, and the processes running under the narrower set
+  // are still within bounds; stopping them killed a shell command whenever a
+  // parallel skill load added its read grant.
   Bus.subscribe(SessionFilesystem.Event.Changed, async (payload) => {
-    await stopFilesystem(payload.properties.sessionID, payload.properties.grant.scope)
+    const grant = payload.properties.grant
+    if (!grant.time.revoked && !grant.time.consumed) return
+    await stopFilesystem(payload.properties.sessionID, grant.scope)
   })
 
   // Tombstoned deletions are deliberately resumed only after all runtime

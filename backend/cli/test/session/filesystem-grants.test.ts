@@ -877,7 +877,7 @@ describe("session filesystem grants", () => {
     })
   })
 
-  test("stops live compute only in the project whose folder authority changes", async () => {
+  test("stops live compute only in the project whose folder authority narrows", async () => {
     if (!Sandbox.available()) return
     await using external = await tmpdir()
     await using first = await tmpdir()
@@ -934,6 +934,15 @@ describe("session filesystem grants", () => {
         }),
     })
     expect(grant.scope).toBe("project")
+    // A grant that arrived widens authority; the job launched under the
+    // narrower set is still within bounds and keeps running.
+    await Bun.sleep(500)
+    expect((await ComputeJobs.get(one.job.id, { root: roots.first, workspace: one.workspace }))?.status).toBe("running")
+    // Revoking it narrows authority and stops the job, in this project only.
+    await Instance.provide({
+      directory: first.path,
+      fn: () => SessionFilesystem.revoke(one.session.id, grant.id),
+    })
     const stopped = await ComputeJobs.wait(one.job.id, { root: roots.first, workspace: one.workspace, timeout: 5_000 })
     expect(stopped.status).toBe("cancelled")
     const untouched = await ComputeJobs.get(two.job.id, { root: roots.second, workspace: two.workspace })
@@ -953,7 +962,6 @@ describe("session filesystem grants", () => {
     await Instance.provide({
       directory: first.path,
       fn: async () => {
-        await SessionFilesystem.revoke(one.session.id, grant.id)
         await Session.remove(one.session.id)
         await Instance.dispose()
       },

@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import { iife } from "@synsci/util/iife"
 import { Log } from "@/util/log"
 import { Identifier } from "@/id/id"
 import { Session } from "."
@@ -763,6 +764,7 @@ export namespace SessionProcessor {
     let shouldBreakOnDeny = true
     let attempt = 0
     let transientRetries = 0
+    let resubmits = 0
     let output: ReturnType<typeof outputWatchdog> | undefined
     let needsCompaction = false
     let overflow = false
@@ -956,6 +958,7 @@ export namespace SessionProcessor {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
               attempt: attempt + 1,
+              resubmit: resubmits,
               agent: streamInput.agent.name,
               modelID: input.model.id,
               abort: transport.signal,
@@ -1343,7 +1346,16 @@ export namespace SessionProcessor {
               // recreates the original 50-minute failure. Idle expiry is a
               // terminal, actionable outcome; other transient failures retain
               // the existing retry policy.
-              const action = providerFailureAction(cause, error, toolOutcomes.started())
+              const action = iife(() => {
+                const decided = providerFailureAction(cause, error, toolOutcomes.started())
+                if (decided.type !== "terminal" || toolOutcomes.started()) return decided
+                if (resubmits >= 1 || !SessionRetry.resubmittable(error)) return decided
+                resubmits += 1
+                return {
+                  type: "retry" as const,
+                  message: "The gateway reported no progress on the request; resubmitting it once as a new request",
+                }
+              })
               if (action.type === "retry") {
                 const retry = consumeProviderRetry({
                   attempt,

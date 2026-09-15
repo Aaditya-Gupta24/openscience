@@ -10,6 +10,34 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+From a QA pass over a one-hour `/autoresearch` study on Modal (ten T4 runs,
+three workers) on v2.0.102:
+
+- **A grant that arrives no longer kills the session's running commands.**
+  Every filesystem grant change stopped the session's processes, jobs and
+  kernels so nothing would run under a stale authority set. That is right
+  when a grant is revoked and wrong when one is added: a skill loaded in
+  parallel with a shell command added its read grant and the command died
+  with "User aborted the command"; a folder connected during a Modal run
+  would have cancelled the run. Only a revoked or consumed grant stops
+  processes now; an added one leaves them within bounds.
+- **One automatic resubmit when the managed gateway reports no progress.**
+  A worker died on `managed_request_timeout` after a 502: the gateway gave up
+  waiting for the provider and, by design, refused a retry of the same
+  request. The step is now sent once more as a new request (a fresh
+  idempotency key) before the turn stops; the provider may bill the first
+  copy if it finished late, which is cheaper than a halted study.
+- **scikit-learn is part of the Python starter environment.** Both QA
+  sessions lost tool calls to `ModuleNotFoundError: sklearn` in local smoke
+  tests. New environments include it; existing ones gain it in place on the
+  next start, without a rebuild that would discard what the person installed.
+- Kill-criteria errors say that a NaN guard is unnecessary (non-finite values
+  are never recorded as points), which is what the agent had tried to write.
+
+## v2.0.102 — 2026-09-16
+
+### Fixed
+
 From a QA pass over one EDA-and-LaTeX-report session on v2.0.101:
 
 - **A finished turn no longer looks broken by the failures it recovered

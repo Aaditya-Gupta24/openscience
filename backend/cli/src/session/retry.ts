@@ -229,6 +229,19 @@ export namespace SessionRetry {
   export const MANAGED_DISPATCHED_MESSAGE =
     "The gateway already dispatched this request and its output is no longer available. It may have been billed; sending it again will be billed again. Resubmit your message to retry."
 
+  /**
+   * The gateway gave up waiting for the provider to start answering and
+   * recorded the copy under this key as "no progress, outcome unknown"; it
+   * tells the client to resubmit rather than retry. A worker or an
+   * autonomous study should not stop on that alone: the step is sent once
+   * more as a new request (a fresh key), and only a second such verdict is
+   * terminal. The provider may bill the first copy if it did finish late; one
+   * duplicated step is cheaper than a halted run.
+   */
+  export function resubmittable(error: ReturnType<NamedError["toObject"]>) {
+    return normalizeProviderError(error).code === "managed_request_timeout"
+  }
+
   /** The error the user sees for a terminal provider failure. A dispatched
    * verdict carries the gateway's wire message, which explains the key, not
    * the billing consequence; replace it and pin the error non-retryable so no

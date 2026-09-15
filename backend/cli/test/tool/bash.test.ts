@@ -106,6 +106,35 @@ describe("tool.bash", () => {
     })
   })
 
+  test("a running command survives a grant added beside it", async () => {
+    if (process.platform === "win32") return
+    await using folder = await tmpdir()
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await BashTool.init()
+        const ctx = await context()
+        // Widening: a skill load or a newly connected folder adds a grant
+        // while the command runs. The command is still within bounds.
+        const surviving = bash.execute(
+          { command: "sleep 1.5; echo survived", description: "Runs while a grant arrives" },
+          ctx,
+        )
+        await Bun.sleep(300)
+        const grant = await SessionFilesystem.grant({
+          sessionID: ctx.sessionID,
+          path: folder.path,
+          access: "read",
+          scope: "session",
+        })
+        const result = await surviving
+        expect(result.metadata.exit).toBe(0)
+        expect(result.metadata.output).toContain("survived")
+        await SessionFilesystem.revoke(ctx.sessionID, grant.id)
+      },
+    })
+  })
+
   test("reports an upstream pipeline failure", async () => {
     if (!/^(bash|zsh)(\.exe)?$/i.test(path.basename(Shell.forTool()))) return
     await Instance.provide({

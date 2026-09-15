@@ -60,13 +60,17 @@ const STARTERS = {
   python: {
     name: "python",
     channels: ["conda-forge"],
-    packages: ["python=3.11", "numpy", "pandas<3", "scipy", "matplotlib", "seaborn", "pillow", "pip"],
+    packages: ["python=3.11", "numpy", "pandas<3", "scipy", "matplotlib", "seaborn", "pillow", "scikit-learn", "pip"],
     probe: [
       "import json",
       "import numpy, pandas, scipy, matplotlib, seaborn",
       "from PIL import Image",
       'print(json.dumps({"ok": True}))',
     ].join("\n"),
+    // Added to the starter after environments were already in the field.
+    // A present environment gains them in place rather than being rebuilt,
+    // which would also discard whatever the person installed into it.
+    additions: [{ packages: ["scikit-learn"], probe: "import sklearn" }],
   },
   r: {
     name: "r",
@@ -1251,7 +1255,10 @@ async function replaceEnvironment(target: string, create: () => Promise<void>) {
 }
 
 async function ensureStarter(language: ManagedEnvironmentLanguage) {
-  if (await probe(language)) return
+  if (await probe(language)) {
+    if (language === "python") await addToStarter(environmentPath(language))
+    return
+  }
   const spec = STARTERS[language]
   await state({ status: "installing", phase: `provisioning_${language}`, error: undefined })
   const target = environmentPath(language)
@@ -1276,6 +1283,43 @@ async function ensureStarter(language: ManagedEnvironmentLanguage) {
       verified_at: now,
     } satisfies z.infer<typeof Manifest>)
   })
+}
+
+/** Install what the starter list gained since this environment was built,
+ * once: the manifest records the packages it holds, so a ready starter is
+ * not re-probed on every start. Best effort: the environment stays usable
+ * without the addition. */
+async function addToStarter(target: string) {
+  const file = path.join(target, ".openscience-environment.json")
+  const manifest = await Bun.file(file)
+    .json()
+    .then((value) => Manifest.parse(value))
+    .catch(() => undefined)
+  if (!manifest || manifest.kind !== "starter") return
+  const binary = path.join(target, process.platform === "win32" ? "python.exe" : "bin/python")
+  for (const addition of STARTERS.python.additions) {
+    if (addition.packages.every((name) => manifest.packages.includes(name))) continue
+    const present = await run([binary, "-I", "-c", addition.probe], { timeout: 30_000 }).then(
+      () => true,
+      () => false,
+    )
+    if (!present) {
+      const channels = STARTERS.python.channels.flatMap((channel) => ["-c", channel])
+      const installed = await run(
+        [await installMicromamba(), "--no-rc", "install", "-y", "-p", target, ...channels, ...addition.packages],
+        { timeout: 15 * 60 * 1000 },
+      ).then(
+        () => true,
+        (error) => {
+          log.warn("starter addition failed", { packages: addition.packages, error: String(error) })
+          return false
+        },
+      )
+      if (!installed) continue
+    }
+    manifest.packages = [...new Set([...manifest.packages, ...addition.packages])]
+    await writeJson(file, manifest)
+  }
 }
 
 function taskDigest(spec: ManagedTaskSpec) {

@@ -96,6 +96,11 @@ export namespace Provider {
     modelID?: string
     /** Immutable account/funding choice for this provider operation. */
     funding?: FundingSnapshot
+    /** How many times this step has been resubmitted as a new request after
+     * the gateway reported no progress on the earlier copy. Part of the
+     * idempotency key, so a resubmit is a different request to the gateway
+     * while ordinary retries of the same body keep the same key. */
+    resubmit?: number
     /** Provider-only cancellation; tool execution keeps its own authority signal. */
     abort?: AbortSignal
     /** Actual fetch dispatch, after local request and credential preparation. */
@@ -3075,7 +3080,7 @@ export namespace Provider {
               body: opts.body,
               sessionID,
               messageID,
-              operation: "model",
+              operation: context?.resubmit ? `model:resubmit:${context.resubmit}` : "model",
             }),
           )
         }
