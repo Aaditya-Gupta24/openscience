@@ -1,4 +1,6 @@
 import { Plugin } from "../plugin"
+import { Config } from "../config/config"
+import { Harness } from "@/harness"
 import { Format } from "../format"
 import { LSP } from "../lsp"
 import { FileWatcher } from "../file/watcher"
@@ -289,6 +291,14 @@ function warm(state: Warmup) {
     // Studies that were running when the server last stopped resume their
     // clock: followers reattach to job logs and wake-ups continue.
     await StudyDriver.resumeAll().catch((error) => Log.Default.warn("study driver resume failed", { error }))
+    if (state.cancelled) return
+    // Sessions the last process left mid-turn pick their loops back up, so a
+    // restart never leaves a turn reading "Running" with nothing behind it.
+    if (Harness.enabled(await Config.get(), "durable-jobs")) {
+      await SessionPrompt.resumeInterrupted().catch((error) =>
+        Log.Default.warn("interrupted session resume failed", { error }),
+      )
+    }
   })()
   return state.run
 }

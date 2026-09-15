@@ -10,6 +10,23 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+- A server restart no longer strands a turn. At warmup, a lead the previous
+  process left mid-turn picks its loop back up from the durable transcript
+  (its orphaned Task call reads as interrupted, so the model re-plans), and a
+  worker whose lead is gone is closed with the reason instead of reading
+  "Running" for good. Sessions quiet for more than twelve hours wait for the
+  person. Behind the `harness.durable-jobs` switch.
+- The file header is one thin line: glyph, name, kind, then the active
+  viewer's own controls (a PDF's pager and zoom, a table's row count) and the
+  actions, instead of a two-line title block over a second toolbar. A narrow
+  pane stacks the controls under the name.
+- The `<core-skills>` index asks for the skill of each phase as it begins
+  (figures before the first plot, schematics before a diagram, a writing skill
+  before drafting) rather than "one skill for the task", which had the agent
+  writing a figure-heavy LaTeX report with no skill loaded at all.
+- Delegation postures match the composer: Off removes the Task tool, Auto
+  leaves the choice to the model, High asks it to parallelize; the postures
+  are now checked end to end at the provider boundary.
 - An isolated session's environment says that relative paths resolve in its
   scratch and that a project file needs its full path; the agent had been
   spending its first steps finding out.

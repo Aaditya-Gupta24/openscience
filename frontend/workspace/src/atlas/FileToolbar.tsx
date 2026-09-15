@@ -1,6 +1,7 @@
 import { createMemo, For, Show, type JSX } from "solid-js"
 import { FileIcon } from "@synsci/ui/file-icon"
 import { IconArchive, IconCopy, IconDownload, IconX } from "@/atlas/shared/Icon"
+import { useFileChrome } from "./file-chrome"
 import { artifactControl, toolbarControls, type FileDescription } from "./file-viewer"
 
 export interface FileToolbarProps {
@@ -27,6 +28,7 @@ export interface FileToolbarProps {
 }
 
 export function FileToolbar(props: FileToolbarProps): JSX.Element {
+  const chrome = useFileChrome()
   const controls = createMemo(() =>
     toolbarControls({
       description: props.description,
@@ -51,29 +53,36 @@ export function FileToolbar(props: FileToolbarProps): JSX.Element {
     return props.onDownload()
   }
 
+  // One line: the file, then the viewer's own controls, then the actions.
+  // The kind and location ride beside the name in faint text rather than on
+  // a second line, so the header costs the reader one row, not two.
   return (
     <header class="atlas-file-toolbar" data-slot="file-toolbar">
       <div class="atlas-file-identity">
         <span class="atlas-file-kind-icon" aria-hidden="true">
           <FileIcon node={{ path: props.name, type: "file" }} class="atlas-file-type-glyph" />
         </span>
-        <div class="atlas-file-heading">
-          <div class="atlas-file-name" title={props.name}>
-            {props.name}
-          </div>
-          <div class="atlas-file-meta">
-            <span class="atlas-file-type">{props.description.label}</span>
-            <Show when={props.location}>
-              <span class="atlas-file-meta-separator" aria-hidden="true">
-                ·
-              </span>
-              <span class="atlas-file-location" title={props.location}>
-                {props.location}
-              </span>
-            </Show>
-          </div>
+        <div class="atlas-file-name" title={props.location ? `${props.name} · ${props.location}` : props.name}>
+          {props.name}
+        </div>
+        <div class="atlas-file-meta">
+          <span class="atlas-file-type">{props.description.label}</span>
+          <Show when={props.location}>
+            <span class="atlas-file-meta-separator" aria-hidden="true">
+              ·
+            </span>
+            <span class="atlas-file-location" title={props.location}>
+              {props.location}
+            </span>
+          </Show>
         </div>
       </div>
+
+      <div
+        class="atlas-file-viewer-controls"
+        data-slot="file-viewer-controls"
+        ref={(element) => chrome?.setSlot(element)}
+      />
 
       <div class="atlas-file-controls">
         <Show when={views().length > 0}>

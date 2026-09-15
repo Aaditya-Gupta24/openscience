@@ -37,7 +37,12 @@ test("PDF files rasterize their pages without an error", async ({ page, openSess
 
   const viewer = page.locator('[data-component="science-pdf"]')
   await expect(viewer).toBeVisible()
-  await expect(viewer.locator('[data-slot="pdf-header"]')).toContainText("Page 1 of 1", { timeout: 30_000 })
+  // Inside a file tab the pager and zoom sit in the file's one header line,
+  // not on a second bar of the viewer's own.
+  const header = page.locator('[data-component="file-view"] [data-slot="file-viewer-controls"]')
+  await expect(header).toContainText("Page 1 of 1", { timeout: 30_000 })
+  await expect(header.getByRole("button", { name: /Fit page width/ })).toBeVisible()
+  await expect(viewer.locator('[data-slot="pdf-header"]')).toHaveCount(0)
   const canvas = viewer.locator('[data-slot="pdf-body"] canvas').first()
   await expect(canvas).toBeVisible()
   expect(await canvas.evaluate((node: HTMLCanvasElement) => node.width * node.height)).toBeGreaterThan(0)

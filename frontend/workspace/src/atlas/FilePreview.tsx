@@ -36,6 +36,7 @@ import { toast } from "@/atlas/Toast"
 import { showToast } from "@synsci/ui/toast"
 import { IconFile } from "@/atlas/shared/Icon"
 import { FileToolbar } from "@/atlas/FileToolbar"
+import { FileChromeProvider } from "@/atlas/file-chrome"
 import { uiStore } from "@/atlas/store/ui"
 import {
   describeFile,
@@ -832,345 +833,347 @@ export function FileView(props: {
   }
 
   return (
-    <div class="atlas-file-view" data-component="file-view" data-artifact-id={context().id}>
-      <FileToolbar
-        name={name()}
-        location={location()}
-        description={description()}
-        source={view.source}
-        sourceLabel={description().source && writable() !== false ? "Edit" : undefined}
-        dirty={dirty()}
-        saving={view.saving}
-        saveDisabled={!view.revision || view.conflict === true}
-        writable={writable()}
-        disabled={view.status !== "ready"}
-        artifact={Boolean(activeSessionID()) && !projectPreview()}
-        archiving={archiving()}
-        onPreview={() => setView("source", false)}
-        onSource={() => setView("source", true)}
-        onDiscard={() => {
-          discardFileDraft(directory(), props.path, props.scope, activeSessionID(), sdk.url)
-          if (view.conflict) {
-            setView({ conflict: false, saveError: undefined, draft: view.saved, refresh: view.refresh + 1 })
-            return
-          }
-          setView({ draft: view.saved, saveError: undefined })
-        }}
-        onSave={() => void save()}
-        onArtifact={() => void artifact()}
-        onCopy={() => void copy()}
-        onDownload={() => void download()}
-        onClose={props.onClose}
-      />
+    <FileChromeProvider>
+      <div class="atlas-file-view" data-component="file-view" data-artifact-id={context().id}>
+        <FileToolbar
+          name={name()}
+          location={location()}
+          description={description()}
+          source={view.source}
+          sourceLabel={description().source && writable() !== false ? "Edit" : undefined}
+          dirty={dirty()}
+          saving={view.saving}
+          saveDisabled={!view.revision || view.conflict === true}
+          writable={writable()}
+          disabled={view.status !== "ready"}
+          artifact={Boolean(activeSessionID()) && !projectPreview()}
+          archiving={archiving()}
+          onPreview={() => setView("source", false)}
+          onSource={() => setView("source", true)}
+          onDiscard={() => {
+            discardFileDraft(directory(), props.path, props.scope, activeSessionID(), sdk.url)
+            if (view.conflict) {
+              setView({ conflict: false, saveError: undefined, draft: view.saved, refresh: view.refresh + 1 })
+              return
+            }
+            setView({ draft: view.saved, saveError: undefined })
+          }}
+          onSave={() => void save()}
+          onArtifact={() => void artifact()}
+          onCopy={() => void copy()}
+          onDownload={() => void download()}
+          onClose={props.onClose}
+        />
 
-      <Show when={view.saveError}>
-        {(error) => (
-          <div class="atlas-file-save-error" role="alert">
-            Couldn’t save changes. {error()}
-            <Show when={view.conflict}>
-              <button
-                type="button"
-                class="atlas-file-button"
-                onClick={() => {
-                  discardFileDraft(directory(), props.path, props.scope, activeSessionID(), sdk.url)
-                  setView({ draft: view.saved, conflict: false, saveError: undefined, refresh: view.refresh + 1 })
-                }}
-              >
-                Discard changes and reload
-              </button>
-            </Show>
-          </div>
-        )}
-      </Show>
-      <Show
-        when={
-          view.status === "ready" &&
-          !isBinary() &&
-          !truncated() &&
-          !view.revision &&
-          !view.saveError &&
-          writable() !== false
-        }
-      >
-        <div class="atlas-file-save-error" role="status">
-          Saving is unavailable because this server did not provide a file revision. Your edits are preserved; update
-          the server and reload before saving.
-        </div>
-      </Show>
-
-      <div class="atlas-file-body" data-slot="file-body">
-        <Show
-          when={view.status !== "loading"}
-          fallback={
-            <div class="atlas-file-loading" role="status" aria-live="polite">
-              <div class="atlas-file-loading-heading" />
-              <div class="atlas-file-loading-line" />
-              <div class="atlas-file-loading-line is-short" />
-              <span>Loading {name()}…</span>
+        <Show when={view.saveError}>
+          {(error) => (
+            <div class="atlas-file-save-error" role="alert">
+              Couldn’t save changes. {error()}
+              <Show when={view.conflict}>
+                <button
+                  type="button"
+                  class="atlas-file-button"
+                  onClick={() => {
+                    discardFileDraft(directory(), props.path, props.scope, activeSessionID(), sdk.url)
+                    setView({ draft: view.saved, conflict: false, saveError: undefined, refresh: view.refresh + 1 })
+                  }}
+                >
+                  Discard changes and reload
+                </button>
+              </Show>
             </div>
+          )}
+        </Show>
+        <Show
+          when={
+            view.status === "ready" &&
+            !isBinary() &&
+            !truncated() &&
+            !view.revision &&
+            !view.saveError &&
+            writable() !== false
           }
         >
+          <div class="atlas-file-save-error" role="status">
+            Saving is unavailable because this server did not provide a file revision. Your edits are preserved; update
+            the server and reload before saving.
+          </div>
+        </Show>
+
+        <div class="atlas-file-body" data-slot="file-body">
           <Show
-            when={view.status === "ready"}
+            when={view.status !== "loading"}
             fallback={
-              <Show
-                when={view.status === "interrupted"}
-                fallback={
-                  <section class="atlas-file-error" role="alert" aria-live="polite">
+              <div class="atlas-file-loading" role="status" aria-live="polite">
+                <div class="atlas-file-loading-heading" />
+                <div class="atlas-file-loading-line" />
+                <div class="atlas-file-loading-line is-short" />
+                <span>Loading {name()}…</span>
+              </div>
+            }
+          >
+            <Show
+              when={view.status === "ready"}
+              fallback={
+                <Show
+                  when={view.status === "interrupted"}
+                  fallback={
+                    <section class="atlas-file-error" role="alert" aria-live="polite">
+                      <IconFile size={20} strokeWidth={1.5} />
+                      <h2>Couldn’t open this file</h2>
+                      <p>{view.error?.message ?? "The file could not be read."}</p>
+                      <button
+                        type="button"
+                        class="atlas-file-button"
+                        onClick={() => setView("refresh", (key) => key + 1)}
+                      >
+                        Retry
+                      </button>
+                    </section>
+                  }
+                >
+                  <section class="atlas-file-error" role="status" aria-live="polite">
                     <IconFile size={20} strokeWidth={1.5} />
-                    <h2>Couldn’t open this file</h2>
-                    <p>{view.error?.message ?? "The file could not be read."}</p>
+                    <h2>File preview interrupted</h2>
+                    <p>The read ended before it finished. Your file was not changed.</p>
                     <button
                       type="button"
                       class="atlas-file-button"
-                      onClick={() => setView("refresh", (key) => key + 1)}
+                      onClick={() => {
+                        readRetry.count = 0
+                        setView("refresh", (key) => key + 1)
+                      }}
                     >
                       Retry
                     </button>
                   </section>
-                }
-              >
-                <section class="atlas-file-error" role="status" aria-live="polite">
-                  <IconFile size={20} strokeWidth={1.5} />
-                  <h2>File preview interrupted</h2>
-                  <p>The read ended before it finished. Your file was not changed.</p>
-                  <button
-                    type="button"
-                    class="atlas-file-button"
-                    onClick={() => {
-                      readRetry.count = 0
-                      setView("refresh", (key) => key + 1)
-                    }}
-                  >
-                    Retry
-                  </button>
-                </section>
-              </Show>
-            }
-          >
-            <div
-              class="atlas-scroll atlas-file-scroll"
-              classList={{
-                "is-managed-scroll": !view.source && (kind() === "table" || kind() === "pdf"),
-                "is-editor-scroll": view.source,
-              }}
+                </Show>
+              }
             >
-              <Switch>
-                <Match when={truncated() && kind() !== "pdf"}>
-                  <div class="atlas-file-source atlas-file-truncated">
-                    <div class="atlas-file-notice" role="status">
-                      Preview limited to 8 MB of {formatBytes(data()?.size ?? 0)}. Download the file or use a compute
-                      tool for the complete dataset.
-                    </div>
-                    <pre>{view.draft}</pre>
-                  </div>
-                </Match>
-                {/* citation-aware manuscripts keep the research authoring workbench */}
-                <Match when={kind() === "markdown" && !view.source && manuscript()}>
-                  <ManuscriptWorkbench
-                    directory={directory()}
-                    path={requestPath()}
-                    sessionID={fileSessionID()}
-                    scope={resolvedScope()}
-                    openScope={props.scope}
-                    text={view.draft}
-                    dirty={dirty()}
-                    saving={view.saving}
-                    onChange={(draft) => {
-                      if (writable() === false) return
-                      setView({ draft, saveError: view.conflict ? view.saveError : undefined })
-                    }}
-                  />
-                </Match>
-
-                {/* ordinary Markdown opens as a quiet document */}
-                <Match when={kind() === "markdown" && !view.source && !manuscript()}>
-                  <MarkdownDocument
-                    name={name()}
-                    text={view.draft}
-                    resolveImage={image}
-                    resolveFile={file}
-                    onOpenFile={openFile}
-                  />
-                </Match>
-
-                <Match when={kind() === "notebook" && !view.source}>
-                  <NotebookDocument
-                    name={name()}
-                    text={view.draft}
-                    format={e()}
-                    sessionID={activeSessionID()}
-                    resolveImage={image}
-                    resolveFile={file}
-                    onOpenFile={openFile}
-                    run={
-                      activeSessionID() && writable() !== false
-                        ? async (cell, index) => {
-                            const response = await sdk.request("/kernels/execute", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                sessionID: activeSessionID(),
-                                language: cell.language,
-                                code: cell.source,
-                                source: `${requestPath()}#cell-${index + 1}`,
-                                timeout: 60000,
-                              }),
-                              signal: AbortSignal.timeout(65000),
-                            })
-                            if (!response.ok)
-                              throw new Error(
-                                fileErrorMessage(
-                                  await response
-                                    .json()
-                                    .catch(() => ({ message: `Kernel request failed (${response.status})` })),
-                                ),
-                              )
-                            return (await response.json()) as NotebookExecution
-                          }
-                        : undefined
-                    }
-                  />
-                </Match>
-
-                {/* HTML documents render fully sandboxed — no scripts, no same-origin access */}
-                <Match when={kind() === "html" && !view.source}>
-                  <div class="atlas-file-html">
-                    <iframe class="atlas-file-html-frame" sandbox="" srcdoc={html()} title={name()} />
-                  </div>
-                </Match>
-
-                {/* tabular data */}
-                <Match when={kind() === "table" && !view.source}>
-                  <Show when={tabular()}>
-                    {(format) => <DataTableView text={view.draft} format={format()} name={name()} />}
-                  </Show>
-                </Match>
-
-                {/* genomic, alignment, and mass-spectrometry data */}
-                <Match when={kind() === "scientific-data" && !view.source}>
-                  <Show when={biological()}>
-                    {(format) => <ScientificDataView text={view.draft} format={format()} name={name()} />}
-                  </Show>
-                </Match>
-
-                {/* large scientific containers */}
-                <Match when={kind() === "scientific-binary"}>
-                  <Show when={binaryScience()}>
-                    {(format) => (
-                      <BinaryScienceView
-                        path={requestPath()}
-                        directory={directory()}
-                        sessionID={fileSessionID()}
-                        format={format()}
-                      />
-                    )}
-                  </Show>
-                </Match>
-
-                {/* pdf */}
-                <Match when={kind() === "pdf"}>
-                  <div class="atlas-file-pdf">
-                    <Switch>
-                      <Match when={pdfMode() === "inline"}>
-                        <PdfViewer kind="pdf" data={{ base64: b64(), maxPages: 40 }} />
-                      </Match>
-                      <Match when={pdfMode() === "raw" && pdf.status === "ready"}>
-                        <Show when={pdf.bytes}>
-                          {(bytes) => <PdfViewer kind="pdf" data={{ bytes: bytes(), maxPages: 40 }} />}
-                        </Show>
-                      </Match>
-                      <Match when={pdfMode() === "raw" && pdf.status === "loading"}>
-                        <div class="atlas-file-loading" role="status" aria-live="polite">
-                          <div class="atlas-file-loading-heading" />
-                          <div class="atlas-file-loading-line" />
-                          <div class="atlas-file-loading-line is-short" />
-                          <span>Loading the complete {formatBytes(data()?.size ?? 0)} PDF…</span>
-                        </div>
-                      </Match>
-                      <Match when={pdfMode() === "raw" && pdf.status === "error"}>
-                        <div class="atlas-file-notice" role="alert">
-                          Couldn’t load the PDF preview. {pdf.error} Use Download above to open the original file.
-                        </div>
-                      </Match>
-                      <Match when={pdfMode() === "download"}>
-                        <div class="atlas-file-notice" role="status">
-                          This {formatBytes(data()?.size ?? 0)} PDF exceeds the {formatBytes(PDF_PREVIEW_LIMIT)} browser
-                          preview limit. Use Download above to open the original file.
-                        </div>
-                      </Match>
-                    </Switch>
-                  </div>
-                </Match>
-
-                {/* image */}
-                <Match when={kind() === "image"}>
-                  <div class="atlas-file-image">
-                    <img src={dataUrl()} alt={name()} />
-                  </div>
-                </Match>
-
-                {/* scientific file */}
-                <Match when={kind() === "science" && !view.source}>
-                  <Show when={scientific()}>
-                    {(artifact) => (
-                      <div class="atlas-file-science">
-                        <ScienceArtifact
-                          kind={artifact().kind}
-                          data={artifact().data}
-                          height={560}
-                          onInspect={(inspection) => setView("inspection", inspection)}
-                        />
+              <div
+                class="atlas-scroll atlas-file-scroll"
+                classList={{
+                  "is-managed-scroll": !view.source && (kind() === "table" || kind() === "pdf"),
+                  "is-editor-scroll": view.source,
+                }}
+              >
+                <Switch>
+                  <Match when={truncated() && kind() !== "pdf"}>
+                    <div class="atlas-file-source atlas-file-truncated">
+                      <div class="atlas-file-notice" role="status">
+                        Preview limited to 8 MB of {formatBytes(data()?.size ?? 0)}. Download the file or use a compute
+                        tool for the complete dataset.
                       </div>
-                    )}
-                  </Show>
-                </Match>
-
-                {/* binary */}
-                <Match when={kind() === "binary"}>
-                  <div class="atlas-file-empty">
-                    <div>
-                      Binary file — no inline preview.
-                      <br />
-                      Use Download to open it in another application.
+                      <pre>{view.draft}</pre>
                     </div>
-                  </div>
-                </Match>
+                  </Match>
+                  {/* citation-aware manuscripts keep the research authoring workbench */}
+                  <Match when={kind() === "markdown" && !view.source && manuscript()}>
+                    <ManuscriptWorkbench
+                      directory={directory()}
+                      path={requestPath()}
+                      sessionID={fileSessionID()}
+                      scope={resolvedScope()}
+                      openScope={props.scope}
+                      text={view.draft}
+                      dirty={dirty()}
+                      saving={view.saving}
+                      onChange={(draft) => {
+                        if (writable() === false) return
+                        setView({ draft, saveError: view.conflict ? view.saveError : undefined })
+                      }}
+                    />
+                  </Match>
 
-                {/* code / text — editable source, or highlighted read view */}
-                <Match
-                  when={
-                    (kind() === "code" ||
-                      kind() === "notebook" ||
-                      kind() === "markdown" ||
-                      kind() === "html" ||
-                      kind() === "science" ||
-                      kind() === "scientific-data" ||
-                      kind() === "table") &&
-                    view.source
-                  }
-                >
-                  <CodeEditor
-                    label={`${name()} source`}
-                    value={view.draft}
-                    language={LANG[e()] ?? "text"}
-                    readOnly={writable() === false}
-                    wrap={kind() === "markdown"}
-                    onChange={(draft) => setView({ draft, saveError: view.conflict ? view.saveError : undefined })}
-                    onSave={() => void save()}
-                  />
-                </Match>
-                <Match when={kind() === "code"}>
-                  <div class="atlas-file-code">
-                    <Markdown class="atlas-md" text={fence(LANG[e()] ?? "text", view.draft)} />
-                  </div>
-                </Match>
-              </Switch>
-            </div>
+                  {/* ordinary Markdown opens as a quiet document */}
+                  <Match when={kind() === "markdown" && !view.source && !manuscript()}>
+                    <MarkdownDocument
+                      name={name()}
+                      text={view.draft}
+                      resolveImage={image}
+                      resolveFile={file}
+                      onOpenFile={openFile}
+                    />
+                  </Match>
+
+                  <Match when={kind() === "notebook" && !view.source}>
+                    <NotebookDocument
+                      name={name()}
+                      text={view.draft}
+                      format={e()}
+                      sessionID={activeSessionID()}
+                      resolveImage={image}
+                      resolveFile={file}
+                      onOpenFile={openFile}
+                      run={
+                        activeSessionID() && writable() !== false
+                          ? async (cell, index) => {
+                              const response = await sdk.request("/kernels/execute", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  sessionID: activeSessionID(),
+                                  language: cell.language,
+                                  code: cell.source,
+                                  source: `${requestPath()}#cell-${index + 1}`,
+                                  timeout: 60000,
+                                }),
+                                signal: AbortSignal.timeout(65000),
+                              })
+                              if (!response.ok)
+                                throw new Error(
+                                  fileErrorMessage(
+                                    await response
+                                      .json()
+                                      .catch(() => ({ message: `Kernel request failed (${response.status})` })),
+                                  ),
+                                )
+                              return (await response.json()) as NotebookExecution
+                            }
+                          : undefined
+                      }
+                    />
+                  </Match>
+
+                  {/* HTML documents render fully sandboxed — no scripts, no same-origin access */}
+                  <Match when={kind() === "html" && !view.source}>
+                    <div class="atlas-file-html">
+                      <iframe class="atlas-file-html-frame" sandbox="" srcdoc={html()} title={name()} />
+                    </div>
+                  </Match>
+
+                  {/* tabular data */}
+                  <Match when={kind() === "table" && !view.source}>
+                    <Show when={tabular()}>
+                      {(format) => <DataTableView text={view.draft} format={format()} name={name()} />}
+                    </Show>
+                  </Match>
+
+                  {/* genomic, alignment, and mass-spectrometry data */}
+                  <Match when={kind() === "scientific-data" && !view.source}>
+                    <Show when={biological()}>
+                      {(format) => <ScientificDataView text={view.draft} format={format()} name={name()} />}
+                    </Show>
+                  </Match>
+
+                  {/* large scientific containers */}
+                  <Match when={kind() === "scientific-binary"}>
+                    <Show when={binaryScience()}>
+                      {(format) => (
+                        <BinaryScienceView
+                          path={requestPath()}
+                          directory={directory()}
+                          sessionID={fileSessionID()}
+                          format={format()}
+                        />
+                      )}
+                    </Show>
+                  </Match>
+
+                  {/* pdf */}
+                  <Match when={kind() === "pdf"}>
+                    <div class="atlas-file-pdf">
+                      <Switch>
+                        <Match when={pdfMode() === "inline"}>
+                          <PdfViewer kind="pdf" data={{ base64: b64(), maxPages: 40 }} />
+                        </Match>
+                        <Match when={pdfMode() === "raw" && pdf.status === "ready"}>
+                          <Show when={pdf.bytes}>
+                            {(bytes) => <PdfViewer kind="pdf" data={{ bytes: bytes(), maxPages: 40 }} />}
+                          </Show>
+                        </Match>
+                        <Match when={pdfMode() === "raw" && pdf.status === "loading"}>
+                          <div class="atlas-file-loading" role="status" aria-live="polite">
+                            <div class="atlas-file-loading-heading" />
+                            <div class="atlas-file-loading-line" />
+                            <div class="atlas-file-loading-line is-short" />
+                            <span>Loading the complete {formatBytes(data()?.size ?? 0)} PDF…</span>
+                          </div>
+                        </Match>
+                        <Match when={pdfMode() === "raw" && pdf.status === "error"}>
+                          <div class="atlas-file-notice" role="alert">
+                            Couldn’t load the PDF preview. {pdf.error} Use Download above to open the original file.
+                          </div>
+                        </Match>
+                        <Match when={pdfMode() === "download"}>
+                          <div class="atlas-file-notice" role="status">
+                            This {formatBytes(data()?.size ?? 0)} PDF exceeds the {formatBytes(PDF_PREVIEW_LIMIT)}{" "}
+                            browser preview limit. Use Download above to open the original file.
+                          </div>
+                        </Match>
+                      </Switch>
+                    </div>
+                  </Match>
+
+                  {/* image */}
+                  <Match when={kind() === "image"}>
+                    <div class="atlas-file-image">
+                      <img src={dataUrl()} alt={name()} />
+                    </div>
+                  </Match>
+
+                  {/* scientific file */}
+                  <Match when={kind() === "science" && !view.source}>
+                    <Show when={scientific()}>
+                      {(artifact) => (
+                        <div class="atlas-file-science">
+                          <ScienceArtifact
+                            kind={artifact().kind}
+                            data={artifact().data}
+                            height={560}
+                            onInspect={(inspection) => setView("inspection", inspection)}
+                          />
+                        </div>
+                      )}
+                    </Show>
+                  </Match>
+
+                  {/* binary */}
+                  <Match when={kind() === "binary"}>
+                    <div class="atlas-file-empty">
+                      <div>
+                        Binary file — no inline preview.
+                        <br />
+                        Use Download to open it in another application.
+                      </div>
+                    </div>
+                  </Match>
+
+                  {/* code / text — editable source, or highlighted read view */}
+                  <Match
+                    when={
+                      (kind() === "code" ||
+                        kind() === "notebook" ||
+                        kind() === "markdown" ||
+                        kind() === "html" ||
+                        kind() === "science" ||
+                        kind() === "scientific-data" ||
+                        kind() === "table") &&
+                      view.source
+                    }
+                  >
+                    <CodeEditor
+                      label={`${name()} source`}
+                      value={view.draft}
+                      language={LANG[e()] ?? "text"}
+                      readOnly={writable() === false}
+                      wrap={kind() === "markdown"}
+                      onChange={(draft) => setView({ draft, saveError: view.conflict ? view.saveError : undefined })}
+                      onSave={() => void save()}
+                    />
+                  </Match>
+                  <Match when={kind() === "code"}>
+                    <div class="atlas-file-code">
+                      <Markdown class="atlas-md" text={fence(LANG[e()] ?? "text", view.draft)} />
+                    </div>
+                  </Match>
+                </Switch>
+              </div>
+            </Show>
           </Show>
-        </Show>
+        </div>
       </div>
-    </div>
+    </FileChromeProvider>
   )
 }
 

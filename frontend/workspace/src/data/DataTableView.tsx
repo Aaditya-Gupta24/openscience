@@ -1,4 +1,5 @@
 import { For, Show, createMemo, type JSX } from "solid-js"
+import { ViewerControls } from "@/atlas/file-chrome"
 import { createStore } from "solid-js/store"
 import { exportDelimited, numericColumn, parseTable, summarizeColumn, type DataTable, type TableFormat } from "./table"
 import "./DataTableView.css"
@@ -104,11 +105,15 @@ export function DataTableView(props: { text: string; format: TableFormat; name: 
         {(data) => (
           <>
             <header class="data-table-toolbar">
-              <div class="data-table-summary" aria-label="Dataset dimensions">
-                <strong>{data().totalRows.toLocaleString()} rows</strong>
-                <span aria-hidden="true">×</span>
-                <span>{data().columns.length.toLocaleString()} columns</span>
-              </div>
+              {/* The dimensions belong beside the file's name when a file
+                  header hosts them; the search and tools stay with the table. */}
+              <ViewerControls>
+                <div class="data-table-summary" aria-label="Dataset dimensions">
+                  <strong>{data().totalRows.toLocaleString()} rows</strong>
+                  <span aria-hidden="true">×</span>
+                  <span>{data().columns.length.toLocaleString()} columns</span>
+                </div>
+              </ViewerControls>
 
               <label class="data-table-search">
                 <span class="sr-only">Filter every column</span>

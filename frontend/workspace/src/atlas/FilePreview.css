@@ -18,31 +18,33 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-areas: "identity controls close";
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "identity viewer controls close";
   min-width: 0;
-  min-height: 48px;
+  min-height: 36px;
   flex: none;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
   border-bottom: 1px solid var(--color-border-weak);
   background: var(--color-surface-solid);
 }
 
+/* One line: glyph, name, then the kind and location in faint text. The name
+   yields first when the pane is narrow; the meta ellipsizes after it. */
 .atlas-file-identity {
   grid-area: identity;
   display: flex;
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .atlas-file-kind-icon {
   display: inline-grid;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   flex: none;
   place-items: center;
   border-radius: var(--atlas-radius-xs);
@@ -54,38 +56,43 @@
 }
 
 .atlas-file-type-glyph {
-  width: 19px;
-  height: 19px;
-}
-
-.atlas-file-heading {
-  min-width: 0;
+  width: 15px;
+  height: 15px;
 }
 
 .atlas-file-name {
   overflow: hidden;
+  min-width: 64px;
+  flex: 0 1 auto;
   color: var(--color-text);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
   letter-spacing: -0.006em;
-  line-height: 1.35;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The kind and location give way before the name does: they shrink first,
+   and the glyph still says what the file is once they are gone. */
 .atlas-file-meta {
   display: flex;
   min-width: 0;
+  flex: 1 100 auto;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  overflow: hidden;
   color: var(--color-text-faint);
   font-size: var(--font-size-x-small);
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .atlas-file-type {
-  flex: none;
+  overflow: hidden;
+  min-width: 0;
+  flex: 0 1 auto;
+  text-overflow: ellipsis;
 }
 
 .atlas-file-meta-separator {
@@ -97,6 +104,55 @@
   min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The active viewer's own controls (a PDF's pager and zoom) sit in the header
+   line rather than on a second bar of their own. Empty when the viewer has
+   none, and then it takes no room. */
+.atlas-file-viewer-controls {
+  grid-area: viewer;
+  display: flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.atlas-file-viewer-controls:empty {
+  display: none;
+}
+
+.atlas-file-viewer-controls .pdf-viewer-page-controls,
+.atlas-file-viewer-controls .pdf-viewer-zoom {
+  padding: 1px;
+}
+
+.atlas-file-viewer-controls .pdf-viewer-page-controls button,
+.atlas-file-viewer-controls .pdf-viewer-zoom button {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: var(--font-size-small);
+}
+
+.atlas-file-viewer-controls .pdf-viewer-page-status {
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.atlas-file-viewer-controls .pdf-viewer-page-label {
+  display: none;
+}
+
+.atlas-file-viewer-controls .data-table-summary {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-x-small);
+  white-space: nowrap;
+}
+
+.atlas-file-viewer-controls .data-table-summary strong {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
 }
 
 .atlas-file-controls,
@@ -115,7 +171,7 @@
   display: flex;
   flex: none;
   align-items: center;
-  padding: 2px;
+  padding: 1px;
   border: 0;
   border-radius: var(--atlas-radius-sm);
   background: var(--color-bg-subtle);
@@ -139,7 +195,7 @@
 }
 
 .atlas-file-mode {
-  min-height: 32px;
+  min-height: 26px;
   padding: 0 8px;
   background: transparent;
   color: var(--color-text-faint);
@@ -159,7 +215,7 @@
 
 .atlas-file-button,
 .atlas-file-action {
-  min-height: 32px;
+  min-height: 28px;
   border: 0;
   background: var(--color-bg-subtle);
   color: var(--color-text-muted);
@@ -179,7 +235,7 @@
 .atlas-file-action {
   display: inline-flex;
   align-items: center;
-  width: 32px;
+  width: 28px;
   justify-content: center;
   padding: 0;
   background: transparent;
@@ -212,8 +268,8 @@
 .atlas-file-close {
   grid-area: close;
   display: inline-grid;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex: none;
   place-items: center;
   border: 1px solid transparent;
@@ -821,21 +877,6 @@
   height: 100%;
 }
 
-/* The outer file toolbar already owns the filename and type. Inside a file
-   tab, PDF controls therefore stay on one compact line instead of repeating a
-   second document title row. Standalone artifact PDFs retain their title. */
-.atlas-file-pdf .pdf-viewer-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.atlas-file-pdf .pdf-viewer-title {
-  display: none;
-}
-
-.atlas-file-pdf .pdf-viewer-page-controls {
-  justify-self: start;
-}
-
 .atlas-file-image {
   display: grid;
   width: 100%;
@@ -954,20 +995,38 @@
   }
 }
 
-@container atlas-file-view (max-width: 520px) {
+@container atlas-file-view (max-width: 480px) {
+  .atlas-file-meta {
+    display: none;
+  }
+}
+
+@container atlas-file-view (max-width: 380px) {
+  /* Two rows in a narrow pane: the file and its close button, then the
+     viewer's controls at the left and the actions at the right. */
   .atlas-file-toolbar {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "identity close" "controls controls";
-    gap: 8px;
+    grid-template-areas: "identity close" "viewer controls";
+    gap: 4px 8px;
   }
 
   .atlas-file-meta {
     display: none;
   }
 
+  .atlas-file-viewer-controls {
+    min-width: 0;
+    justify-self: start;
+  }
+
+  .atlas-file-viewer-controls:empty {
+    display: block;
+  }
+
   .atlas-file-controls {
     min-width: 0;
     flex-wrap: wrap;
+    justify-self: end;
   }
 
   .atlas-file-modes {

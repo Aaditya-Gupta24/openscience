@@ -258,7 +258,7 @@ export namespace SystemPrompt {
     })
     return [
       "<core-skills>",
-      "Core skills, loaded with skill({name}) before the first substantive step when the request matches. Load one skill for the task at hand; do not stack skills or narrate the load.",
+      "Core skills, loaded with skill({name}) when the request matches. Load the skill for each phase as that phase begins (figures before the first plot, schematics before a diagram, a writing skill before drafting a report or paper), one at a time rather than all up front; do not load a skill on keywords alone, and do not narrate the load.",
       ...core.map((skill) => `- ${skill.name}: ${skill.summary ?? sentence(skill.description)}`),
       ...(pointers.length ? ["Library skills by exact name for provider and database work:", ...pointers] : []),
       `Anything else in the ${catalog.length}-skill library: skill({query:"<focused task>"}) and load an exact returned name.`,

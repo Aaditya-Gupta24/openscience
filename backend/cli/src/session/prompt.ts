@@ -285,6 +285,51 @@ export namespace SessionPrompt {
       : decodeURIComponent(payload)
   }
 
+  /** How long after its last activity an interrupted session is still worth
+   * picking up on its own. Older ones wait for the person to come back. */
+  const RESUME_WINDOW_MS = 12 * 60 * 60_000
+
+  /** Whether a session's newest message is an assistant message that never
+   * finished: the process that owned its loop is gone. */
+  export function interrupted(messages: MessageV2.WithParts[]) {
+    const last = messages.at(-1)
+    if (!last || last.info.role !== "assistant") return false
+    return !last.info.time.completed && !last.info.error
+  }
+
+  /**
+   * Sessions the previous process left mid-turn: a lead that was working
+   * when the server restarted picks its loop back up, a worker whose lead is
+   * gone is closed with the reason. Nothing here spends on a session that
+   * has been quiet longer than the window. Runs once per project at warmup.
+   */
+  export async function resumeInterrupted(now = Date.now()) {
+    const resumed: string[] = []
+    for await (const session of Session.list()) {
+      if (state()[session.id] || pending().has(session.id)) continue
+      if (now - session.time.updated > RESUME_WINDOW_MS) continue
+      const messages = await Session.messages({ sessionID: session.id }).catch(() => [])
+      if (!interrupted(messages)) continue
+      const last = messages.at(-1)!
+      if (session.parentID) {
+        await Session.updateMessage({
+          ...(last.info as MessageV2.Assistant),
+          error: new MessageV2.AbortedError({
+            message: "The server restarted while this worker was running.",
+          }).toObject(),
+          time: { ...last.info.time, completed: now },
+        })
+        continue
+      }
+      log.info("resuming a session the previous process left mid-turn", { sessionID: session.id })
+      resumed.push(session.id)
+      detached(() => loop(session.id)).catch((error) =>
+        log.warn("interrupted session did not resume", { sessionID: session.id, error }),
+      )
+    }
+    return resumed
+  }
+
   export function assertNotBusy(sessionID: string) {
     const match = state()[sessionID] ?? pending().get(sessionID)
     if (match) throw new Session.BusyError(sessionID)
@@ -637,11 +682,13 @@ export namespace SessionPrompt {
   }
 
   /**
-   * A backend exit can leave an ordinary tool part durably pending/running
-   * even though no executor still owns it. Close that wrapper before the next
-   * provider turn so the transcript, session status, and model context agree.
-   * Task calls are excluded because their separate durable-attempt recovery
-   * can still produce an authoritative child handoff after a parent restart.
+   * A backend exit can leave a tool part durably pending/running even though
+   * no executor still owns it. Close that wrapper before the next provider
+   * turn so the transcript, session status, and model context agree. Task
+   * calls run after `recoverTaskAttempts`: an attempt that finished while the
+   * parent was down has been restored by then, so a Task still running here
+   * has no worker behind it and is closed like any other call, instead of
+   * reading "Running" for good in the transcript.
    */
   async function recoverInterruptedTools(messages: MessageV2.WithParts[]) {
     let changed = false
@@ -649,7 +696,7 @@ export namespace SessionPrompt {
       if (message.info.role !== "assistant") continue
       let repaired = false
       for (const part of message.parts) {
-        if (part.type !== "tool" || part.tool === TaskTool.id) continue
+        if (part.type !== "tool") continue
         if (part.state.status !== "pending" && part.state.status !== "running") continue
         const now = Date.now()
         const start = part.state.status === "running" ? part.state.time.start : now
@@ -2277,8 +2324,8 @@ export namespace SessionPrompt {
         : settings.level === "light"
           ? "Delegation is Low. Delegate at most one genuinely independent branch, and only when it clearly shortens the path to the result."
           : settings.level === "high"
-            ? "Delegation is High. Parallelize independent branches freely, one worker per branch."
-            : "Delegation is Normal. Delegate a genuinely independent branch when it shortens the path to the result; otherwise do the work here."
+            ? "Delegation is High. Parallelize independent branches freely, one worker per branch; prefer a worker for any self-contained branch of research, analysis or writing over doing it inline."
+            : "Delegation is Auto. Delegate a genuinely independent branch when it shortens the path to the result; otherwise do the work here."
     const interaction = decisionPolicy(settings.autonomy)
     return [
       `Research effort: ${effort.toUpperCase()}. ${posture}`,
