@@ -1,6 +1,6 @@
 {
   "name": "@synsci/desktop",
-  "version": "2.0.100",
+  "version": "2.0.101",
   "description": "The native OpenScience research workspace for macOS, Windows, and Linux.",
   "author": "Synthetic Sciences",
   "private": true,
