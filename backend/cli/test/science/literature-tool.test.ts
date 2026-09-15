@@ -151,6 +151,54 @@ describe("literature read", () => {
     expect(result.output).toContain("Closed but summarized")
   })
 
+  const GATED = JSON.stringify({
+    id: "https://openalex.org/W4",
+    doi: "https://doi.org/10.1000/gated.1",
+    display_name: "An Open Paper Behind a Bot Wall",
+    publication_year: 2022,
+    authorships: [{ author: { display_name: "Rosalind Franklin" } }],
+    primary_location: {
+      source: { display_name: "Journal" },
+      landing_page_url: "https://doi.org/10.1000/gated.1",
+      pdf_url: "https://example.com/gated.pdf",
+    },
+    best_oa_location: { pdf_url: "https://example.com/gated.pdf" },
+    locations: [{ pdf_url: "https://example.org/gated.pdf" }],
+    abstract_inverted_index: { Open: [0], in: [1], principle: [2] },
+  })
+
+  test("a refused open copy falls back to the next location before the abstract", async () => {
+    if (!(await Literature.extractor())) return
+    const hits: string[] = []
+    route((url) => {
+      if (url.includes("openalex.org")) return new Response(GATED)
+      hits.push(url)
+      if (url.startsWith("https://example.com")) return new Response("forbidden", { status: 403 })
+      return new Response(tinyPDF(["Text from the repository copy"]), {
+        headers: { "content-type": "application/pdf" },
+      })
+    })
+    const { result } = await run({ action: "read", ref: "10.1000/gated.1" })
+    expect(result.metadata.status).not.toBe("abstract-only")
+    expect(result.output).toContain("Text from the repository copy")
+    expect(hits.some((url) => url.startsWith("https://example.com"))).toBe(true)
+    expect(hits.some((url) => url.startsWith("https://example.org"))).toBe(true)
+  })
+
+  test("every open copy refusing the download is abstract only with the refusals named, not an error", async () => {
+    route((url) => {
+      if (url.includes("openalex.org")) return new Response(GATED)
+      return new Response("forbidden", { status: 403 })
+    })
+    const { result } = await run({ action: "read", ref: "10.1000/gated.1" })
+    expect(result.metadata.status).toBe("abstract-only")
+    expect(result.metadata.refused).toHaveLength(2)
+    expect(result.output).toContain("could not be downloaded")
+    expect(result.output).toContain("example.com: Request failed with status code: 403")
+    expect(result.output).toContain("Open in principle")
+    expect(result.output).toContain("do not retry this download")
+  })
+
   test("an unrecognized reference explains the accepted forms", async () => {
     await expect(run({ action: "read", ref: "nope" })).rejects.toThrow(/DOI.*arXiv id.*URL.*local PDF path/)
   })

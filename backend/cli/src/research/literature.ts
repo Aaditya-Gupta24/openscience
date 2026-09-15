@@ -32,6 +32,11 @@ export namespace Literature {
     url?: string
     /** A direct full-text URL when one is known (open access PDF or arXiv). */
     pdf?: string
+    /** Every open full-text location known, most reliable first: arXiv, then
+     * the publisher and repository copies OpenAlex lists. A host that refuses
+     * the download (bot protection behind an open-access flag is common) is
+     * not the last word while another copy exists. */
+    pdfs?: string[]
     abstract?: string
     citedBy?: number
     sources: string[]
@@ -142,6 +147,13 @@ export namespace Literature {
   function fromWork(work: Work): Candidate {
     const arxivId = arxivOf(work)
     const doi = normalizeDOI(work.doi)
+    const pdfs = [
+      ...(arxivId ? [`https://arxiv.org/pdf/${arxivId}`] : []),
+      work.best_oa_location?.pdf_url,
+      work.primary_location?.pdf_url,
+      ...(work.locations ?? []).map((location) => location.pdf_url),
+      work.open_access?.oa_url,
+    ].filter((url, index, all): url is string => typeof url === "string" && !!url && all.indexOf(url) === index)
     const pdf =
       work.best_oa_location?.pdf_url ??
       work.primary_location?.pdf_url ??
@@ -157,6 +169,7 @@ export namespace Literature {
       arxiv: arxivId,
       url: work.primary_location?.landing_page_url ?? (doi ? `https://doi.org/${doi}` : work.id),
       pdf,
+      pdfs,
       abstract: fromInverted(work.abstract_inverted_index),
       citedBy: work.cited_by_count,
       sources: ["openalex"],
@@ -234,6 +247,9 @@ export namespace Literature {
         existing.doi ??= candidate.doi
         existing.arxiv ??= candidate.arxiv
         existing.pdf ??= candidate.pdf
+        if (candidate.pdfs?.length) {
+          existing.pdfs = [...new Set([...(existing.pdfs ?? []), ...candidate.pdfs])]
+        }
         existing.venue ??= candidate.venue
         existing.year ??= candidate.year
         existing.date ??= candidate.date
@@ -346,6 +362,8 @@ export namespace Literature {
     abstract?: string
     /** Where the full text can be downloaded from, when open. */
     pdf?: string
+    /** Every open location to try, most reliable first. */
+    pdfs?: string[]
     /** Set when the source has no open full text; the caller reports abstract-only. */
     closed?: string
   }
@@ -421,6 +439,7 @@ export namespace Literature {
       landing: candidate?.url ?? `https://doi.org/${reference.doi}`,
       abstract: candidate?.abstract,
       pdf,
+      pdfs: candidate?.pdfs,
       closed: pdf
         ? undefined
         : work

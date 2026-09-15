@@ -209,6 +209,30 @@ export namespace ExecutionAuthority {
     }
   }
 
+  /**
+   * Whether a decision taken while a launch was being prepared no longer
+   * holds. Trust, access mode, sandbox policy and any root the launch was
+   * going to rely on count; a grant added in the meantime (a parallel read of
+   * a new folder, a brokered download) widens authority and does not. The
+   * generation hash alone made every such grant fail a concurrent shell
+   * command with a retry message, which is exactly when models run tools in
+   * parallel.
+   */
+  export function narrowed(prepared: Decision, current: Decision): boolean {
+    if (current.allowed !== prepared.allowed) return true
+    if (current.trustRevision !== prepared.trustRevision) return true
+    if (current.accessRevision !== prepared.accessRevision) return true
+    if (current.accessMode !== prepared.accessMode) return true
+    if (current.mode !== prepared.mode) return true
+    if (JSON.stringify(current.sandbox) !== JSON.stringify(prepared.sandbox)) return true
+    if (current.workspace !== prepared.workspace || current.scratch !== prepared.scratch) return true
+    const readable = new Set(current.readable)
+    const writable = new Set(current.writable)
+    return (
+      prepared.readable.some((root) => !readable.has(root)) || prepared.writable.some((root) => !writable.has(root))
+    )
+  }
+
   export async function require(input: {
     projectID?: string
     sessionID: string

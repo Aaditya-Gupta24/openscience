@@ -36,6 +36,26 @@ test("subprocess env filtering never passes managed Atlas provider keys", () => 
   expect(filtered.META_MODEL_BASE_URL).toBeUndefined()
 })
 
+test("subprocess and kernel env filtering pass the TLS trust bundle variables", () => {
+  const env = {
+    PATH: "/usr/bin",
+    SSL_CERT_FILE: "/envs/python/ssl/cacert.pem",
+    SSL_CERT_DIR: "/envs/python/ssl/certs",
+    REQUESTS_CA_BUNDLE: "/envs/python/ssl/cacert.pem",
+    CURL_CA_BUNDLE: "/envs/python/ssl/cacert.pem",
+    RANDOM_SECRET: "nope",
+  }
+  const subprocess = OpenScience.filterEnvForSubprocess(env)
+  expect(subprocess.SSL_CERT_FILE).toBe("/envs/python/ssl/cacert.pem")
+  expect(subprocess.SSL_CERT_DIR).toBe("/envs/python/ssl/certs")
+  expect(subprocess.REQUESTS_CA_BUNDLE).toBe("/envs/python/ssl/cacert.pem")
+  expect(subprocess.CURL_CA_BUNDLE).toBe("/envs/python/ssl/cacert.pem")
+  expect(subprocess.RANDOM_SECRET).toBeUndefined()
+  const kernel = OpenScience.kernelEnv(env)
+  expect(kernel.SSL_CERT_FILE).toBe("/envs/python/ssl/cacert.pem")
+  expect(kernel.RANDOM_SECRET).toBeUndefined()
+})
+
 test("subprocess env filtering still passes BYOK OpenRouter keys", () => {
   const filtered = OpenScience.filterEnvForSubprocess({
     OPENROUTER_API_KEY: "sk-or-user-owned",

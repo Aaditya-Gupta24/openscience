@@ -284,4 +284,14 @@ export namespace Shell {
     if (s && !BLACKLIST.has(process.platform === "win32" ? path.win32.basename(s) : path.basename(s))) return s
     return fallback()
   })
+
+  /** The shell behind the model's `bash` tool. Models write bash, and zsh
+   * (the login shell on macOS) is close but not the same: `status` is a
+   * read-only variable there, so `status=$?` fails a script that runs
+   * everywhere else. Bash when it is installed; the person's shell otherwise. */
+  export const forTool = lazy(() => {
+    if (process.platform === "win32") return acceptable()
+    const bash = Bun.which("bash") ?? (exists("/bin/bash") ? "/bin/bash" : undefined)
+    return bash ?? acceptable()
+  })
 }

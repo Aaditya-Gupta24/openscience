@@ -8,6 +8,8 @@ import { Experiments } from "../../src/experiments"
 import { SessionFilesystem } from "../../src/session/filesystem"
 import { ArtifactTool } from "../../src/tool/artifact"
 import { executionSession, tmpdir } from "../fixture/fixture"
+import { ManagedProject } from "../../src/project/managed"
+import { Session } from "../../src/session"
 
 const context = (sessionID: string) => ({
   sessionID,
@@ -303,6 +305,34 @@ test("artifact save_file takes a study run of this session as provenance, and re
         context(session.id),
       )
       expect(refused.title).toBe("Invalid provenance")
+    },
+  })
+})
+
+test("artifact save_file reads a report the agent wrote under Project files from an isolated session", async () => {
+  const project = await ManagedProject.create("Artifact from project files")
+  await Instance.provide({
+    directory: project.worktree,
+    projectID: project.id,
+    fn: async () => {
+      const session = await Session.create({})
+      try {
+        // An isolated session has no grant for the project directory; the
+        // read tool still treats it as internal, so saving from it must too.
+        const workspace = await SessionFilesystem.workspace(session.id)
+        expect(workspace).not.toBe(project.worktree)
+        const report = path.join(project.worktree, "report", "main.pdf")
+        await Bun.write(report, "%PDF-1.5\nproject report\n")
+        const tool = await ArtifactTool.init()
+        const saved = await tool.execute(
+          { action: "save_file", path: report, summary: "Churn EDA report" },
+          context(session.id),
+        )
+        expect(saved.title).toBe("Saved Result: Churn EDA report")
+        expect(saved.metadata.savedArtifact).toMatchObject({ version: 1, kind: "report" })
+      } finally {
+        await Session.remove(session.id)
+      }
     },
   })
 })

@@ -5,6 +5,7 @@ import { ArtifactStore } from "@/artifact/store"
 import { File } from "@/file"
 import { ArtifactFile } from "@/file/artifacts"
 import { Instance } from "@/project/instance"
+import { Filesystem } from "@/util/filesystem"
 import { Provenance } from "@/science/provenance/store"
 import { Experiments } from "@/experiments"
 import { JobBroker } from "@/compute/job-broker"
@@ -269,9 +270,16 @@ export const ArtifactTool = Tool.define("artifact", {
       return result("Invalid provenance", "The producing run was not found in this project and session.")
     }
     {
+      // A file under Project files is the project's own durable material: the
+      // read tool treats it as internal, and saving it as a Result must too.
+      // An isolated session has no grant for the project directory, so the
+      // session path alone refused every report the agent had written there.
+      const canonical = await Filesystem.canonical(params.path!)
+      const inProject = canonical ? await Instance.containsCanonicalPath(canonical) : false
       const file = await File.rawSource(params.path!, {
         sessionID: ctx.sessionID,
         maxBytes: ArtifactStore.MAX_VERSION_BYTES,
+        ...(inProject ? { projectPreview: true } : {}),
       })
       const name = path.basename(params.path!)
       const classified = ArtifactFile.classify(name)

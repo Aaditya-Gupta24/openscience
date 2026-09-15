@@ -1736,7 +1736,30 @@ export namespace ManagedEnvironments {
         CONDA_PREFIX: prefix,
         PATH: [bin, process.env.PATH].filter(Boolean).join(path.delimiter),
         MAMBA_ROOT_PREFIX: root(),
+        ...(await trust(prefix)),
       },
+    }
+  }
+
+  /**
+   * Point OpenSSL and the common HTTP clients at the environment's own CA
+   * bundle. The environment is built in a staging directory and moved into
+   * place, so the certificate path compiled into its OpenSSL names a directory
+   * that no longer exists; without this every HTTPS request from urllib,
+   * httpx or requests-without-certifi fails with CERTIFICATE_VERIFY_FAILED.
+   * A bundle the person configured themselves (a corporate CA) stays.
+   */
+  async function trust(prefix: string): Promise<Record<string, string>> {
+    const bundle = path.join(prefix, "ssl", "cacert.pem")
+    const present = await Bun.file(bundle)
+      .exists()
+      .catch(() => false)
+    if (!present) return {}
+    return {
+      SSL_CERT_FILE: process.env.SSL_CERT_FILE ?? bundle,
+      SSL_CERT_DIR: process.env.SSL_CERT_DIR ?? path.join(prefix, "ssl", "certs"),
+      REQUESTS_CA_BUNDLE: process.env.REQUESTS_CA_BUNDLE ?? bundle,
+      CURL_CA_BUNDLE: process.env.CURL_CA_BUNDLE ?? bundle,
     }
   }
 

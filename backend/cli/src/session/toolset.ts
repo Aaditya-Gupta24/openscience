@@ -35,10 +35,11 @@ export namespace Toolset {
     const added = [...after].filter((name) => !before.has(name)).toSorted()
     const removed = [...before].filter((name) => !after.has(name)).toSorted()
     if (!added.length && !removed.length) return
+    // The first line is what the transcript shows as the row label, so it
+    // names the change rather than announcing that one happened.
     return [
-      "Tool availability changed for this request.",
-      ...(added.length ? [`Added tools: ${list(added)}.`] : []),
-      ...(removed.length ? [`Removed tools: ${list(removed)}.`] : []),
+      ...(added.length ? [`Tools added: ${list(added)}.`] : []),
+      ...(removed.length ? [`Tools removed: ${list(removed)}.`] : []),
       "Use only the currently advertised tool definitions. This changes availability, not filesystem or execution authority.",
     ].join("\n")
   }

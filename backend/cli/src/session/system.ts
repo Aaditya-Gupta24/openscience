@@ -17,6 +17,7 @@ import { Skill } from "../skill"
 import { searchSkills } from "../skill/search"
 import { PermissionNext } from "../permission/next"
 import { ProjectAccess } from "../project/access"
+import { ImageRoute } from "../tool/image-route"
 
 export namespace SystemPrompt {
   const skillPrompts = new WeakMap<Skill.Info[], Map<string, string>>()
@@ -354,6 +355,7 @@ export namespace SystemPrompt {
         `  Platform: ${process.platform}`,
         `  Today's date: ${new Date().toDateString()}`,
         `  ${cutoff(model.knowledge)}`,
+        `  ${await ImageRoute.line()}`,
         ...extra.map((line) => `  ${line}`),
         `</env>`,
         `An OpenScience project is a durable research context that may aggregate multiple connected folders and files. ${isolated ? "Session scratch belongs only to this conversation." : "This session uses the project directory as its default tool working directory; its files are shared and remain when the session is deleted."} Results are immutable deliverables shared project-wide; a normal workspace file is not a Result until artifact save_file returns its Result ID and version.`,

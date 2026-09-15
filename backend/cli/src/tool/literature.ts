@@ -216,6 +216,7 @@ export const LiteratureTool = Tool.define("literature", {
       .join(" · ")
 
     const cached = await readCache(dir, resolved.key)
+    let refused: string[] = []
     const loaded = await (async (): Promise<Cached | { kind: "closed" } | { kind: "downloaded"; pdf: string }> => {
       if (cached) return cached
       if (reference.kind === "file") {
@@ -225,7 +226,35 @@ export const LiteratureTool = Tool.define("literature", {
         return { kind: "local", pages: extracted.pages, pdf: reference.path, text }
       }
       if (!resolved.pdf) return { kind: "closed" }
-      const got = await download(resolved.pdf, resolved.key, dir, ctx)
+      // Try every open location before giving up: a publisher that answers
+      // 403 to a non-browser client behind an open-access flag is common, and
+      // the repository or arXiv copy usually is not. When all refuse, the
+      // read falls back to the abstract with the refusal spelled out, so the
+      // caller cites what it has instead of retrying reworded downloads.
+      const locations = [...new Set([...(resolved.pdfs ?? []), resolved.pdf])]
+      const refusals: string[] = []
+      const got = await (async () => {
+        for (const url of locations) {
+          try {
+            return await download(url, resolved.key, dir, ctx)
+          } catch (error) {
+            ctx.abort.throwIfAborted()
+            const host = (() => {
+              try {
+                return new URL(url).host
+              } catch {
+                return url
+              }
+            })()
+            refusals.push(`${host}: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+        return undefined
+      })()
+      if (!got) {
+        refused = refusals
+        return { kind: "closed" }
+      }
       ctx.abort.throwIfAborted()
       if (got.kind === "webpage") {
         const pages = [got.text]
@@ -240,19 +269,25 @@ export const LiteratureTool = Tool.define("literature", {
     ctx.abort.throwIfAborted()
 
     if (loaded.kind === "closed") {
+      const reason = refused.length
+        ? `the listed open full text could not be downloaded (${refused.join("; ")}); the publisher refuses non-browser clients or the copy sits behind a paywall despite its open-access flag`
+        : (resolved.closed ?? "no open full text located")
       return {
         title: `Literature: ${resolved.title ?? params.ref} (abstract only)`,
         output: [
           heading,
           ids,
-          `Status: abstract only — ${resolved.closed ?? "no open full text located"}.`,
+          `Status: abstract only — ${reason}.`,
           resolved.abstract ? `\n${resolved.abstract}` : "\nNo abstract available either.",
-          `\nIf you have the PDF, pass its local path as ref. Otherwise cite only what the abstract supports.`,
+          `\nIf you have the PDF, pass its local path as ref. Otherwise cite only what the abstract supports; do not retry this download.`,
         ].join("\n"),
-        metadata: { status: "abstract-only", doi: resolved.doi, arxiv: resolved.arxiv, truncated: false } as Record<
-          string,
-          unknown
-        >,
+        metadata: {
+          status: "abstract-only",
+          doi: resolved.doi,
+          arxiv: resolved.arxiv,
+          truncated: false,
+          ...(refused.length ? { refused } : {}),
+        } as Record<string, unknown>,
       }
     }
 

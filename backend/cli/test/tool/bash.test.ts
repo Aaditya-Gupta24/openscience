@@ -85,8 +85,29 @@ describe("tool.bash", () => {
     })
   })
 
+  test("runs in bash rather than the login shell, so bash-isms like `status=$?` work", async () => {
+    if (process.platform === "win32") return
+    await Instance.provide({
+      directory: projectRoot,
+      fn: async () => {
+        const bash = await BashTool.init()
+        // `status` is read-only in zsh; a script that sets it dies there.
+        const result = await bash.execute(
+          {
+            command: 'true; status=$?; echo "exit=$status shell=$0"',
+            description: "Sets a variable zsh forbids",
+          },
+          await context(),
+        )
+        expect(result.metadata.exit).toBe(0)
+        expect(result.metadata.output).toContain("exit=0")
+        expect(path.basename(Shell.forTool())).toMatch(/^bash/)
+      },
+    })
+  })
+
   test("reports an upstream pipeline failure", async () => {
-    if (!/^(bash|zsh)(\.exe)?$/i.test(path.basename(Shell.acceptable()))) return
+    if (!/^(bash|zsh)(\.exe)?$/i.test(path.basename(Shell.forTool()))) return
     await Instance.provide({
       directory: projectRoot,
       fn: async () => {

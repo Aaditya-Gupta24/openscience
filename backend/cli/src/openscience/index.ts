@@ -111,14 +111,20 @@ const PRIVATE_KEY_SECRET = /-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\s\S]*?--
 const SECRET_FIELD =
   /(^|[_-])(api[_-]?key|private[_-]?key|signing[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|passphrase|credential|authorization|cookie|deletion[_-]?proof)($|[_-])|^(apiKey|privateKey|signingKey|accessToken|refreshToken|authToken|clientSecret|secretKey|deletionProof|access|refresh|key)$/i
 
+/** Where OpenSSL, curl and Python HTTP clients find their CA bundle. Managed
+ * environments set these to their own bundle; a person's corporate CA passes
+ * through unchanged. */
+const TLS_TRUST_ENV_KEYS = ["SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"]
 const SAFE_ENV_KEYS = new Set([
   ...BYOK_LLM_ENV_KEYS,
   ...BYOK_LLM_BASE_URL_KEYS,
   ...SYNCED_SERVICE_ENV_KEYS,
+  ...TLS_TRUST_ENV_KEYS,
   "OPENSCIENCE_RUNTIME",
 ])
 const SAFE_ENV_PREFIXES = ["PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_", "TMPDIR", "XDG_", "EDITOR", "VISUAL"]
 const KERNEL_RUNTIME_KEYS = new Set([
+  ...TLS_TRUST_ENV_KEYS,
   "TMP",
   "TEMP",
   "PYTHONPATH",

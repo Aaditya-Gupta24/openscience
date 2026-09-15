@@ -177,7 +177,7 @@ const parser = lazy(async () => {
 
 // TODO: we may wanna rename this tool so it works better on other shells
 export const BashTool = Tool.define("bash", async () => {
-  const shell = Shell.acceptable()
+  const shell = Shell.forTool()
   log.info("bash tool using shell", { shell })
 
   return {
@@ -517,7 +517,7 @@ export const BashTool = Tool.define("bash", async () => {
           sessionID: ctx.sessionID,
           capability: "shell",
         })
-        if (current.generation !== prepared.generation) {
+        if (ExecutionAuthority.narrowed(prepared, current)) {
           throw new Error("Execution authority changed while the shell command was being prepared; retry it")
         }
         // Build the wrapper only after the final authority check, while trust

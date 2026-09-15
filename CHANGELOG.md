@@ -8,6 +8,54 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+Failures traced through one EDA-and-LaTeX-report session that showed eleven
+red rows in a single turn:
+
+- **HTTPS from the managed Python environment works again.** The environment
+  is built in a staging directory and moved into place, and the CA bundle
+  path compiled into its OpenSSL still named the staging directory, so every
+  request from `urllib`, `httpx` or `requests` without `certifi` failed with
+  `CERTIFICATE_VERIFY_FAILED` (bibliography checks against Crossref included).
+  Managed environments now set `SSL_CERT_FILE`, `SSL_CERT_DIR`,
+  `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` to their own bundle for shell
+  commands, kernels and local compute jobs; a bundle the person configured
+  themselves passes through unchanged.
+- **`literature read` tries every open location and falls back to the
+  abstract instead of erroring.** A publisher that answers 401 or 403 to a
+  non-browser client behind OpenAlex's open-access flag ended the read with a
+  bare "Request failed with status code: 403", four times in one turn until
+  the repetition guard spoke. The read now tries arXiv, then each repository
+  and publisher copy OpenAlex lists, and when all refuse it returns the
+  abstract with the refusals named and a note not to retry the download.
+- **The `bash` tool runs in bash.** It used the login shell, zsh on macOS,
+  where `status` is a read-only variable; a script setting `status=$?` died
+  with "read-only variable: status". Bash is used when installed, the login
+  shell otherwise.
+- **`artifact save_file` accepts a file under Project files from an isolated
+  session.** The read tool treats the project directory as internal, but the
+  artifact tool went through the session's grants alone and refused the
+  report the agent had just written there ("No read access …"). It now uses
+  the project's own authority for files inside the project directory.
+- **A grant added while a shell command was being prepared no longer fails
+  it.** The final authority check compared a hash that included the grant
+  revision, so a parallel `read` of a new folder or a brokered download made
+  a concurrent `bash`, compute launch or terminal command fail with
+  "Execution authority changed … retry it". Trust, access mode, sandbox
+  policy and any root the launch relied on still fail it; a widened grant
+  does not.
+- **Image generation availability is stated in the environment.** The
+  schematics skill was loaded and `generate_image` called in a session with
+  only managed billing, which does not route image models, so the call failed
+  every time. The system prompt now says whether image generation is
+  available and, when it is not, to draw schematics with TikZ, matplotlib or
+  SVG and not call the tool.
+- **Tool notices name the change.** The durable note that follows a skill
+  load began "Tool availability changed for this request.", which is what the
+  transcript showed three times in a row; the first line is now
+  "Tools added: …" or "Tools removed: …".
+
 ## v2.0.100 — 2026-09-15
 
 ### Fixed

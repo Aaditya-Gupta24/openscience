@@ -1,8 +1,6 @@
 import path from "node:path"
 import z from "zod"
 import { Tool } from "./tool"
-import { Provider } from "@/provider/provider"
-import { OpenScience } from "@/openscience"
 import { Instance } from "@/project/instance"
 import { SafeFileIO } from "@/file/safe-io"
 import { assertExternalDirectory, sessionToolDirectory } from "./external-directory"
@@ -12,7 +10,7 @@ import { Bus } from "@/bus"
 import { File } from "@/file"
 import { FileWatcher } from "@/file/watcher"
 import { Network } from "@/settings/network"
-import { Env } from "@/env"
+import { ImageRoute } from "./image-route"
 
 const MAX_IMAGE_BYTES = 30 * 1024 * 1024
 const MAX_IMAGE_RESPONSE_BYTES = Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 1024 * 1024
@@ -404,46 +402,8 @@ export const GenerateImageTool = Tool.define("generate_image", {
       references.push({ mime: mimeOf(referenceExtension), data: bytes.bytes.toString("base64") })
     }
 
-    const google = await Provider.getProvider("google").catch(() => undefined)
-    const openrouter = await Provider.getProvider("openrouter").catch(() => undefined)
-    const googleKey = typeof google?.options?.apiKey === "string" ? google.options.apiKey : google?.key
-    const openrouterKey = typeof openrouter?.options?.apiKey === "string" ? openrouter.options.apiKey : openrouter?.key
-    const openrouterBase =
-      typeof openrouter?.options?.baseURL === "string"
-        ? openrouter.options.baseURL.replace(/\/+$/, "")
-        : "https://openrouter.ai/api/v1"
-    const ambient = (key: string, names: string[]) => names.some((name) => Env.get(name) === key)
-    const candidates = [
-      ...(googleKey && !OpenScience.isManagedKeyValue(googleKey)
-        ? [
-            {
-              kind: "gemini" as const,
-              key: googleKey,
-              base:
-                typeof google?.options?.baseURL === "string"
-                  ? google.options.baseURL.replace(/\/+$/, "")
-                  : "https://generativelanguage.googleapis.com/v1beta",
-              label: "the connected Gemini key",
-              rank: ambient(googleKey, ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]) ? 1 : 2,
-            },
-          ]
-        : []),
-      ...(openrouterKey && !OpenScience.isManagedKeyValue(openrouterKey)
-        ? [
-            {
-              kind: "openrouter" as const,
-              key: openrouterKey,
-              base: openrouterBase,
-              label: "the connected OpenRouter key",
-              rank: ambient(openrouterKey, ["OPENROUTER_API_KEY"]) ? 1 : 2,
-            },
-          ]
-        : []),
-    ]
-    const route = candidates.sort((a, b) => b.rank - a.rank)[0]
-    if (!route) {
-      throw new Error("Nano Banana is unavailable. Connect your Gemini or OpenRouter account in Customize → Models.")
-    }
+    const route = await ImageRoute.resolve()
+    if (!route) throw new Error(ImageRoute.UNAVAILABLE)
     if (route.kind === "gemini" && extension !== ".png") {
       throw new Error("Gemini image generation returns PNG. Use an output_path ending in .png.")
     }

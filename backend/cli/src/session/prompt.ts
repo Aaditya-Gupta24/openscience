@@ -3270,7 +3270,7 @@ or internal reasoning. Call plan_exit when the plan is ready for approval.`)
         sessionID: input.sessionID,
         capability: "shell",
       })
-      if (current.generation !== authority.generation) {
+      if (ExecutionAuthority.narrowed(authority, current)) {
         throw new Error("Execution authority changed while the shell command was being prepared; retry it")
       }
       const sandbox = Sandbox.wrapArgv({

@@ -546,7 +546,7 @@ export namespace ComputeJobs {
           capability: authority.capability,
         }),
     })
-    if (current.generation !== authority.generation) {
+    if (ExecutionAuthority.narrowed(authority, current)) {
       throw new Error("Execution authority changed while compute was being prepared; retry the job")
     }
     return current

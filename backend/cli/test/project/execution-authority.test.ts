@@ -286,6 +286,15 @@ test("authority generations change with trust and filesystem revisions", async (
       })
       expect(granted.grantRevision).toBeGreaterThan(trusted.grantRevision)
       expect(granted.generation).not.toBe(trusted.generation)
+
+      // A launch prepared before the grant still holds: the grant widened
+      // authority. A trust change or a root that disappeared narrows it.
+      expect(ExecutionAuthority.narrowed(trusted, granted)).toBe(false)
+      expect(ExecutionAuthority.narrowed(initial, trusted)).toBe(true)
+      expect(ExecutionAuthority.narrowed(granted, trusted)).toBe(granted.readable.length > trusted.readable.length)
+      expect(ExecutionAuthority.narrowed(granted, { ...granted, accessMode: "full" })).toBe(
+        granted.accessMode !== "full",
+      )
     },
   })
 })

@@ -181,7 +181,7 @@ test("actual provider requests and durable snapshots agree after model, mask and
         // system prompt: the loop announces a change durably, and a system
         // line for one request would rewrite the cached prompt twice.
         for (const request of [first, switched, await invoke("claude-snapshot")]) {
-          expect(request.messages).not.toContain("Tool availability changed")
+          expect(request.messages).not.toContain("Tools added:")
         }
         const masked = await invoke("claude-snapshot", true)
         expect(masked.names).toEqual(["edit"])
