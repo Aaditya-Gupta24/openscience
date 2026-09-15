@@ -97,10 +97,9 @@ jobs:
             const runners = ["linux-x64", "linux-arm64", "macos-arm64"]
             const capabilities = ["scipy", "matplotlib", "scikit-learn", "biopython", "rdkit"]
             const expected = [
-              "publish-test",
+              "npm-preflight",
               "packaged-e2e",
               "musl-baseline-smoke",
-              "promote-test",
               ...smokes.map((os) => `os-smoke (${os})`),
               ...runners.flatMap((os) =>
                 capabilities.map((capability) => `scientific capability canary (${os}, ${capability})`),

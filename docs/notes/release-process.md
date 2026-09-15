@@ -16,14 +16,22 @@ never bump a version in a pull request, and add user-visible changes to the
    Browser tests must pass on their first attempt. CI keeps one retry for
    diagnosis, but a passing retry still fails the gate; the original failed
    attempt's trace and screenshot remain available in the workflow artifacts.
-2. Trigger `test publish` from that exact `main` commit with packaged E2E and
-   OS smokes enabled. Promotion is blocked until the exact npm candidate also
-   installs and completes all five packaged scientific capability smoke
-   lifecycles on Linux x64, Linux ARM64, and macOS ARM64. Each canary must
-   report a ready exact-pack doctor state, semantic artifact validation, and
-   evidence bound to the candidate's source SHA embedded in the compiled
-   binary. A workflow environment variable is only a cross-check and must not
-   be accepted as the source of release provenance.
+2. Trigger the `Deep release rehearsal` (`npm-test.yml`) from that exact
+   `main` commit with packaged E2E and OS smokes enabled. It builds and packs
+   the fifteen-package candidate once, then every gate job installs the exact
+   candidate version through a localhost registry that serves those tarballs
+   (`tooling/repo/candidate-registry.ts`): the real npm resolver, platform
+   selection and integrity checks run, but nothing is uploaded to
+   registry.npmjs.org and nothing waits for it. Publication is blocked until
+   the candidate also installs and completes all five packaged scientific
+   capability smoke lifecycles on Linux x64, Linux ARM64, and macOS ARM64.
+   Each canary must report a ready exact-pack doctor state, semantic artifact
+   validation, and evidence bound to the candidate's source SHA embedded in
+   the compiled binary. A workflow environment variable is only a cross-check
+   and must not be accepted as the source of release provenance. The
+   rehearsal takes about fifteen minutes; the registry is touched only by the
+   `npm-preflight` job, which proves the credentials and that the version is
+   free.
 
    ```bash
    gh workflow run npm-test.yml --ref main \
@@ -50,12 +58,14 @@ never bump a version in a pull request, and add user-visible changes to the
    ```
 
    Production preflight independently queries the GitHub Actions API for that
-   exact artifact-source SHA. It accepts only a completed `test publish` run
-   whose packaged E2E, four native OS smokes, musl smoke, all fifteen
-   scientific capability canaries (five capabilities on each of the three
-   native runners, one job per pair), and `promote-test` job all succeeded. A
-   run with either optional gate disabled, or with any required job skipped,
-   cannot publish.
+   exact artifact-source SHA. It accepts only a completed rehearsal run whose
+   `npm-preflight`, packaged E2E, four native OS smokes, musl smoke, and all
+   fifteen scientific capability canaries (five capabilities on each of the
+   three native runners, one job per pair) succeeded. A run with either
+   optional gate disabled, or with any required job skipped, cannot publish.
+   The publish workflow is the only place the release is staged on npm; it
+   waits for the registry to make every package visible (up to forty minutes
+   per pass) before promoting `latest`.
    Exact-version resumes remain bound to the immutable source marker in the
    existing draft release; the workflow rejects any mismatch before building.
 
@@ -176,12 +186,18 @@ Do not claim that signing immediately removes every Windows warning.
 
 ## Isolated npm test installs
 
-The `test publish` workflow uses registry credentials and therefore runs only
+The rehearsal workflow checks the registry credentials and therefore runs only
 from the protected `main` branch. Validate a candidate branch with the local
-pack/build and browser gates first; after it lands on `main`, dispatch the test
-workflow and require packaged E2E, operating-system smoke, and every native
+pack/build and browser gates first; after it lands on `main`, dispatch the
+rehearsal and require packaged E2E, operating-system smoke, and every native
 scientific-capability canary job (one per capability and runner) to pass before
-starting production publish.
+starting production publish. To reproduce a gate job locally, pack the
+candidate and serve it the same way:
+
+```bash
+bun tooling/repo/candidate-registry.ts serve --dir .release/npm-test/<version> --port 4873
+NPM_CONFIG_REGISTRY=http://127.0.0.1:4873/ npm install --global --prefix /tmp/candidate "@synsci/openscience@<version>"
+```
 
 Every npm test build must use separate binary, config, data, cache, and state
 roots. Use the exact prerelease version being validated; do not rely on a
