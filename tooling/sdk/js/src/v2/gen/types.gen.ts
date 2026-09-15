@@ -5789,6 +5789,7 @@ export type SettingsComputeJobsStartData = {
     approval?: string
     sessionID: string
     default_uploads?: boolean
+    exclude_uploads?: Array<string>
     capability?: {
       id: string
       version: string
@@ -6609,6 +6610,7 @@ export type SettingsComputeJobsPlanData = {
     approval?: string
     sessionID: string
     default_uploads?: boolean
+    exclude_uploads?: Array<string>
     capability?: {
       id: string
       version: string

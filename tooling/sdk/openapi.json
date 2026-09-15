@@ -12568,6 +12568,15 @@
                   "default_uploads": {
                     "type": "boolean"
                   },
+                  "exclude_uploads": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    }
+                  },
                   "capability": {
                     "type": "object",
                     "properties": {
@@ -13288,6 +13297,15 @@
                   },
                   "default_uploads": {
                     "type": "boolean"
+                  },
+                  "exclude_uploads": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    }
                   },
                   "capability": {
                     "type": "object",

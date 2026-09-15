@@ -1516,6 +1516,7 @@ export class Jobs extends HeyApiClient {
       approval?: string
       sessionID: string
       default_uploads?: boolean
+      exclude_uploads?: Array<string>
       capability?: {
         id: string
         version: string
@@ -1557,6 +1558,7 @@ export class Jobs extends HeyApiClient {
             { in: "body", key: "approval" },
             { in: "body", key: "sessionID" },
             { in: "body", key: "default_uploads" },
+            { in: "body", key: "exclude_uploads" },
             { in: "body", key: "capability" },
             { in: "body", key: "capability_execution" },
           ],
@@ -1619,6 +1621,7 @@ export class Jobs extends HeyApiClient {
       approval?: string
       sessionID: string
       default_uploads?: boolean
+      exclude_uploads?: Array<string>
       capability?: {
         id: string
         version: string
@@ -1660,6 +1663,7 @@ export class Jobs extends HeyApiClient {
             { in: "body", key: "approval" },
             { in: "body", key: "sessionID" },
             { in: "body", key: "default_uploads" },
+            { in: "body", key: "exclude_uploads" },
             { in: "body", key: "capability" },
             { in: "body", key: "capability_execution" },
           ],
