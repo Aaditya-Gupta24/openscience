@@ -135,6 +135,12 @@ export namespace KernelEnvironmentMutation {
    * runtime-version probe; arbitrary ambient PYTHONPATH remains excluded. */
   export function subprocessEnv(runtime: Awaited<ReturnType<typeof pythonSubprocessRuntime>>, env: NodeJS.ProcessEnv) {
     return {
+      // Python run by the agent is headless and should leave no trace in the
+      // person's project: bytecode goes to OpenScience's cache instead of a
+      // __pycache__ beside every script, and plots render off-screen rather
+      // than opening windows or reading a stray interactive matplotlibrc.
+      PYTHONPYCACHEPREFIX: env.PYTHONPYCACHEPREFIX ?? path.join(Global.Path.cache, "pycache"),
+      MPLBACKEND: env.MPLBACKEND ?? "Agg",
       ...OpenScience.filterEnvForSubprocess({ ...env, ...runtime.env }),
       PYTHONPATH: runtime.env.PYTHONPATH,
       GIT_CONFIG_NOSYSTEM: env.GIT_CONFIG_NOSYSTEM,

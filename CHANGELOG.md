@@ -10,6 +10,50 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+Findings from watching a one-hour autoresearch study run on Modal end to end:
+
+- **The study SDK reaches Modal.** `openscience_track` is written under
+  `.openscience/sdk` in the study root, and `.openscience` was on the Modal
+  upload deny list, so every remote study run failed on its first import
+  unless the agent wrote its own shim into the project. The SDK subtree is now
+  carried (the rest of `.openscience` stays denied), an explicit upload list
+  gets it added, and the study's ledger files (`study.md`, `ideas.md`,
+  `results.tsv`, `lessons.md`) stay out of the manifest, so a ledger rewritten
+  while a job waited for approval no longer fails the dispatch with "input
+  changed after approval".
+- **One approval per study.** A remote study is approved when it is created
+  (the card names the runs, hours, GPU class and kill rule); its runs then
+  dispatch under that approval instead of a digest-bound card each, which had
+  the observed study waiting on clicks for 39 of its 60 minutes.
+- **Studies root in Project files.** In an isolated session the study, its
+  ledger, SDK and outputs went to session scratch and died with the
+  conversation; they now go under Project files. A scratch copy the compute
+  tool staged from the project is refreshed from the project on every later
+  dispatch (outputs delivered into it are kept), so a run gets the code the
+  study just changed rather than the first snapshot.
+- **Phantom runs.** A `study start` the process died inside left a run
+  "running" with no job for the study's life, holding a concurrency slot. The
+  driver now fails such runs from a previous process and re-queues the idea,
+  and `study record` closes one instead of insisting it is still running.
+- **Working directories and uploads.** `study start` documents `cwd` (defaults
+  to the study root), `uploads` and `artifacts` (relative to it); an explicit
+  upload list that matches nothing is refused before dispatch instead of
+  starting a sandbox with no files; a path given from the project root for a
+  file inside the cwd is accepted.
+- **Quieter transcript.** The study's status is appended when its state
+  changes (status, baseline, best, directives), not when the model moves its
+  own counts, and it reads `Study "…" is running: …` rather than leading with
+  an identifier. `compute_job wait` no longer returns on every burst of log
+  output; a chatty run cost nine round-trips of waiting in four minutes.
+- `artifact save_file` takes a study run id or a compute job id as
+  provenance; both had been refused as "Invalid provenance" because neither
+  store wrote provenance nodes.
+- Runs that died before logging a single point do not spend the study's run
+  budget; the hour budget still bounds the waste.
+- Tool rows without a dedicated renderer (`study`, `experiments`) show the
+  receipt the tool wrote for itself instead of a bare tool name.
+- Python run by the agent writes bytecode to OpenScience's cache rather than a
+  `__pycache__` in the project, and plots render off-screen (`MPLBACKEND=Agg`).
 - A server restart no longer strands a turn. At warmup, a lead the previous
   process left mid-turn picks its loop back up from the durable transcript
   (its orphaned Task call reads as interrupted, so the model re-plans), and a

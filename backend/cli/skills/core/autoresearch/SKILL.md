@@ -54,6 +54,11 @@ ledger, and wakes this session with a "Study update" whenever there is news.
 - Start exactly one run per idea with `study start`, passing the command and the
   configuration the idea needs. Never start a second run for the same idea; propose a
   new idea if a variant is worth trying.
+- The run executes in the study root: keep the script, its data (copy it in) and its
+  outputs there, write the command as `python train.py ...`, and name `uploads` and
+  `artifacts` relative to the root. The tracking SDK travels with every remote run on its
+  own; the study's ledger files never do. A remote study is approved once, when it is
+  created; its runs then dispatch without a card each.
 - Keep up to the study's concurrency live, and keep at least three ideas queued so a free
   slot never waits on you; propose in batches when the queue thins.
 - When runs finish within a few minutes, stay in the turn: `compute_job wait` for the run,

@@ -31,7 +31,7 @@ const ACTION_DESCRIPTIONS = {
   start: "Create and dispatch a detached compute job after any required approval.",
   list: "List project-scoped compute jobs, optionally filtered by status.",
   status: "Inspect the latest state of one existing job.",
-  wait: "Wait for meaningful job, output, delivery, or resource change without model-driven polling.",
+  wait: "Suspend until the job's state changes or it settles, or the timeout passes; log lines alone do not end the wait (read them with logs).",
   logs: "Read lifecycle events and bounded command output for one existing job.",
   artifacts: "Inspect expected and delivered outputs for one existing job.",
   cancel: "Stop one live job after dedicated approval.",
@@ -77,7 +77,7 @@ const ComputeWorkload = z
       .max(2_000)
       .optional()
       .describe(
-        'Directory the job runs in, relative to Session scratch or Project files, e.g. "autoresearch_churn" with command "python train.py". Uses the Session-scratch directory when it exists, else snapshots the same Project-files directory. An absolute path inside either root is accepted; the Project-files root and outside paths are not. Omit for the workspace root.',
+        'Directory the job runs in, relative to Session scratch or Project files, e.g. "autoresearch_churn" with command "python train.py". Uses the scratch copy when it exists, else snapshots the Project-files directory (never its root). Omit for the workspace root.',
       ),
     target: ComputeTarget,
     resources: JobBroker.Resources.optional(),
@@ -87,15 +87,16 @@ const ComputeWorkload = z
       .array(z.string().trim().min(1).max(2_000))
       .max(100)
       .optional()
-      .describe("Relative output paths or globs."),
+      .describe("Output paths or globs, relative to cwd."),
     checkpoint: z.string().trim().min(1).max(2_000).optional().describe("Relative checkpoint path."),
     uploads: z
       .array(z.string().trim().min(1).max(2_000))
       .max(100)
       .optional()
       .describe(
-        "Relative session files to stage. Remote targets stage the selected cwd by default; pass an explicit empty array for no inputs.",
+        "Files to stage, relative to cwd. Remote targets stage all of cwd by default; an empty array stages nothing.",
       ),
+    exclude_uploads: z.array(z.string().trim().min(1).max(2_000)).max(20).optional(),
     packages: z.array(z.string().trim().min(1).max(500)).max(100).optional(),
     image: z.string().trim().min(1).max(2_000).optional(),
     gpu: z.string().trim().min(1).max(120).optional(),
@@ -181,6 +182,7 @@ export const ComputeJobParameters = z
     artifacts: ComputeWorkload.shape.artifacts,
     checkpoint: ComputeWorkload.shape.checkpoint,
     uploads: ComputeWorkload.shape.uploads,
+    exclude_uploads: ComputeWorkload.shape.exclude_uploads,
     packages: ComputeWorkload.shape.packages,
     image: ComputeWorkload.shape.image,
     gpu: ComputeWorkload.shape.gpu,
@@ -249,6 +251,7 @@ function normalizeInput(input: unknown): unknown {
       "image",
       "gpu",
       "secret_refs",
+      "exclude_uploads",
     ]
     const allowed: Record<ComputeAction, Set<string>> = {
       targets: new Set(["action"]),
@@ -388,6 +391,9 @@ type PreparedRequest = {
 }
 
 const COMPUTE_STAGE_DISK_RESERVE_BYTES = 512 * 1024 * 1024
+/** Written into a scratch copy this tool staged from Project files. Under
+ * `.openscience`, so the upload policy never ships it. */
+const STAGED_MARKER = ".openscience/staged.json"
 
 async function directory(root: string, relative: string) {
   const target = path.resolve(root, relative)
@@ -439,6 +445,7 @@ async function stageProjectDirectory(input: {
   target: JobBroker.Target
   uploads?: string[]
   explicitUploads: boolean
+  exclude?: readonly string[]
 }): Promise<string | undefined> {
   if (path.isAbsolute(input.cwd) || input.cwd.split(/[\\/]/).includes("..")) {
     throw new Error(
@@ -457,12 +464,24 @@ async function stageProjectDirectory(input: {
   if (!current.canonical || !Filesystem.contains(workspace, current.canonical)) {
     throw new Error(`Compute working directory escaped Session scratch: ${input.cwd}`)
   }
-  if (current.info?.isDirectory()) return
-  if (current.info) {
+  // A copy this tool staged earlier mirrors Project files as they were at
+  // that dispatch. Refresh it from the project when the source is still
+  // there, so the code a study just changed is the code the run gets; the
+  // outputs earlier runs delivered into the copy stay. A directory the agent
+  // made in scratch itself has no marker and is left alone.
+  const staged = current.info?.isDirectory()
+    ? await fs
+        .stat(path.join(current.target, STAGED_MARKER))
+        .then(() => true)
+        .catch(() => false)
+    : false
+  if (current.info?.isDirectory() && !staged) return
+  if (current.info && !current.info.isDirectory()) {
     throw new Error(`Compute working directory is not a directory in Session scratch: ${input.cwd}`)
   }
 
   const source = await directory(project, input.cwd)
+  if (staged && (!source.canonical || !source.info?.isDirectory())) return
   if (!source.canonical || !Filesystem.contains(project, source.canonical) || !source.info?.isDirectory()) {
     throw new Error(
       `Compute working directory "${input.cwd}" does not exist in Session scratch or Project files. ` +
@@ -487,6 +506,7 @@ async function stageProjectDirectory(input: {
   const manifest = await ModalPlan.stagingFiles(source.canonical, input.uploads ?? [], label, {
     prefix: input.target.kind === "ssh" ? input.cwd.replaceAll("\\", "/").replace(/^\.\//, "") : undefined,
     denied: input.explicitUploads ? "error" : "skip",
+    exclude: input.exclude,
   })
   const disk = await fs.statfs(workspace)
   const available = disk.bavail * disk.bsize
@@ -517,19 +537,40 @@ async function stageProjectDirectory(input: {
       await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
       await ModalUpload.stage(file.canonical, target, { size: file.size, sha256: file.sha256 }, label)
     }
-    await fs.rename(snapshot, current.target).catch(async (error: NodeJS.ErrnoException) => {
-      if (error.code !== "EEXIST" && error.code !== "ENOTEMPTY") throw error
-      const existing = await directory(workspace, input.cwd)
-      if (!existing.canonical || !Filesystem.contains(workspace, existing.canonical) || !existing.info?.isDirectory()) {
-        throw error
+    await fs.mkdir(path.join(snapshot, path.dirname(STAGED_MARKER)), { recursive: true, mode: 0o700 })
+    await fs.writeFile(
+      path.join(snapshot, STAGED_MARKER),
+      JSON.stringify({ source: source.canonical, at: new Date().toISOString() }),
+    )
+    if (staged) {
+      // Overlay: the project's current files replace their copies, file by
+      // file; whatever else the copy holds (delivered outputs) is kept.
+      for (const file of [...manifest.files.map((item) => item.path), STAGED_MARKER]) {
+        const target = path.resolve(current.target, file)
+        if (!Filesystem.contains(current.target, target))
+          throw new Error(`${label} destination escaped Session scratch: ${file}`)
+        await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 })
+        await fs.rename(path.resolve(snapshot, file), target)
       }
-    })
+    } else {
+      await fs.rename(snapshot, current.target).catch(async (error: NodeJS.ErrnoException) => {
+        if (error.code !== "EEXIST" && error.code !== "ENOTEMPTY") throw error
+        const existing = await directory(workspace, input.cwd)
+        if (
+          !existing.canonical ||
+          !Filesystem.contains(workspace, existing.canonical) ||
+          !existing.info?.isDirectory()
+        ) {
+          throw error
+        }
+      })
+    }
   } finally {
     await fs.rm(temporary, { recursive: true, force: true })
   }
 
-  const staged = await directory(workspace, input.cwd)
-  if (!staged.canonical || !Filesystem.contains(workspace, staged.canonical) || !staged.info?.isDirectory()) {
+  const placed = await directory(workspace, input.cwd)
+  if (!placed.canonical || !Filesystem.contains(workspace, placed.canonical) || !placed.info?.isDirectory()) {
     throw new Error(`OpenScience could not stage Project files into Session scratch: ${input.cwd}`)
   }
   return input.cwd
@@ -549,8 +590,17 @@ async function request(
         workspace: options.workspace,
       })
     : undefined
+  // A path given from the project root for a file inside the cwd names the
+  // same file: "autoresearch_churn/train.py" with cwd "autoresearch_churn" is
+  // "train.py". Strip the prefix rather than upload nothing.
+  const inside = (value: string) => {
+    if (!cwd) return value
+    const prefix = `${cwd.replaceAll("\\", "/").replace(/\/$/, "")}/`
+    return value.startsWith(prefix) ? value.slice(prefix.length) : value
+  }
+  const explicitUploads = input.uploads?.map(inside)
   const uploads =
-    input.uploads ??
+    explicitUploads ??
     (input.target.kind === "modal"
       ? ["**/*"]
       : input.target.kind === "ssh" && cwd
@@ -564,6 +614,7 @@ async function request(
         target: input.target,
         uploads,
         explicitUploads: input.uploads !== undefined,
+        exclude: input.exclude_uploads,
       })
     : undefined
   return {
@@ -579,10 +630,11 @@ async function request(
       resources: input.resources,
       modules: input.modules,
       container: input.container,
-      artifacts: input.artifacts,
+      artifacts: input.artifacts?.map(inside),
       checkpoint: input.checkpoint,
       uploads,
       default_uploads: input.target.kind === "modal" && input.uploads === undefined,
+      exclude_uploads: input.exclude_uploads,
       packages: input.packages,
       image: input.image,
       gpu: input.target.kind === "modal" ? (input.gpu ?? "none") : input.gpu,
@@ -718,10 +770,16 @@ export function createComputeJobTool(base?: JobBroker.Options) {
         }
 
         ctx.metadata({ title: `Review ${plan.provider} job: ${input.name}`, metadata })
+        // A study's runs share the approval its creation asked for; the
+        // digest of each dispatched plan is still recorded on the job.
+        const scope =
+          plan.provider !== "local" && typeof ctx.extra?.studyApproval === "string"
+            ? ctx.extra.studyApproval
+            : undefined
         await ctx.ask({
           permission: plan.provider === "modal" ? "modal" : plan.provider === "ssh" ? "remote_compute" : "compute_job",
-          patterns: [plan.digest],
-          always: plan.provider === "local" ? [] : [plan.digest],
+          patterns: [scope ?? plan.digest],
+          always: plan.provider === "local" ? [] : [scope ?? plan.digest],
           metadata,
         })
         const job = await JobBroker.start(

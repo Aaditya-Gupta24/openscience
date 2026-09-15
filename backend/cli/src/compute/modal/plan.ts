@@ -95,6 +95,7 @@ export namespace ModalPlan {
     timeoutMinutes: number
     uploads: string[]
     deniedUploads?: "skip" | "error"
+    excludeUploads?: readonly string[]
     outputs: string[]
     context: Pick<ModalAdapter.Context, "app" | "environment" | "network">
   }
@@ -106,6 +107,9 @@ export namespace ModalPlan {
     prefix?: string
     /** Explicit upload requests keep the normal fail-closed denied-path behavior. */
     denied?: "skip" | "error"
+    /** Relative paths left out however the patterns match them: a study's
+     * ledger files, which the study rewrites while a job waits for approval. */
+    exclude?: readonly string[]
   }
 
   const posix = (value: string) => value.split(path.sep).join("/").replace(/^\.\//, "")
@@ -118,9 +122,26 @@ export namespace ModalPlan {
     return current || "."
   }
 
+  /** The tracking SDK a study writes under its cwd. It is OpenScience's own
+   * generated Python, holds no state or secrets, and the run cannot import
+   * openscience_track without it; the rest of `.openscience` stays denied. */
+  const SDK_PREFIX = ".openscience/sdk/"
+  /** Bookkeeping this side writes into a staged copy; never an upload, never
+   * an error to have matched. */
+  export const INTERNAL = new Set([".openscience/staged.json"])
+  const internal = (relative: string) =>
+    [...INTERNAL].some((marker) => relative === marker || relative.endsWith(`/${marker}`))
+
   function forbidden(file: string) {
+    if (`${file}/`.startsWith(SDK_PREFIX)) return SECRET.test(file)
     const segments = file.split("/")
     return segments.some((part) => DENY.has(part)) || DENY_PATH.test(file) || SECRET.test(file)
+  }
+
+  /** A denied directory that lies on the way to the SDK is still walked, so
+   * `.openscience/sdk` is reached while `.openscience/<anything else>` is not. */
+  function leadsToSdk(directory: string) {
+    return SDK_PREFIX.startsWith(`${directory}/`)
   }
 
   function uploadPatterns(patterns: string[], label: string) {
@@ -171,12 +192,13 @@ export namespace ModalPlan {
     root: string,
     patterns: string[],
     label = "Modal",
-    options: Pick<StagingOptions, "denied"> = {},
+    options: Pick<StagingOptions, "denied" | "exclude"> = {},
   ) {
     const project = await Filesystem.canonical(root)
     if (!project) throw new Error(`${label} project directory is unavailable: ${root}`)
     const files = new Map<string, Omit<ModalAdapter.File, "sha256"> & { snapshot: ModalUpload.Snapshot }>()
     const found = new Set<string>()
+    const excluded = new Set((options.exclude ?? []).map(posix))
     for (const pattern of patterns) {
       if (path.isAbsolute(pattern) || pattern.split(/[\\/]/).includes("..")) {
         throw new Error(`${label} upload pattern must stay inside the project: ${pattern}`)
@@ -184,6 +206,7 @@ export namespace ModalPlan {
       const scan = new Bun.Glob(pattern).scan({ cwd: project, dot: true, onlyFiles: true, followSymlinks: true })
       for await (const file of scan) {
         const relative = posix(file)
+        if (excluded.has(relative) || internal(relative)) continue
         if (options.denied === "skip" && forbidden(relative)) continue
         found.add(relative)
         if (found.size > ModalUpload.COUNT_LIMIT) {
@@ -220,6 +243,14 @@ export namespace ModalPlan {
       })
     }
     const candidates = [...files.values()].toSorted((a, b) => a.path.localeCompare(b.path))
+    // An explicit list that matches nothing is a mistake, not a request for an
+    // empty sandbox: the job would start and fail on its first open(). The
+    // usual cause is a path given from the project root instead of the cwd.
+    if (options.denied !== "skip" && patterns.length && !candidates.length) {
+      throw new Error(
+        `${label} uploads matched no files under the working directory (${patterns.join(", ")}). Upload paths are relative to cwd; name the files as they sit inside it. No compute job was dispatched.`,
+      )
+    }
     const bytes = ModalUpload.validate(candidates, label)
     const result: ModalAdapter.File[] = []
     for (const file of candidates) {
@@ -249,6 +280,7 @@ export namespace ModalPlan {
     const project = await Filesystem.canonical(root)
     if (!project) throw new Error(`${label} project directory is unavailable: ${root}`)
     const globs = uploadPatterns(patterns, label)
+    const excluded = new Set((options.exclude ?? []).map(posix))
     const prefix = posix(options.prefix?.trim() || "")
     if (path.posix.isAbsolute(prefix) || prefix.split("/").includes("..")) {
       throw new Error(`${label} prefix must stay inside the project: ${options.prefix}`)
@@ -272,7 +304,7 @@ export namespace ModalPlan {
           continue
         }
         if (entry.isDirectory()) {
-          if (forbidden(current)) {
+          if (forbidden(current) && !leadsToSdk(current)) {
             const projected = prefix ? `${prefix}/${current}` : current
             if (
               options.denied === "error" &&
@@ -286,6 +318,7 @@ export namespace ModalPlan {
           continue
         }
         if (!entry.isFile()) continue
+        if (excluded.has(current) || internal(current)) continue
         const projected = prefix ? `${prefix}/${current}` : current
         if (!globs.some(({ glob }) => glob.match(projected))) continue
         if (forbidden(current)) {
@@ -332,7 +365,10 @@ export namespace ModalPlan {
   }
 
   export async function prepare(input: Input): Promise<Prepared> {
-    const upload = await files(input.cwd, input.uploads, "Modal", { denied: input.deniedUploads })
+    const upload = await files(input.cwd, input.uploads, "Modal", {
+      denied: input.deniedUploads,
+      exclude: input.excludeUploads,
+    })
     const value = {
       provider: "modal" as const,
       purpose: input.purpose?.trim() || "Research computation",

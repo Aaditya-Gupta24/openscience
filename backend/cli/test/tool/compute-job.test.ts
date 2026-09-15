@@ -532,6 +532,72 @@ test("an absolute Project-files directory is the same request as its relative fo
   })
 })
 
+test("a study's runs ask under the study's approval, and a staged copy is refreshed from the project on the next dispatch", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const root = path.join(tmp.path, "compute")
+  const source = path.join(tmp.path, "autoresearch_churn")
+  await fs.mkdir(source, { recursive: true })
+  await Bun.write(path.join(source, "train.py"), "VERSION = 1\n")
+  await Bun.write(path.join(source, "ideas.md"), "# ideas\n")
+  const modal = {
+    app: "openscience-test",
+    image: "python:3.12-slim",
+    network: "none" as const,
+    timeoutMinutes: 10,
+    concurrency: 1,
+  }
+  const provider = {
+    volume: (project: string, id: string) => `test-${Bun.hash(`${project}\0${id}`)}`,
+    run: async () => ({ code: 0, outputs: [] }),
+    recover: async () => ({ code: 0, outputs: [] }),
+    find: async () => undefined,
+    close: async () => undefined,
+    release: async () => undefined,
+  } satisfies ComputeJobs.ModalProvider
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await trustProject()
+      const session = await Session.create({})
+      const workspace = await SessionFilesystem.workspace(session.id)
+      const asked: Asked[] = []
+      const tool = await createComputeJobTool({
+        root,
+        modal,
+        credentials: { ...modal, tokenId: "ak", tokenSecret: "as" },
+        provider,
+      }).init()
+      const ctx = { ...context(session.id, asked), extra: { studyApproval: "study:stu_1" } }
+      const workload = {
+        name: "Churn: baseline",
+        purpose: "Study run.",
+        command: "python train.py",
+        cwd: "autoresearch_churn",
+        target: { kind: "modal" as const },
+        gpu: "none",
+        exclude_uploads: ["ideas.md"],
+      }
+      const first = await tool.execute({ action: "start", ...workload }, ctx)
+      // The card carries the study's pattern, not a digest that changes per run.
+      expect(asked).toHaveLength(1)
+      expect(asked[0]).toMatchObject({ permission: "modal", patterns: ["study:stu_1"], always: ["study:stu_1"] })
+      const uploads = (first.metadata.job?.modal?.uploads ?? []).map((file: { path: string }) => file.path)
+      expect(uploads).toEqual(["train.py"])
+      expect(await Bun.file(path.join(workspace, "autoresearch_churn", "train.py")).text()).toBe("VERSION = 1\n")
+      // A delivered output sits in the copy; the study then changes the code.
+      await Bun.write(path.join(workspace, "autoresearch_churn", "outputs", "metrics.json"), "{}")
+      await Bun.write(path.join(source, "train.py"), "VERSION = 2\n")
+      const second = await tool.execute({ action: "start", ...workload }, ctx)
+      // The second dispatch ships the current code: the copy was refreshed,
+      // and what earlier runs delivered into it is still there.
+      expect(await Bun.file(path.join(workspace, "autoresearch_churn", "train.py")).text()).toBe("VERSION = 2\n")
+      expect(await Bun.file(path.join(workspace, "autoresearch_churn", "outputs", "metrics.json")).exists()).toBe(true)
+      expect(second.metadata.job?.modal?.uploads?.[0]?.sha256).not.toBe(first.metadata.job?.modal?.uploads?.[0]?.sha256)
+    },
+  })
+})
+
 test("remote Project-files staging excludes symlinks, denied paths, and ignored large directories", async () => {
   if (process.platform === "win32") return
   await using tmp = await tmpdir({ git: true })
@@ -728,7 +794,10 @@ test("explicit remote uploads narrow or disable the Project-files snapshot", asy
       const disabledPlan = disabled.metadata.compute_job.plan
       if (disabledPlan?.provider !== "modal") throw new Error("compute_job did not return its no-input Modal plan")
       expect(disabledPlan.uploads).toEqual([])
-      expect(await fs.readdir(path.join(workspace, "empty-analysis"))).toEqual([])
+      // Only the staging marker under .openscience: no project file was copied.
+      expect(
+        (await fs.readdir(path.join(workspace, "empty-analysis"))).filter((entry) => entry !== ".openscience"),
+      ).toEqual([])
 
       await expect(
         tool.execute(
@@ -918,6 +987,36 @@ test("waits on a compute job without asking the model to run shell sleep", async
       expect(result.output).toContain('"changed": [')
       expect(result.output).toContain('"state"')
       expect(await ComputeJobs.log(job.id, { root, workspace })).toContain("ready")
+    },
+  })
+})
+
+test("a chatty job does not end a wait: log lines are read with logs, the wait returns on state or timeout", async () => {
+  await using tmp = await tmpdir({ git: true })
+  const root = path.join(tmp.path, "compute")
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      await trustProject()
+      const session = await Session.create({})
+      const workspace = await SessionFilesystem.workspace(session.id)
+      const job = await start(tmp.path, root, session.id, {
+        name: "chatty",
+        command: "for i in 1 2 3 4 5 6; do echo tick $i; sleep 0.3; done",
+      })
+      const tool = await createComputeJobTool({ root, workspace }).init()
+      const started = Date.now()
+      // One second of ticks: earlier this returned after the first quiet gap
+      // between lines; now the wait runs to its timeout while the job talks.
+      const result = await tool.execute({ action: "wait", job_id: job.id, seconds: 1 }, context(session.id, []))
+      expect(Date.now() - started).toBeGreaterThanOrEqual(900)
+      expect(result.output).toContain('"timed_out": true')
+      expect(result.output).toContain('"status": "running"')
+      // And the finish is still what ends the next wait.
+      const done = await tool.execute({ action: "wait", job_id: job.id, seconds: 10 }, context(session.id, []))
+      expect(done.output).toContain('"status": "succeeded"')
+      expect(done.output).toContain('"timed_out": false')
+      expect(await ComputeJobs.log(job.id, { root, workspace })).toContain("tick 6")
     },
   })
 })

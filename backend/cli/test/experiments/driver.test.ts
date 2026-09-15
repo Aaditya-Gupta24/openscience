@@ -314,9 +314,11 @@ describe("study driver", () => {
           ideaID: idea!.id,
           jobID: "job_b",
         })
-        h.jobs.set("job_b", { status: "failed", error: "exit 1" })
+        // A run that evaluated something spends the budget; one that died
+        // before logging a point would not (see Experiments.budgeted).
+        h.jobs.set("job_b", { status: "succeeded" })
         await StudyDriver.tick(study.id)
-        expect((await Experiments.getRun(run.id))?.status).toBe("failed")
+        expect((await Experiments.getRun(run.id))?.status).toBe("finished")
         expect((await Experiments.getStudy(study.id))?.status).toBe("paused")
         expect(h.prompts).toHaveLength(1)
         expect(h.prompts[0]).toContain("Budget reached")
@@ -470,6 +472,60 @@ describe("study driver", () => {
         expect(lost?.killReason).toContain("no record")
         expect(h.prompts).toHaveLength(1)
         expect(h.prompts[0]).toContain("job record is missing")
+      },
+    })
+  })
+
+  test("a run the previous process left without a job is failed and its idea re-queued; one this process is dispatching is left alone", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const h = harness(tmp.path)
+        const study = await Experiments.createStudy({
+          sessionID: "ses_phantom",
+          name: "phantom",
+          purpose: "test",
+          metric: "val_loss",
+          direction: "minimize",
+          root: path.join(tmp.path, "study"),
+          concurrency: 2,
+          budget: { maxRuns: 5 },
+        })
+        const [orphaned, dispatching] = await Experiments.proposeIdeas(study.id, [
+          { title: "orphaned", description: "d", why: "w", ev: 0.1 },
+          { title: "dispatching", description: "d", why: "w", ev: 0.1 },
+        ])
+        const phantom = await Experiments.createRun({
+          name: "orphaned",
+          source: "job",
+          studyID: study.id,
+          ideaID: orphaned!.id,
+        })
+        await Experiments.updateIdea(orphaned!.id, { status: "running", runID: phantom.id })
+        // The process restarts after the run was created: nothing is dispatching it.
+        await Bun.sleep(5)
+        const before = StudyDriver.boundary.processStart
+        StudyDriver.boundary.processStart = Date.now()
+        try {
+          const live = await Experiments.createRun({
+            name: "dispatching",
+            source: "job",
+            studyID: study.id,
+            ideaID: dispatching!.id,
+          })
+          // Created in this process: still being dispatched, kept.
+          StudyDriver.boundary.processStart = live.createdAt
+          await StudyDriver.tick(study.id)
+          expect((await Experiments.getRun(phantom.id))?.status).toBe("failed")
+          expect((await Experiments.getRun(phantom.id))?.killReason).toContain("dispatch interrupted")
+          expect((await Experiments.getIdea(orphaned!.id))?.status).toBe("queued")
+          expect((await Experiments.getRun(live.id))?.status).toBe("running")
+          expect(h.prompts).toHaveLength(1)
+          expect(h.prompts[0]).toContain("dispatch was interrupted")
+        } finally {
+          StudyDriver.boundary.processStart = before
+        }
       },
     })
   })

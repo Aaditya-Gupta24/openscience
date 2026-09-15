@@ -1875,6 +1875,40 @@ describe("trace control", () => {
     part: { [user.id]: [], [message.id]: items },
   })
 
+  test("a tool without a dedicated row shows the receipt it wrote for itself", async () => {
+    const message = assistant()
+    const study: ToolPart = {
+      id: "prt_study",
+      sessionID,
+      messageID: message.id,
+      type: "tool",
+      callID: "call_study",
+      tool: "study",
+      state: {
+        status: "completed",
+        input: { action: "drop", idea_id: "idea_1", reason: "expensive" },
+        output: "Dropped idea_1.",
+        title: "Dropped: Logistic-heavy blend",
+        metadata: {},
+        time: { start: Date.now() - 2_000, end: Date.now() - 1_000 },
+      },
+    }
+    const prompt: TextPart = { id: "prt_prompt", sessionID, messageID: user.id, type: "text", text: "Prune the queue" }
+    const store: Store = {
+      ...empty(),
+      session_status: { [sessionID]: { type: "busy" } },
+      message: { [sessionID]: [user, message] },
+      part: { [user.id]: [prompt], [message.id]: [study] },
+    }
+    const host = mount(() => turn.SessionTurn({ sessionID, messageID: user.id, lastUserMessageID: user.id }), store)
+    await ready(() => host.querySelector('[data-component="tool-part-wrapper"]') !== null)
+    const row = host.querySelector('[data-component="tool-part-wrapper"]')!
+    expect(row.querySelector('[data-slot="basic-tool-tool-title"]')?.textContent).toBe("Study")
+    expect(row.querySelector('[data-slot="basic-tool-tool-subtitle"]')?.textContent).toBe(
+      "Dropped: Logistic-heavy blend",
+    )
+  })
+
   test("a pending approval reads as a wait on the reader, not as a call still running", async () => {
     const message = assistant()
     const python: ToolPart = {

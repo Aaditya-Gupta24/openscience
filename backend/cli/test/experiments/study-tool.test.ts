@@ -11,7 +11,9 @@ import { tmpdir, trustProject } from "../fixture/fixture"
 
 afterEach(() => Experiments.close())
 
-function context(sessionID: string): Tool.Context {
+type Asked = { permission: string; patterns?: string[]; always?: string[]; metadata?: Record<string, unknown> }
+
+function context(sessionID: string, asked: Asked[] = []): Tool.Context {
   return {
     sessionID,
     messageID: "msg_test",
@@ -20,7 +22,9 @@ function context(sessionID: string): Tool.Context {
     extra: {},
     messages: [],
     metadata: () => undefined,
-    ask: async () => undefined,
+    ask: async (input) => {
+      asked.push(input as Asked)
+    },
   }
 }
 
@@ -71,7 +75,9 @@ describe("study and experiments tools", () => {
         )
         expect(created.title).toBe("Study created: line fit")
         expect(created.output).toContain("openscience_track")
-        const workspace = await SessionFilesystem.toolDirectory(session.id)
+        // An isolated session's study lives in Project files, not in scratch.
+        const workspace = (await Experiments.studyForSession(session.id))!.root
+        expect(workspace).toBe(tmp.path)
         expect(await Bun.file(path.join(workspace, ".openscience/sdk/openscience_track/__init__.py")).exists()).toBe(
           true,
         )
@@ -164,6 +170,53 @@ describe("study and experiments tools", () => {
     })
   })
 
+  test("an isolated session's study roots in Project files, and a remote target is approved once for the whole study", async () => {
+    await using tmp = await tmpdir()
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        await trustProject()
+        const session = await Session.create({ title: "durable", workspace: "isolated" })
+        const scratch = await SessionFilesystem.toolDirectory(session.id)
+        expect(scratch).not.toBe(tmp.path)
+        const asked: Asked[] = []
+        const ctx = context(session.id, asked)
+        const study = await StudyTool.init({ agent: undefined })
+        const created = await study.execute(
+          {
+            action: "create",
+            name: "churn climb",
+            purpose: "p",
+            metric: "cv_roc_auc",
+            direction: "maximize",
+            root: "autoresearch_churn",
+            target: { kind: "modal", gpu: "T4" },
+            concurrency: 2,
+            kill_criteria: "6 minutes",
+            budget: { maxRuns: 12, maxHours: 1 },
+          },
+          ctx,
+        )
+        const active = (await Experiments.studyForSession(session.id))!
+        // The ledger and the SDK live where the person can find them and
+        // where they outlive the conversation: under Project files.
+        expect(active.root).toBe(path.join(tmp.path, "autoresearch_churn"))
+        expect(await Bun.file(path.join(active.root, "study.md")).exists()).toBe(true)
+        expect(await Bun.file(path.join(active.root, ".openscience/sdk/openscience_track/__init__.py")).exists()).toBe(
+          true,
+        )
+        expect(await Bun.file(path.join(scratch, "study.md")).exists()).toBe(false)
+        // One approval for the study's remote runs, with the budget on the card.
+        const remote = asked.filter((item) => item.permission === "modal")
+        expect(remote).toHaveLength(1)
+        expect(remote[0]!.patterns).toEqual([`study:${active.id}`])
+        expect(remote[0]!.always).toEqual([`study:${active.id}`])
+        expect(JSON.stringify(remote[0]!.metadata)).toContain("maxRuns")
+        expect(created.output).toContain("Remote runs approved for this study")
+      },
+    })
+  })
+
   test("start refuses a run beyond the study's run budget before anything is dispatched", async () => {
     await using tmp = await tmpdir()
     await Instance.provide({
@@ -195,6 +248,18 @@ describe("study and experiments tools", () => {
         await Experiments.finishRun(lost.id, "failed", { killReason: "dispatch failed: no runtime" })
         await Experiments.updateIdea(first!.id, { status: "queued", runID: undefined })
         expect(Experiments.dispatchFailed((await Experiments.getRun(lost.id))!)).toBe(true)
+        expect(Experiments.budgeted((await Experiments.getRun(lost.id))!)).toBe(false)
+        // Nor does a job that died before logging a single point: nothing was evaluated.
+        const crashed = await Experiments.createRun({
+          name: "crashed",
+          source: "job",
+          studyID: active.id,
+          ideaID: first!.id,
+          jobID: "job_crashed",
+        })
+        await Experiments.finishRun(crashed.id, "failed", { killReason: "job failed: ModuleNotFoundError" })
+        await Experiments.updateIdea(first!.id, { status: "queued", runID: undefined })
+        expect(Experiments.budgeted((await Experiments.getRun(crashed.id))!)).toBe(false)
         // A live run does: with maxRuns 1 and one job running, no second start.
         await Experiments.createRun({
           name: "first",

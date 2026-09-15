@@ -37,6 +37,11 @@ export namespace StudyDriver {
   /** How long a live run may point at a job with no record before it is
    * marked failed. */
   export const MISSING_JOB_GRACE_MS = 2 * 60_000
+  /** When this process began. A run without a job that was created before
+   * then has no dispatch in flight anywhere: the process that was starting
+   * it is gone. One created in this process may still be waiting on its
+   * approval. Mutable for tests. */
+  export const boundary = { processStart: Date.now() }
 
   type Runtime = {
     followers: Map<string, Tracker.Follower>
@@ -205,7 +210,25 @@ export namespace StudyDriver {
       const running = await Experiments.listRuns({ studyID, status: "running" })
       const criteria = KillCriteria.parse(study.killCriteria)
       for (const run of running) {
-        if (!run.jobID) continue
+        if (!run.jobID) {
+          // A run whose dispatch never bound a job (the process died between
+          // creating the run and starting the job) has nothing that can end
+          // it. Left alone it holds a concurrency slot for the study's life,
+          // so it is failed and its idea goes back to the queue. A run this
+          // process created is still being dispatched (an approval may be
+          // pending) and is left alone.
+          if (run.createdAt >= boundary.processStart) continue
+          const lost = await Experiments.finishRun(run.id, "failed", {
+            killReason: "dispatch interrupted: the process that was starting this run stopped before a job was bound",
+          })
+          if (!lost) continue
+          if (lost.ideaID) await Experiments.updateIdea(lost.ideaID, { status: "queued", runID: undefined })
+          await Experiments.addEvent(study.id, "failed", `${lost.name} failed: its dispatch was interrupted`, {
+            runID: lost.id,
+          })
+          current.pending.push(describe(lost, study, "the dispatch was interrupted before a job was bound"))
+          continue
+        }
         const follower =
           current.followers.get(run.id) ??
           new Tracker.Follower(run.id, await logPath(run.jobID, study.sessionID), study.projectID)
@@ -364,7 +387,7 @@ export namespace StudyDriver {
   async function budgetReached(study: Experiments.Study, now: number): Promise<string | undefined> {
     const budget = study.budget
     const runs = await Experiments.listRuns({ studyID: study.id, limit: 2000 })
-    const done = runs.filter((run) => run.status !== "running" && !Experiments.dispatchFailed(run))
+    const done = runs.filter((run) => run.status !== "running" && Experiments.budgeted(run))
     if (budget.maxRuns !== undefined && done.length >= budget.maxRuns)
       return `${done.length} runs completed (limit ${budget.maxRuns})`
     if (budget.maxHours !== undefined && now - study.createdAt >= budget.maxHours * 3_600_000) {

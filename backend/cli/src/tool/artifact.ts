@@ -6,6 +6,8 @@ import { File } from "@/file"
 import { ArtifactFile } from "@/file/artifacts"
 import { Instance } from "@/project/instance"
 import { Provenance } from "@/science/provenance/store"
+import { Experiments } from "@/experiments"
+import { JobBroker } from "@/compute/job-broker"
 import type { Node, Run } from "@/science/provenance/store"
 import { Log } from "@/util/log"
 
@@ -103,6 +105,62 @@ async function traceSavedArtifact(saved: ArtifactStore.Artifact, run?: Run) {
   if (run) await Provenance.linkOwned(scope, { from: run.id, to: id, relation: "produced" })
 }
 
+/**
+ * The runs a model actually names when it saves a Result are its study runs
+ * and compute jobs, which live in their own stores rather than the
+ * provenance graph. Bring the named one into the graph, so the Result's
+ * lineage points at the run that produced it, provided the run belongs to
+ * this session and project.
+ */
+async function recordedRun(
+  scope: { projectID: string; directory: string },
+  id: string,
+  sessionID: string,
+): Promise<Node | undefined> {
+  const run = await Experiments.getRun(id).catch(() => undefined)
+  if (run) {
+    const study = run.studyID ? await Experiments.getStudy(run.studyID).catch(() => undefined) : undefined
+    if ((run.sessionID ?? study?.sessionID) !== sessionID) return
+    return Provenance.recordOwned(scope, {
+      id,
+      kind: "run",
+      label: `Study run: ${run.name}`,
+      tool: "study",
+      sessionID,
+      inputs: {
+        config: run.config,
+        ...(run.jobID ? { jobID: run.jobID } : {}),
+        ...(run.studyID ? { studyID: run.studyID } : {}),
+      },
+      status: run.status === "finished" ? "ok" : "error",
+      meta: {
+        projectID: scope.projectID,
+        sessionID,
+        runID: run.id,
+        runStatus: run.status,
+        ...(run.jobID ? { jobID: run.jobID } : {}),
+        ...(run.headline !== null ? { headline: run.headline } : {}),
+        ...(study ? { studyID: study.id, metric: study.metric } : {}),
+      },
+    } as Parameters<typeof Provenance.record>[0])
+  }
+  const { computeOptions } = await import("./compute-job")
+  const job = await computeOptions(sessionID)
+    .then((options) => JobBroker.get(id, options))
+    .catch(() => undefined)
+  if (!job || job.session_id !== sessionID) return
+  return Provenance.recordOwned(scope, {
+    id,
+    kind: "run",
+    label: `Compute job: ${job.name}`,
+    tool: "compute_job",
+    sessionID,
+    inputs: { command: job.command, ...(job.cwd ? { cwd: job.cwd } : {}), target: job.target },
+    status: job.status === "succeeded" ? "ok" : "error",
+    meta: { projectID: scope.projectID, sessionID, jobID: job.id, jobStatus: job.status, target: job.target_label },
+  } as Parameters<typeof Provenance.record>[0])
+}
+
 export const ArtifactTool = Tool.define("artifact", {
   description:
     "Save an important workspace file as a durable Result, or read an exact immutable Result version by artifact_id and version_id (including outputs handed back by a worker). read_file returns bounded text or binary metadata; it does not grant access to another session's scratch. Empirical contract Results need provenance_id to pass completion. Keep drafts and large mutable working data in the workspace instead.",
@@ -115,7 +173,7 @@ export const ArtifactTool = Tool.define("artifact", {
         .string()
         .optional()
         .describe(
-          "Producing run provenance ID from this project and session. Required for empirical contract Results to pass completion; may reference a manually recorded run.",
+          "The producing run from this session: a study run id (exp_…), a compute job id, or a recorded provenance id. Required for empirical contract Results to pass completion.",
         ),
       artifact_id: z.string().min(1).optional().describe("Required for read_file: exact saved artifact ID"),
       version_id: z.string().min(1).optional().describe("Required for read_file: exact immutable version ID"),
@@ -193,14 +251,10 @@ export const ArtifactTool = Tool.define("artifact", {
         { ...metadata, nextOffset: more ? end : undefined, truncated: more },
       )
     }
+    const scope = { projectID: Instance.project.id, directory: Instance.directory }
     const node = params.provenance_id
-      ? await Provenance.find(
-          {
-            projectID: Instance.project.id,
-            directory: Instance.directory,
-          },
-          params.provenance_id,
-        )
+      ? ((await Provenance.find(scope, params.provenance_id)) ??
+        (await recordedRun(scope, params.provenance_id, ctx.sessionID)))
       : undefined
     const entry = runnable(node) ? node : undefined
     const sessionID =

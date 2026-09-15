@@ -232,4 +232,56 @@ describe("ModalPlan", () => {
     expect(prepared.plan.upload_bytes).toBe(15)
     expect(reads).toEqual([path.join(root, "src", "train.py")])
   })
+
+  test("the study SDK under .openscience/sdk rides along while the rest of .openscience stays denied", async () => {
+    const root = await project()
+    await fs.mkdir(path.join(root, ".openscience", "sdk", "openscience_track"), { recursive: true })
+    await fs.writeFile(path.join(root, ".openscience", "sdk", "openscience_track", "__init__.py"), "RUN = 1\n")
+    await fs.mkdir(path.join(root, ".openscience", "state"), { recursive: true })
+    await fs.writeFile(path.join(root, ".openscience", "state", "cursor.json"), "{}\n")
+
+    // The default sweep of the cwd carries the SDK and skips the state.
+    const swept = await ModalPlan.prepare({ ...input(root), uploads: ["**/*"], deniedUploads: "skip" })
+    expect(swept.plan.uploads.map((file) => file.path)).toEqual([
+      ".openscience/sdk/openscience_track/__init__.py",
+      "src/train.py",
+    ])
+    // An explicit list may name the SDK, and still not the state.
+    const explicit = await ModalPlan.prepare({ ...input(root), uploads: ["src/train.py", ".openscience/sdk/**/*"] })
+    expect(explicit.plan.uploads.map((file) => file.path)).toEqual([
+      ".openscience/sdk/openscience_track/__init__.py",
+      "src/train.py",
+    ])
+    await expect(ModalPlan.prepare({ ...input(root), uploads: [".openscience/state/cursor.json"] })).rejects.toThrow(
+      "Modal upload policy denied",
+    )
+  })
+
+  test("excluded files stay out however the patterns match, and an explicit list that matches nothing is refused", async () => {
+    const root = await project()
+    await fs.writeFile(path.join(root, "ideas.md"), "# ideas\n")
+    await fs.writeFile(path.join(root, "results.tsv"), "run\tmetric\n")
+    const prepared = await ModalPlan.prepare({
+      ...input(root),
+      uploads: ["**/*"],
+      deniedUploads: "skip",
+      excludeUploads: ["ideas.md", "results.tsv"],
+    })
+    expect(prepared.plan.uploads.map((file) => file.path)).toEqual(["src/train.py"])
+    // The ledger the study rewrites while a job waits for approval must not
+    // move the approved digest.
+    await fs.writeFile(path.join(root, "ideas.md"), "# ideas, revised\n")
+    const again = await ModalPlan.prepare({
+      ...input(root),
+      uploads: ["**/*"],
+      deniedUploads: "skip",
+      excludeUploads: ["ideas.md", "results.tsv"],
+    })
+    expect(again.plan.digest).toBe(prepared.plan.digest)
+    // Paths given from the project root for a cwd below it match nothing here;
+    // the job would only fail on its first open(), so it is not dispatched.
+    await expect(ModalPlan.prepare({ ...input(root), uploads: ["autoresearch_churn/train.py"] })).rejects.toThrow(
+      /matched no files under the working directory.*relative to cwd/,
+    )
+  })
 })

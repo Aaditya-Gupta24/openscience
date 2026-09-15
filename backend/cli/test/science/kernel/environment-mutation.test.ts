@@ -44,6 +44,9 @@ test("subprocess overlay retains only the resolver-owned import path and sanitiz
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_TERMINAL_PROMPT: "0",
+    // Headless, trace-free Python: bytecode in OpenScience's cache, plots off-screen.
+    PYTHONPYCACHEPREFIX: expect.stringContaining("pycache"),
+    MPLBACKEND: "Agg",
   })
 })
 

@@ -1559,15 +1559,25 @@ export namespace SessionPrompt {
       const status: string[] = []
       await Plugin.trigger("env.lines", { sessionID, model }, { lines: envLines, status })
       const study = await studyReminder(sessionID)
-      if (study) status.push(study)
-      const statusText = status.length ? statusReminder(status) : undefined
+      // Each component is appended when its own key changes. The units'
+      // reminders are one-shot (their key is their text); the study's key
+      // names its state (status, baseline, best, directives), not the counts
+      // the model moves itself with every tool call, which had a "Study mode"
+      // note landing after almost every step.
       const harnessState = HarnessState.get(sessionID)
-      // Nothing to say clears the memory, so the same remark is made again
-      // the next time its situation arises rather than being swallowed.
-      if (!statusText) harnessState.statusDelivered = undefined
-      if (statusText && harnessState.statusDelivered !== statusText) {
-        harnessState.statusDelivered = statusText
-        await enqueue({ user: lastUser, kind: "harness", epoch: turn, text: statusText })
+      const delivered = (harnessState.statusDelivered ??= {})
+      const fresh = [
+        ...(status.length ? [{ name: "units", key: status.join("\n"), lines: status }] : []),
+        ...(study ? [{ name: "study", key: study.key, lines: [study.text] }] : []),
+      ].filter((part) => delivered[part.name] !== part.key)
+      if (fresh.length) {
+        for (const part of fresh) delivered[part.name] = part.key
+        await enqueue({
+          user: lastUser,
+          kind: "harness",
+          epoch: turn,
+          text: statusReminder(fresh.flatMap((part) => part.lines)),
+        })
         continue
       }
       // The offered tools changed since this agent's previous request (a skill
@@ -2924,7 +2934,10 @@ export namespace SessionPrompt {
   /** A session driving a study carries the study's rules and its current
    * state on every request, so a wake-up turn starts grounded without
    * re-reading files. */
-  async function studyReminder(sessionID: string): Promise<string | undefined> {
+  /** The study's state for the model, and the key that says when it is worth
+   * saying again. The first sentence is what the transcript shows as the
+   * note, so it reads as a status line rather than an identifier. */
+  async function studyReminder(sessionID: string): Promise<{ text: string; key: string } | undefined> {
     const study = await Experiments.studyForSession(sessionID).catch(() => undefined)
     if (!study) return
     const overview = await Experiments.overview(study.id).catch(() => undefined)
@@ -2938,9 +2951,19 @@ export namespace SessionPrompt {
       .filter(([, item]) => item !== undefined)
       .map(([key, item]) => `${key} ${item}`)
       .join(", ")
-    return [
-      `Study mode: "${study.name}" (${study.id}) is ${study.status}. Objective: ${study.direction} ${study.metric}.`,
-      `Baseline: ${value(overview.baseline)}. Best: ${value(overview.best)}. Runs completed: ${done.length}. Live: ${running.length}/${study.concurrency}${running.length ? ` (${running.map((run) => run.name).join(", ")})` : ""}. Queued ideas: ${queued.length}${
+    const key = JSON.stringify({
+      id: study.id,
+      status: study.status,
+      baseline: overview.baseline?.id,
+      best: overview.best?.id,
+      review: study.review && !overview.baseline,
+      directives: study.directives.filter((directive) => directive.active).map((directive) => directive.text),
+      budget: study.budget,
+    })
+    const text = [
+      `Study "${study.name}" is ${study.status}: ${study.direction} ${study.metric}; baseline ${value(overview.baseline)}; best ${value(overview.best)}; ${running.length} of ${study.concurrency} slots live; ${queued.length} idea${queued.length === 1 ? "" : "s"} queued.`,
+      `Study id: ${study.id}.`,
+      `Runs completed: ${done.length}. Live: ${running.length}/${study.concurrency}${running.length ? ` (${running.map((run) => run.name).join(", ")})` : ""}. Queued ideas: ${queued.length}${
         queued.length
           ? ` (next: ${queued
               .slice(0, 3)
@@ -2965,6 +2988,7 @@ export namespace SessionPrompt {
       `Keep at least 3 ideas queued, of different kinds; propose in batches. When a run finishes within a few minutes, wait for it in the same turn (compute_job wait) rather than ending the turn.`,
       ...(study.lessons ? [`Lessons so far:\n${study.lessons.split("\n").slice(-6).join("\n")}`] : []),
     ].join("\n")
+    return { text, key }
   }
 
   /** The per-step status the harness units report (time used, spend, study

@@ -4,6 +4,7 @@ import { ArtifactStore } from "../../src/artifact/store"
 import { Instance } from "../../src/project/instance"
 import { ProvenanceEnvelope } from "../../src/science/provenance/envelope"
 import { Provenance } from "../../src/science/provenance/store"
+import { Experiments } from "../../src/experiments"
 import { SessionFilesystem } from "../../src/session/filesystem"
 import { ArtifactTool } from "../../src/tool/artifact"
 import { executionSession, tmpdir } from "../fixture/fixture"
@@ -236,6 +237,72 @@ test("artifact save_file accepts a project-owned manually recorded run from the 
         to: ArtifactStore.reviewTargetID(saved.versionID, detail!.current.sha256),
         relation: "produced",
       })
+    },
+  })
+})
+
+test("artifact save_file takes a study run of this session as provenance, and refuses another session's", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const session = await executionSession()
+      const tool = await ArtifactTool.init()
+      const workspace = await SessionFilesystem.workspace(session.id)
+      await Bun.write(path.join(workspace, "metrics.json"), '{"cv_roc_auc": 0.759}\n')
+      const study = await Experiments.createStudy({
+        sessionID: session.id,
+        name: "Churn climb",
+        purpose: "p",
+        metric: "cv_roc_auc",
+        direction: "maximize",
+        root: path.join(tmp.path, "study"),
+        budget: { maxRuns: 3 },
+      })
+      const run = await Experiments.createRun({
+        name: "No-charges weaker shrinkage",
+        source: "job",
+        studyID: study.id,
+        sessionID: session.id,
+        jobID: "1f079335-e9b",
+      })
+      await Experiments.finishRun(run.id, "finished")
+
+      // The run the model names is the run in its study store; the Result's
+      // lineage now points at it.
+      const response = await tool.execute(
+        { action: "save_file", path: "metrics.json", provenance_id: run.id },
+        context(session.id),
+      )
+      expect(response.title).toStartWith("Saved Result")
+      const saved = response.metadata.savedArtifact as { id: string; versionID: string; provenanceID?: string }
+      expect(saved.provenanceID).toBe(run.id)
+      const scope = { projectID: Instance.project.id, directory: Instance.directory }
+      const node = await Provenance.find(scope, run.id)
+      expect(node).toMatchObject({ kind: "run", tool: "study", sessionID: session.id })
+      const detail = await ArtifactStore.get(Instance.project.id, saved.id)
+      expect((await Provenance.project(scope)).edges).toContainEqual({
+        from: run.id,
+        to: ArtifactStore.reviewTargetID(saved.versionID, detail!.current.sha256),
+        relation: "produced",
+      })
+
+      // A run another session owns is not this session's provenance.
+      const other = await Experiments.createStudy({
+        sessionID: "ses_someone_else",
+        name: "Other",
+        purpose: "p",
+        metric: "m",
+        direction: "maximize",
+        root: path.join(tmp.path, "other"),
+        budget: { maxRuns: 1 },
+      })
+      const foreign = await Experiments.createRun({ name: "theirs", source: "job", studyID: other.id })
+      const refused = await tool.execute(
+        { action: "save_file", path: "metrics.json", provenance_id: foreign.id },
+        context(session.id),
+      )
+      expect(refused.title).toBe("Invalid provenance")
     },
   })
 })

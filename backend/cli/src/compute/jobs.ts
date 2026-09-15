@@ -287,6 +287,9 @@ export namespace ComputeJobs {
   export const Request = Input.extend({
     sessionID: z.string().startsWith("ses_"),
     default_uploads: z.boolean().optional(),
+    /** Relative paths kept out of the upload manifest however the patterns
+     * match them (a study's ledger, rewritten while a job awaits approval). */
+    exclude_uploads: z.array(z.string().trim().min(1).max(2_000)).max(20).optional(),
     capability: CapabilityBinding.optional(),
     capability_execution: CapabilityExecution.optional(),
   }).superRefine((value, ctx) => {
@@ -1894,6 +1897,7 @@ export namespace ComputeJobs {
       timeoutMinutes: timeout,
       uploads: input.uploads ?? [],
       deniedUploads: input.default_uploads ? "skip" : "error",
+      excludeUploads: input.exclude_uploads,
       outputs: patterns,
       context: input.capability_execution ? { ...context, network: "none" } : context,
     })
@@ -4562,18 +4566,19 @@ export namespace ComputeJobs {
     const scope = await scoped(options)
     const current = await waitState(id, scope, options)
     const before = options.after ? { ...current, job: options.after, state: waitJobState(options.after) } : current
-    if (waitChanges(before, current).length) return waitResult(before, current, started, false)
+    // Only the job's state ends a wait early. A training job that prints a
+    // line every few seconds used to hand control back after each one, and a
+    // four-minute run cost nine model round-trips of "wait"; the logs are one
+    // `logs` call away whenever the model wants them.
+    const structuralChange = (changed: string[]) => changed.some((item) => item !== "output" && item !== "events")
+    if (structuralChange(waitChanges(before, current))) return waitResult(before, current, started, false)
     if (waitSettled(current, scope)) return { ...waitResult(before, current, started, false), changed: ["settled"] }
     const next = async (): Promise<WaitChange> => {
       const remaining = timeout - (Date.now() - started)
       if (remaining <= 0) return waitResult(before, await waitState(id, scope, options), started, true)
       await waitSignal(scope, id, remaining, options.signal)
       const after = await waitState(id, scope, options)
-      const changed = waitChanges(before, after)
-      const structural = changed.some((item) => item !== "output" && item !== "events")
-      const activity = Math.max(after.output.modified, after.events.modified)
-      const quiet = activity > 0 && Date.now() - activity >= 2_000
-      if (waitSettled(after, scope) || structural || (changed.length > 0 && quiet)) {
+      if (waitSettled(after, scope) || structuralChange(waitChanges(before, after))) {
         return waitResult(before, after, started, false)
       }
       if (Date.now() - started >= timeout) return waitResult(before, after, started, true)

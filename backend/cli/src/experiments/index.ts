@@ -701,6 +701,15 @@ export namespace Experiments {
     return run.status === "failed" && !run.jobID && (run.killReason?.startsWith("dispatch") ?? false)
   }
 
+  /** Whether a run counts against the study's run budget. The budget bounds
+   * experiments evaluated: a dispatch that never became a job, or a job that
+   * died before logging a single point (a missing import, a file it could
+   * not open), evaluated nothing. The hour budget still bounds the waste. */
+  export function budgeted(run: Run) {
+    if (dispatchFailed(run)) return false
+    return !(run.status === "failed" && run.headline === null && run.points === 0)
+  }
+
   export type Series = { runID: string; key: string; points: Array<{ step: number; value: number }> }
 
   /** Downsampled series for charts: at most `max` points per run and key,

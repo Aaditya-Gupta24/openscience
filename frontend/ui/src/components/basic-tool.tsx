@@ -237,8 +237,14 @@ export function GenericTool(props: {
   defaultOpen?: boolean
   forceOpen?: boolean
   locked?: boolean
+  title?: string
 }) {
+  // The receipt the tool wrote for itself ("Dropped: Logistic-heavy blend",
+  // "Compare 2 runs") says more than any input field; a study or experiments
+  // call has no command or path and read as a bare "Study" without it.
   const subtitle = () => {
+    const receipt = props.title?.trim()
+    if (receipt && receipt.toLowerCase() !== humanizeToolName(props.tool).toLowerCase()) return receipt
     const input = props.input ?? {}
     const first = input.command ?? input.description ?? input.query ?? input.path ?? input.pattern
     return typeof first === "string" ? first : undefined

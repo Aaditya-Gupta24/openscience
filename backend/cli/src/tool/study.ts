@@ -11,6 +11,55 @@ import { ComputeJobTool } from "./compute-job"
 import { runSummary } from "./experiments"
 import { Tool } from "./tool"
 import DESCRIPTION from "./study.txt"
+import { Instance } from "@/project/instance"
+import { SessionWorkspace } from "@/session/workspace"
+
+/** The approval pattern one study's remote runs share. */
+export function approvalPattern(study: { id: string }) {
+  return `study:${study.id}`
+}
+
+/** Where a new study's files go by default: the connected working folder
+ * when the session has one, otherwise Project files. Session scratch is never
+ * the default, since it is deleted with the conversation. */
+async function studyBase(sessionID: string) {
+  const tool = await SessionFilesystem.toolDirectory(sessionID)
+  const scratch = await SessionWorkspace.touch(sessionID).then((value) => value.scratchRoot)
+  return tool === scratch ? Instance.directory : tool
+}
+
+/** Ask once for the study's remote runs. Returns the line to report, or
+ * nothing when the target runs locally. */
+async function studyApproval(ctx: Tool.Context, study: Experiments.Study) {
+  if (study.target.kind === "local") return
+  const permission = study.target.kind === "modal" ? "modal" : "remote_compute"
+  const pattern = approvalPattern(study)
+  const budget = Object.entries(study.budget)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key} ${value}`)
+    .join(", ")
+  await ctx.ask({
+    permission,
+    patterns: [pattern],
+    always: [pattern],
+    metadata: {
+      study: {
+        id: study.id,
+        name: study.name,
+        target: study.target,
+        concurrency: study.concurrency,
+        budget: study.budget,
+        killCriteria: study.killCriteria,
+      },
+      compute: {
+        purpose: `Approve the runs of study "${study.name}" on ${study.target.kind}${
+          study.target.kind === "modal" ? ` (${study.target.gpu})` : ""
+        }: ${budget || "no budget"}; kill rule ${study.killCriteria || "none"}. One approval covers every run the study dispatches inside that budget.`,
+      },
+    },
+  })
+  return `Remote runs approved for this study on ${study.target.kind}; each dispatch is recorded with its plan digest.`
+}
 
 const Action = z.enum(["create", "status", "propose", "start", "record", "drop", "conclude"])
 type Metadata = {
@@ -60,13 +109,35 @@ export const StudyTool = Tool.define("study", {
     ideas: z.array(IdeaInput).max(50).optional(),
     // start
     idea_id: z.string().optional(),
-    command: z.string().trim().min(1).max(20_000).optional(),
-    cwd: z.string().max(2_000).optional(),
-    artifacts: z.array(z.string().trim().min(1).max(2_000)).max(50).optional(),
+    command: z
+      .string()
+      .trim()
+      .min(1)
+      .max(20_000)
+      .optional()
+      .describe('The command, run inside cwd: "python train.py --lr 0.01", not a path from the project root.'),
+    cwd: z
+      .string()
+      .max(2_000)
+      .optional()
+      .describe(
+        "Directory the run executes in. Defaults to the study root, which is where the code, the data copy and the tracking SDK live; leave it unset unless the code is elsewhere.",
+      ),
+    artifacts: z
+      .array(z.string().trim().min(1).max(2_000))
+      .max(50)
+      .optional()
+      .describe('Output files to bring back, relative to cwd: "outputs/metrics.json".'),
     packages: z.array(z.string().trim().min(1).max(500)).max(100).optional(),
     image: z.string().trim().min(1).max(2_000).optional(),
     gpu: z.string().trim().min(1).max(120).optional(),
-    uploads: z.array(z.string().trim().min(1).max(2_000)).max(100).optional(),
+    uploads: z
+      .array(z.string().trim().min(1).max(2_000))
+      .max(100)
+      .optional()
+      .describe(
+        "Files a remote run needs, relative to cwd; omit to send everything in cwd. The tracking SDK is always included; the study's ledger files never are.",
+      ),
     // record
     run_id: z.string().optional(),
     kept: z.boolean().optional(),
@@ -104,7 +175,11 @@ export const StudyTool = Tool.define("study", {
           "create needs a budget the user agreed to for this study (maxHours, maxRuns, maxCostUSD or target). Do not reuse a budget from an earlier study or instruction; if the request names none, ask once and recommend a time budget (for example maxHours 2 with a per-run kill rule).",
         )
       }
-      const base = await SessionFilesystem.toolDirectory(ctx.sessionID)
+      // A study is durable research: in an isolated session its root goes
+      // under Project files, not the scratch that dies with the conversation,
+      // so the code, the ledger and the outputs survive and the person can
+      // see them. A connected working folder stays the root as before.
+      const base = await studyBase(ctx.sessionID)
       const root = params.root ? path.resolve(base, params.root) : base
       if (path.relative(base, root).startsWith("..")) throw new Error("root must stay inside the working folder")
       const criteria = KillCriteria.parse(params.kill_criteria ?? "")
@@ -132,11 +207,17 @@ export const StudyTool = Tool.define("study", {
       await StudyLedger.render(study.id)
       StudyDriver.start()
       ctx.metadata({ title: `Study: ${study.name}`, metadata: { study } })
+      // One approval covers the study's remote runs: the person agrees to the
+      // budget here (runs, hours, GPU class, kill rule) instead of clicking
+      // through a digest-bound card for every dispatch, which stalled an
+      // hour-long study for forty minutes of waiting.
+      const grant = await studyApproval(ctx, study)
       return {
         title: `Study created: ${study.name}`,
         metadata: { study } satisfies Metadata as Metadata,
         output: [
           `Study ${study.id} is running in ${root}.`,
+          ...(grant ? [grant] : []),
           `Metric: ${study.direction} ${study.metric}. Concurrency ${study.concurrency}${slots.length > 1 ? ` (${slots.length} local GPUs, one run per GPU)` : ""}. Kill criteria: ${study.killCriteria || "none"}. Budget: ${json(study.budget)}.`,
           `Tracking SDK written to ${TrackingSDK.DIRECTORY}/ (import openscience_track, or wandb). Training scripts must log ${study.metric}.`,
           `Next: propose the baseline (priority 1000) and the first ideas, then start the baseline. Files study.md, ideas.md, results.tsv and lessons.md are rendered in the root as the study advances.`,
@@ -239,8 +320,8 @@ export const StudyTool = Tool.define("study", {
       // The run budget counts every run that reached a job, live ones included,
       // so parallel starts cannot overshoot it before the driver notices.
       if (current.budget.maxRuns !== undefined) {
-        const counted = (await Experiments.listRuns({ studyID: current.id, limit: 2000 })).filter(
-          (run) => !Experiments.dispatchFailed(run),
+        const counted = (await Experiments.listRuns({ studyID: current.id, limit: 2000 })).filter((run) =>
+          Experiments.budgeted(run),
         ).length
         if (counted >= current.budget.maxRuns) {
           throw new Error(
@@ -248,10 +329,13 @@ export const StudyTool = Tool.define("study", {
           )
         }
       }
-      const base = await SessionFilesystem.toolDirectory(ctx.sessionID)
-      const cwd = params.cwd ? path.resolve(base, params.cwd) : current.root
-      const relative = path.relative(base, cwd)
-      if (relative.startsWith("..")) throw new Error("cwd must stay inside the working folder")
+      // The run executes in the study root unless the code sits in one of its
+      // subdirectories; the compute tool resolves the absolute path against
+      // Session scratch or Project files and snapshots it as needed.
+      const cwd = params.cwd ? path.resolve(current.root, params.cwd) : current.root
+      if (path.relative(current.root, cwd).startsWith("..")) {
+        throw new Error(`cwd must stay inside the study root ${current.root}`)
+      }
       const entries = await TrackingSDK.materialize(cwd, { shim: true })
       const target = params.target ?? current.target
       const gpus = target.kind === "local" ? await GpuInventory.list() : []
@@ -282,6 +366,10 @@ export const StudyTool = Tool.define("study", {
         slot: gpus.length ? slot : undefined,
       })
       const compute = await ComputeJobTool.init({ agent: undefined })
+      // The SDK the command imports rides with an explicit upload list, and
+      // the ledger this tool rewrites while a job waits for approval stays
+      // out of the manifest, or the approved digest drifts before dispatch.
+      const uploads = params.uploads ? [...params.uploads, `${TrackingSDK.DIRECTORY}/**/*`] : undefined
       const result = await compute
         .execute(
           {
@@ -289,15 +377,16 @@ export const StudyTool = Tool.define("study", {
             name: `${current.name}: ${idea.title}`.slice(0, 120),
             purpose: `Study ${current.id} run for idea ${idea.id}: ${idea.description}`.slice(0, 500),
             command,
-            cwd: relative || undefined,
+            cwd,
             target: target.kind === "modal" ? { kind: "modal" } : target,
             artifacts: params.artifacts,
             packages: params.packages,
             image: params.image,
             gpu: params.gpu ?? (target.kind === "modal" ? target.gpu : undefined),
-            uploads: params.uploads,
+            uploads,
+            exclude_uploads: [...StudyLedger.FILES],
           },
-          ctx,
+          { ...ctx, extra: { ...(ctx.extra ?? {}), studyApproval: approvalPattern(current), studyStaging: "refresh" } },
         )
         .catch(async (error) => {
           await Experiments.finishRun(run.id, "failed", { killReason: `dispatch failed: ${String(error)}` })
@@ -341,7 +430,15 @@ export const StudyTool = Tool.define("study", {
       }
       const run = await Experiments.getRun(params.run_id)
       if (!run || run.studyID !== current.id) throw new Error(`Run ${params.run_id} is not in this study`)
-      if (run.status === "running") throw new Error(`Run ${run.id} is still running; record it after it ends.`)
+      if (run.status === "running" && run.jobID) {
+        throw new Error(`Run ${run.id} is still running; record it after it ends.`)
+      }
+      if (run.status === "running") {
+        // No job ever bound: the dispatch was interrupted. Recording it is
+        // how the model closes the phantom instead of waiting for an end
+        // that cannot come.
+        await Experiments.finishRun(run.id, "failed", { killReason: "dispatch interrupted: no job was bound" })
+      }
       if (params.baseline) await Experiments.setBaseline(current.id, run.id)
       const updated = await Experiments.recordResult({
         studyID: current.id,
