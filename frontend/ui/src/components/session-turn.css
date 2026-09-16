@@ -919,6 +919,25 @@
       overflow-wrap: anywhere;
     }
 
+    /* The status, router code or request id a support ticket needs, set apart
+       from the sentence the reader acts on. */
+    [data-slot="session-state-detail"] {
+      margin-top: 2px;
+      overflow: hidden;
+      opacity: 0.7;
+      font-family: var(--font-family-mono);
+      font-size: var(--font-size-x-small);
+      line-height: 16px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    &[data-state="error"] {
+      [data-slot="session-state-head"] > [data-component="icon"] {
+        color: var(--icon-critical-active, currentColor);
+      }
+    }
+
     [data-slot="session-state-actions"] {
       display: flex;
       justify-content: flex-end;

@@ -96,7 +96,11 @@ export async function resolveTaskContinuation(input: {
 }
 
 const parameters = z.object({
-  description: z.string().describe("A short (3-5 words) description of the task"),
+  description: z
+    .string()
+    .describe(
+      "A one- to three-word title for the job, e.g. 'Split audit'; it names the worker's session, so a label, not a sentence.",
+    ),
   prompt: z.string().describe("The task for the agent to perform"),
   subagent_type: z.string().describe("The name of the subagent to use for this task"),
   task_id: z
@@ -436,7 +440,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             id: reserved.childSessionID,
             parentID: ctx.sessionID,
             directory: Instance.directory,
-            title: `${params.description} (@${agent.name} subagent)`,
+            title: params.description,
             permission: childPermissionRules(agent, config.experimental?.primary_tools),
           })
       // The child keeps its own scratch for staged inputs and side outputs but

@@ -150,8 +150,53 @@ describe("sessionErrorText", () => {
     })
     expect(sessionErrorDisplay({ data: { message: "Provider is overloaded" } })).toEqual({
       state: "error",
+      title: "The turn failed",
       message: "Provider is overloaded",
     })
+  })
+
+  test("a gateway router error gets a plain title and keeps its codes as detail", () => {
+    const shown = sessionErrorDisplay({
+      name: "APIError",
+      data: {
+        message:
+          "Ace's gateway could not deliver this request to the model service (ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8). Retry; if it fails again, continue without re-reading large images.",
+        statusCode: 502,
+      },
+    })
+    expect(shown.state).toBe("error")
+    expect(shown.title).toBe("The model service did not answer")
+    expect(shown.message).toBe(
+      "Ace's gateway could not deliver this request to the model service. Retry; if it fails again, continue without re-reading large images.",
+    )
+    expect(shown.detail).toBe("ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8 · HTTP 502")
+
+    // The raw edge page, as older clients recorded it: boilerplate and the
+    // request id leave the sentence; what remains still says what to do.
+    const raw = sessionErrorDisplay({
+      name: "APIError",
+      data: {
+        message:
+          "Bad Gateway: An error occurred with this application.\n\nROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8\n\nsin1::6rmpm-1789568119395-4f28cd97453e",
+        statusCode: 502,
+      },
+    })
+    expect(raw.title).toBe("The model service did not answer")
+    expect(raw.message).toBe("Bad Gateway:")
+    expect(raw.detail).toBe(
+      "ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8 · sin1::6rmpm-1789568119395-4f28cd97453e · HTTP 502",
+    )
+
+    expect(
+      sessionErrorDisplay({ name: "APIError", data: { message: "Too Many Requests", statusCode: 429 } }).title,
+    ).toBe("Rate limited")
+    expect(
+      sessionErrorDisplay({ name: "APIError", data: { message: "Unauthorized: invalid api key", statusCode: 401 } })
+        .title,
+    ).toBe("Credentials rejected")
+    expect(sessionErrorDisplay({ name: "APIError", data: { message: "", statusCode: 503 } }).message).toBe(
+      "The provider returned HTTP 503 and nothing more. Send again to retry.",
+    )
   })
 })
 
@@ -839,7 +884,7 @@ describe("sessionErrorDisplay", () => {
         name: "APIError",
         data: { message: "Provider is overloaded", metadata: { code: "provider_overloaded" } },
       }),
-    ).toEqual({ state: "error", message: "Provider is overloaded" })
+    ).toEqual({ state: "error", title: "The turn failed", message: "Provider is overloaded" })
   })
 })
 

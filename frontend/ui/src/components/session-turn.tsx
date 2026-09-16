@@ -425,16 +425,18 @@ function SessionErrorNotice(props: { error: unknown; sessionID: string; messageI
       aria-live="polite"
     >
       <div data-slot="session-state-head">
-        <Show
-          when={display().state !== "error"}
-          fallback={<span data-slot="session-state-message">{display().message}</span>}
-        >
-          <Icon name="alert-circle" size="small" />
-          <div data-slot="session-state-copy">
-            <strong>{display().title}</strong>
-            <span data-slot="session-state-message">{display().message}</span>
-          </div>
-        </Show>
+        <Icon name="alert-circle" size="small" />
+        <div data-slot="session-state-copy">
+          <strong>{display().title}</strong>
+          <span data-slot="session-state-message">{display().message}</span>
+          <Show when={display().detail}>
+            {(detail) => (
+              <span data-slot="session-state-detail" title={detail()}>
+                {detail()}
+              </span>
+            )}
+          </Show>
+        </div>
       </div>
       <Show when={resend()}>
         <div data-slot="session-state-actions">

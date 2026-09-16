@@ -1418,7 +1418,6 @@ ToolRegistry.register({
             : i18n.t("ui.tool.task.completed")
       }
     }
-    const [expanded, setExpanded] = createSignal<boolean>()
     const agentLabel = () =>
       i18n.t("ui.tool.agent", { type: sentenceCaseLabel(String(props.input.subagent_type || props.tool)) })
 
@@ -1437,11 +1436,9 @@ ToolRegistry.register({
     })
 
     const childRequest = createMemo(() => childPermission() ?? childQuestion())
+    // A worker waiting on the user surfaces its request under the row; the
+    // row itself opens the worker's session, where its work and handoff live.
     const attention = () => (childPermission() ? "permission" : childQuestion() ? "question" : undefined)
-    // A worker waiting on the user must stay visible; otherwise the card is a
-    // closed line until the user opens it. Nothing streams from the worker:
-    // its transcript is one click away and its handoff lands here when done.
-    const open = () => (attention() ? true : (expanded() ?? false))
     const statusLabel = () =>
       attention() === "permission"
         ? i18n.t("ui.tool.task.needsApproval")
@@ -1507,31 +1504,30 @@ ToolRegistry.register({
       )
     }
 
+    const canOpen = () => !!childSessionId() && !!data.navigateToSession
     return (
       <div data-component="tool-part-wrapper" data-permission={!!childPermission()} data-question={!!childQuestion()}>
-        <details
+        <div
           data-component="delegation-card"
           data-outcome={outcome()}
           data-phase={phase()}
           data-attention={attention()}
-          open={open()}
         >
-          <summary
+          {/* One row, and the row is the link: the worker's own session holds
+              its transcript and handoff, so nothing here folds open. What the
+              worker is doing leads; who is doing it and its state sit right. */}
+          <button
+            type="button"
             data-slot="delegation-summary"
-            aria-label={`${statusLabel()}: ${agentLabel()}`}
-            onClick={(event) => {
-              event.preventDefault()
-              if (attention()) return
-              setExpanded(!open())
-            }}
+            aria-label={`${statusLabel()}: ${String(props.input.description || agentLabel())} (${agentLabel()})`}
+            disabled={!canOpen()}
+            onClick={openAgent}
           >
             <span data-slot="delegation-mark" aria-hidden="true">
               <Show when={live() && !attention()} fallback={<Icon name="research" size="small" />}>
                 <Spinner />
               </Show>
             </span>
-            {/* What the worker is doing leads; who is doing it sits at the
-                right in the quiet colour, and the state reads on its own line. */}
             <span data-slot="delegation-heading">
               <span data-slot="delegation-title">{String(props.input.description || agentLabel())}</span>
               <span data-slot="delegation-subline">
@@ -1543,12 +1539,14 @@ ToolRegistry.register({
               <Show when={props.input.description}>
                 <span data-slot="delegation-agent">{agentLabel()}</span>
               </Show>
-              <Icon name="chevron-down" size="small" />
+              <Show when={canOpen()}>
+                <Icon name="chevron-right" size="small" />
+              </Show>
             </span>
-          </summary>
+          </button>
 
-          <div data-slot="delegation-body">
-            <Show when={attention()}>
+          <Show when={attention()}>
+            <div data-slot="delegation-body">
               <div data-slot="delegation-attention" data-kind={attention()}>
                 <Show
                   when={childToolPart()}
@@ -1566,73 +1564,27 @@ ToolRegistry.register({
                 </Show>
                 <Show when={childQuestion()}>{(request) => <QuestionPrompt request={request()} />}</Show>
               </div>
-            </Show>
-
-            <Show when={handoff().notes.length > 0}>
-              <ul data-slot="delegation-notes" data-outcome={outcome()}>
-                <For each={handoff().notes}>{(note) => <li>{note}</li>}</For>
-              </ul>
-            </Show>
-
-            <Show when={handoff().text}>
-              {(value) => (
-                <div data-slot="delegation-findings" data-error={props.status === "error" ? "true" : undefined}>
-                  <Show when={!handoff().headed}>
-                    <span data-slot="delegation-section-label">
-                      {outcome() === "cancelled"
-                        ? i18n.t("ui.tool.status.cancelled")
-                        : props.status === "error"
-                          ? "Error"
-                          : "Findings"}
-                    </span>
-                  </Show>
-                  <Markdown text={value()} />
-                </div>
-              )}
-            </Show>
-
-            <Show when={handoff().outputs.length > 0}>
-              <div data-slot="delegation-outputs">
-                <span data-slot="delegation-section-label">Saved to Results</span>
-                <div>
-                  <For each={handoff().outputs}>
-                    {(file) => (
-                      <button
-                        type="button"
-                        data-slot="delegation-output"
-                        disabled={!file.artifactID || !data.openArtifact}
-                        onClick={() => file.artifactID && data.openArtifact?.(file.artifactID)}
-                      >
-                        <Icon name="file" size="small" />
-                        {file.filename}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </div>
-            </Show>
-
-            <Show when={live() && !attention()}>
-              <p data-slot="delegation-quiet">Working in its own session; the handoff appears here when it finishes.</p>
-            </Show>
-            <div data-slot="delegation-footer">
-              <span data-slot="delegation-metrics" aria-label="Delegated research details" />
-              <span data-slot="delegation-actions">
-                <Show when={childSessionId() && data.navigateToSession}>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="small"
-                    data-slot="delegation-link"
-                    onClick={openAgent}
-                  >
-                    Open agent
-                  </Button>
-                </Show>
-              </span>
             </div>
-          </div>
-        </details>
+          </Show>
+
+          <Show when={handoff().outputs.length > 0}>
+            <div data-slot="delegation-outputs">
+              <For each={handoff().outputs}>
+                {(file) => (
+                  <button
+                    type="button"
+                    data-slot="delegation-output"
+                    disabled={!file.artifactID || !data.openArtifact}
+                    onClick={() => file.artifactID && data.openArtifact?.(file.artifactID)}
+                  >
+                    <Icon name="file" size="small" />
+                    {file.filename}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
       </div>
     )
   },

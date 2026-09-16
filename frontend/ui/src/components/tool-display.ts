@@ -359,6 +359,48 @@ export type SessionErrorDisplay = {
   title?: string
   message: string
   action?: "retry"
+  /** Machine detail (an HTTP status, a gateway router code, a request id)
+   * kept out of the copy but available on demand for a support report. */
+  detail?: string
+}
+
+/** Gateway router codes and edge request ids are for a support ticket, not
+ * for the sentence the reader acts on. */
+const routerCode = /\b(?:ROUTER|FUNCTION|EDGE|DEPLOYMENT|DNS|MIDDLEWARE|INTERNAL)_[A-Z0-9_]+\b/g
+const requestID = /\b[a-z]{2,4}\d?::[a-z0-9]+(?:-[a-z0-9]+)+\b/g
+const boilerplate = /an error occurred with this application\.?/gi
+
+export function scrubProviderMessage(message: string): { text: string; detail?: string } {
+  const codes = [...message.matchAll(routerCode)].map((m) => m[0])
+  const ids = [...message.matchAll(requestID)].map((m) => m[0])
+  const text = message
+    .replace(routerCode, "")
+    .replace(requestID, "")
+    .replace(boilerplate, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, " ")
+    .replace(/\s+([.,;:])/g, "$1")
+    .trim()
+  const detail = [...new Set([...codes, ...ids])].join(" · ")
+  return { text, ...(detail ? { detail } : {}) }
+}
+
+/** The one-line heading for a failed turn, from what the runtime recorded. */
+function errorTitle(value: unknown, message: string): string {
+  const error = record(value)
+  const data = record(error?.data)
+  const status = typeof data?.statusCode === "number" ? data.statusCode : undefined
+  if (credentialErrorText(value)) return "Credentials rejected"
+  if (status === 402 || /insufficient_balance|Wallet cannot fund/i.test(message)) return "Ace is paused"
+  if (status === 429 || /rate limit/i.test(message)) return "Rate limited"
+  if (status === 413 || /context window|too large|prompt is too long|maximum context/i.test(message))
+    return "Request too large"
+  if (status !== undefined && status >= 500) return "The model service did not answer"
+  if (/bad gateway|gateway|could not deliver|connection was interrupted|ECONNRESET|fetch failed|socket/i.test(message))
+    return "The model service did not answer"
+  if (status === 400 || status === 422) return "The request was rejected"
+  return "The turn failed"
 }
 
 /**
@@ -404,7 +446,20 @@ export function sessionErrorDisplay(value: unknown): SessionErrorDisplay {
       message: sessionErrorText(value),
     }
   }
-  return { state: "error", message: sessionErrorText(value) }
+  const scrubbed = scrubProviderMessage(sessionErrorText(value))
+  const status = typeof data?.statusCode === "number" ? ` HTTP ${data.statusCode}` : ""
+  const detail = [scrubbed.detail, status.trim()].filter(Boolean).join(" · ")
+  const message =
+    scrubbed.text ||
+    (status
+      ? `The provider returned${status} and nothing more. Send again to retry.`
+      : "Request failed. Send again to retry.")
+  return {
+    state: "error",
+    title: errorTitle(value, message),
+    message,
+    ...(detail ? { detail } : {}),
+  }
 }
 
 export function savedArtifact(value: unknown): SavedArtifact | undefined {

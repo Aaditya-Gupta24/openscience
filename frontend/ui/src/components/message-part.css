@@ -711,22 +711,25 @@
     --delegation-status: var(--text-warning-base);
   }
 
+  /* The row is a link into the worker's session, styled like the rows
+     around it: no border, no fill until hovered, chevron pointing onward. */
   [data-slot="delegation-summary"] {
     display: grid;
     grid-template-columns: 16px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+    width: 100%;
     min-height: 28px;
     padding: 4px 8px 4px 0;
+    border: 0;
     border-radius: var(--radius-xs);
-    list-style: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
 
-    &::-webkit-details-marker {
-      display: none;
-    }
-
-    &:hover {
+    &:hover:not(:disabled) {
       background: color-mix(in srgb, var(--surface-raised-base) 60%, transparent);
     }
 
@@ -734,10 +737,10 @@
       outline: 2px solid var(--color-focus);
       outline-offset: 1px;
     }
-  }
 
-  &[data-attention] [data-slot="delegation-summary"] {
-    cursor: default;
+    &:disabled {
+      cursor: default;
+    }
   }
 
   /* Rows read text-first, like the thought and burst rows around them; the
@@ -814,9 +817,10 @@
     }
   }
 
-  &[open] [data-slot="delegation-summary-meta"] [data-component="icon"],
-  [data-slot="delegation-summary"]:hover [data-slot="delegation-summary-meta"] [data-component="icon"] {
+  [data-slot="delegation-summary"]:hover [data-slot="delegation-summary-meta"] [data-component="icon"],
+  [data-slot="delegation-summary"]:focus-visible [data-slot="delegation-summary-meta"] [data-component="icon"] {
     opacity: 1;
+    transform: translateX(2px);
   }
 
   [data-slot="delegation-agent"] {
@@ -825,10 +829,6 @@
 
   [data-slot="delegation-status"] {
     color: var(--delegation-status);
-  }
-
-  &[open] [data-slot="delegation-summary-meta"] [data-component="icon"] {
-    transform: rotate(180deg);
   }
 
   /* The body hangs from a rail aligned under the mark. */
@@ -944,10 +944,16 @@
     }
   }
 
-  [data-slot="delegation-outputs"] > div {
+  /* Files the worker saved, as chips under the row, indented to the title. */
+  [data-slot="delegation-outputs"] {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    padding: 0 0 6px 24px;
+  }
+
+  &:not([data-outcome="running"]):not([data-outcome="pending"]):not([data-attention]) [data-slot="delegation-outputs"] {
+    padding-left: 0;
   }
 
   [data-slot="delegation-output"] {

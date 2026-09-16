@@ -95,6 +95,7 @@ type Callbacks = {
   loadComputeJob?: Parameters<typeof data.DataProvider>[0]["onLoadComputeJob"]
   resolveFileReceipts?: Parameters<typeof data.DataProvider>[0]["onResolveFileReceipts"]
   resendTurn?: Parameters<typeof data.DataProvider>[0]["onResendTurn"]
+  navigateToSession?: Parameters<typeof data.DataProvider>[0]["onNavigateToSession"]
 }
 const mount = (view: () => JSX.Element, store: Store, callbacks: Callbacks = {}) => {
   const host = document.createElement("div")
@@ -111,6 +112,7 @@ const mount = (view: () => JSX.Element, store: Store, callbacks: Callbacks = {})
           onLoadComputeJob: callbacks.loadComputeJob,
           onResolveFileReceipts: callbacks.resolveFileReceipts,
           onResendTurn: callbacks.resendTurn,
+          onNavigateToSession: callbacks.navigateToSession,
           get children() {
             return dialog.DialogProvider({
               get children() {
@@ -1365,7 +1367,7 @@ describe("execution inspection", () => {
     expect(host.querySelector('[data-slot="shell-output-actions"] button')?.getAttribute("aria-label")).toBe("Copy")
   })
 
-  test("an agent card is a closed line while it runs, streams nothing, and keeps the user's open state across progress", async () => {
+  test("an agent card is one row that opens the worker: it streams nothing, folds nothing, and keeps the handoff in the child", async () => {
     const [part, setPart] = reactive.createStore<ToolPart>({
       id: "prt_agent",
       sessionID,
@@ -1385,19 +1387,21 @@ describe("execution inspection", () => {
         time: { start: Date.now() - 8_000 },
       },
     })
-    const host = mount(() => parts.Part({ part, message: assistant() }), empty())
+    const opened: string[] = []
+    const host = mount(() => parts.Part({ part, message: assistant() }), empty(), {
+      navigateToSession: (id) => opened.push(id),
+    })
     await settle()
-    const card = host.querySelector<HTMLDetailsElement>('[data-component="delegation-card"]')!
-    expect(card.open).toBe(false)
-    expect(card.querySelector('[data-slot="delegation-current"]')).toBeNull()
-    expect(card.querySelector('[data-slot="delegation-activity"]')).toBeNull()
+    const card = host.querySelector<HTMLElement>('[data-component="delegation-card"]')!
+    expect(card.querySelector("details")).toBeNull()
+    const row = card.querySelector<HTMLButtonElement>('button[data-slot="delegation-summary"]')!
+    expect(row.disabled).toBe(false)
+    expect(card.querySelector('[data-slot="delegation-title"]')?.textContent).toBe("Compare assays")
+    expect(card.querySelector('[data-slot="delegation-agent"]')?.textContent).toContain("Research")
     expect(card.querySelector('[data-slot="delegation-subline"]')?.textContent).toContain("8s")
-    expect(card.querySelector('[data-slot="delegation-subline"]')?.textContent).not.toContain("op")
-    card.querySelector<HTMLElement>("summary")!.click()
-    await settle()
-    expect(card.open).toBe(true)
-    expect(card.querySelector('[data-slot="delegation-quiet"]')?.textContent).toContain("own session")
     expect(card.textContent).not.toContain("Read old paper")
+    row.click()
+    expect(opened).toEqual(["ses_delegated"])
     setPart("state", {
       ...part.state,
       status: "running",
@@ -1410,23 +1414,21 @@ describe("execution inspection", () => {
       },
     })
     await settle()
-    expect(card.open).toBe(true)
     expect(card.textContent).not.toContain("Read new paper")
     setPart("state", {
       status: "completed",
       input: part.state.input,
       title: "Compare assays",
       output: "The comparison is ready; one source could not be retrieved.",
-      metadata: { outcome: "completed", failedToolCalls: 1 },
+      metadata: { sessionId: "ses_delegated", outcome: "completed", failedToolCalls: 1 },
       time: { start: 1_000, end: 2_000 },
     })
     await settle()
     expect(card.getAttribute("data-outcome")).toBe("completed")
     expect(card.querySelector('[data-slot="delegation-status"]')?.textContent).toBe("Completed with tool errors")
+    // The handoff lives in the worker's session; the row does not repeat it.
+    expect(card.textContent).not.toContain("The comparison is ready")
     expect(card.querySelector('[data-slot="delegation-quiet"]')).toBeNull()
-    expect(card.textContent).toContain("The comparison is ready")
-    // The status line carries the failure once; the footer does not repeat it.
-    expect(card.querySelector('[data-slot="delegation-metrics"]')?.textContent ?? "").not.toContain("failed")
   })
 
   test("a new model request replaces the preceding command status with its own wait", async () => {

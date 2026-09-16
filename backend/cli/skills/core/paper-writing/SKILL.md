@@ -85,9 +85,20 @@ unavailable, leave a placeholder box with the planned caption and say what is ne
 render it, rather than drawing it by hand. Tables carry the numbers the prose cites, with
 uncertainty and n. Reference every figure and table in the text before it appears.
 
+**Page balance.** Floats are placed by LaTeX, not by where they sit in the source, so
+check pages, not code. Place figures with `[t]` or `[tbp]` (never bare `[h]`), size them to
+the column or text width they need rather than the full page, and keep two floats from
+landing back to back on one page with a sliver of text between them: move one to the next
+section, combine them into one figure with panels, or let the smaller one sit in the text
+with `\FloatBarrier` only where a section must end cleanly. A page that is two thirds
+figure and one third blank, a heading orphaned at the foot of a page, or a caption
+separated from its figure is a defect to fix before the report ships.
+
 **Verification.** This is part of writing, done here, not handed to a worker. Compile
-(`latexmk -pdf` or `pdflatex` twice with `bibtex`), fix every error, then read the PDF:
-figure sizes, overfull lines, orphaned headings, broken refs (`??`). `scripts/validate_format.py --file paper.pdf --venue "<venue>" --check-all` checks
+(`latexmk -pdf` or `pdflatex` twice with `bibtex`), fix every error, then look at every
+page: `pdftoppm -r 50 -png paper.pdf pages/p` renders thumbnails cheap enough to `read`
+several at once; check them for figure sizes, page balance, blank regions, overfull lines,
+orphaned headings and broken refs (`??`). `scripts/validate_format.py --file paper.pdf --venue "<venue>" --check-all` checks
 page count, margins and font size against the venue's rules where it knows them. Run the
 citations skill's `validate_bib.py` on the `.bib`. Re-read the abstract against the
 results table.
