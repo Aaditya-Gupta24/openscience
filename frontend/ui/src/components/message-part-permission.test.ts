@@ -196,6 +196,51 @@ describe("Modal permission card", () => {
     }
   })
 
+  test("a study approval grants the study, not one request: its primary action is a session rule for the study pattern", () => {
+    const container = document.createElement("div")
+    const responses: string[] = []
+    document.body.append(container)
+    container.append(
+      PermissionActions({
+        respond(response) {
+          responses.push(response)
+        },
+        metadata: {
+          study: {
+            id: "stu_1",
+            name: "IBM Telco churn GPU search",
+            target: { kind: "modal", gpu: "T4" },
+            concurrency: 2,
+            budget: { maxRuns: 12, maxHours: 2, target: 0.86, runMinutes: 10 },
+            killCriteria: "12 minutes",
+          },
+          compute: { purpose: "Approve the runs of study …" },
+        },
+      }),
+    )
+    try {
+      const text = container.textContent ?? ""
+      expect(container.querySelector('[data-kind="study"]')).toBeTruthy()
+      expect(text).toContain("Approve this study's compute")
+      expect(text).toContain("IBM Telco churn GPU search on Modal · T4 GPU")
+      expect(text).toContain("12 runs · 2 h of compute · stop at 0.86 · 10 min per run")
+      expect(text).toContain("2 runs at a time")
+      expect(text).toContain("12 minutes")
+      expect(text).toContain("One approval covers every run this study dispatches")
+      // Not the exact-plan card: no digest-bound scope talk, no scope submenu.
+      expect(text).not.toContain("bound to this exact plan")
+      expect(text).not.toContain("Run outside the local sandbox")
+      const buttons = Array.from(container.querySelectorAll("button")).map((button) => button.textContent)
+      expect(buttons).toEqual(["Deny", "Only this request", "Approve this study"])
+      const primary = container.querySelector<HTMLButtonElement>('button[data-variant="primary"]')!
+      expect(primary.textContent).toBe("Approve this study")
+      primary.click()
+      expect(responses).toEqual(["session"])
+    } finally {
+      container.remove()
+    }
+  })
+
   test("keeps hosted scientific details readable and actions wrapped at desktop and mobile widths", async () => {
     const css = await styles
 

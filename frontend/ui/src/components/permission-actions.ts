@@ -177,12 +177,29 @@ function button(
   return node
 }
 
+function studyBudget(budget: Record<string, any> | undefined) {
+  if (!budget) return "no budget"
+  const parts = [
+    budget.maxRuns !== undefined ? `${budget.maxRuns} runs` : undefined,
+    budget.maxHours !== undefined ? `${budget.maxHours} h of compute` : undefined,
+    budget.maxCostUSD !== undefined ? `$${budget.maxCostUSD} of model spend` : undefined,
+    budget.target !== undefined ? `stop at ${budget.target}` : undefined,
+    budget.runMinutes !== undefined ? `${budget.runMinutes} min per run` : undefined,
+  ].filter((value): value is string => Boolean(value))
+  return parts.length ? parts.join(" · ") : "no budget"
+}
+
 export function PermissionActions(props: { respond: (response: PermissionReply) => void; metadata?: Metadata }) {
   const i18n = useI18n()
   let scopes = false
   let scopeTrigger: HTMLButtonElement | undefined
   let scopeBack: HTMLButtonElement | undefined
   const compute = () => props.metadata?.compute
+  // A study asks once, before its first run, for every run it will dispatch
+  // inside its budget. The approval must be granted for the study's pattern
+  // (a session-scoped rule), not for this one request: "once" satisfies the
+  // create call and the first run asks again.
+  const study = () => (props.metadata?.study?.id && props.metadata?.study?.target ? props.metadata.study : undefined)
   const mutation = () => props.metadata?.environment_mutation
   const scientific = () => props.metadata?.scientific_capability
   const hostedScientific = () =>
@@ -409,7 +426,67 @@ export function PermissionActions(props: { respond: (response: PermissionReply) 
     root.replaceChildren(origin, summaryNode, renderActions(Boolean(special)))
   }
 
+  const renderStudy = () => {
+    const value = study()!
+    const target = value.target ?? {}
+    setAttrs(root, {
+      "data-component": "permission-prompt",
+      "data-kind": "study",
+      "data-expanded": "false",
+    })
+    const origin = el("span", { "data-slot": "permission-origin" }, "OpenScience approval")
+    const summaryNode = el("div", { "data-slot": "permission-summary", "data-kind": "study" })
+    append(summaryNode, el("strong", { "data-slot": "permission-compute-title" }, "Approve this study's compute"))
+    append(
+      summaryNode,
+      el(
+        "span",
+        { "data-slot": "permission-compute-purpose" },
+        `${value.name ?? "Study"} on ${target.kind === "modal" ? `Modal${target.gpu ? ` · ${target.gpu} GPU` : ""}` : (target.kind ?? "a remote target")}`,
+      ),
+    )
+    const details = el("div", { "data-slot": "permission-compute-details", "aria-label": "Study details" })
+    const rows: string[][] = [
+      ["Budget", studyBudget(value.budget)],
+      ["Concurrency", `${value.concurrency ?? 1} run${value.concurrency === 1 ? "" : "s"} at a time`],
+      ...(value.killCriteria ? [["Kill rule", String(value.killCriteria)]] : []),
+    ]
+    for (const [label, text] of rows) append(details, el("span", {}, label), el("strong", {}, text))
+    append(summaryNode, details)
+    append(
+      summaryNode,
+      el(
+        "span",
+        { "data-slot": "permission-compute-warning" },
+        target.kind === "modal"
+          ? "Runs in your Modal account, outside OpenScience's local sandbox, and may incur Modal charges until each run exits, is killed by the rule above, or reaches its timeout."
+          : "Runs on the saved remote target, outside OpenScience's local sandbox.",
+      ),
+      el(
+        "span",
+        { "data-slot": "permission-compute-scope" },
+        "One approval covers every run this study dispatches inside that budget; each dispatch is still recorded with its plan digest, and nothing outside the study is granted. Approving only this request makes the first run ask again.",
+      ),
+    )
+    const actions = el("div", {
+      "data-slot": "permission-actions",
+      role: "group",
+      "aria-label": "Study approval",
+    })
+    append(
+      actions,
+      button(i18n.t("ui.permission.deny"), "ghost", () => props.respond("reject")),
+      button("Only this request", "secondary", () => props.respond("once")),
+      button("Approve this study", "primary", () => props.respond("session")),
+    )
+    root.replaceChildren(origin, summaryNode, actions)
+  }
+
   const render = () => {
+    if (study()) {
+      renderStudy()
+      return
+    }
     const special =
       ((compute()?.provider === "modal" || compute()?.provider === "ssh") && compute()) ||
       (mutation()?.plan_digest && mutation()) ||

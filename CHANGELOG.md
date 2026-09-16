@@ -71,6 +71,14 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   demanded proof of a disposal that never happened; the latch is now released,
   so the staged update can be retried, discarded, or the app quit normally.
 
+- **Approving a study approves the study.** The approval card a study raises
+  before its first remote run showed the exact-plan compute card with _Allow
+  once_ as its primary action, which satisfied only the `create` call: the
+  first `start` asked again, and a headless run waited on it. The study card
+  now names the study, target, budget, concurrency and kill rule, and its
+  primary action, _Approve this study_, grants the study's pattern for the
+  session so every run inside the budget proceeds; _Only this request_ remains
+  available.
 - **A study's hour budget counts compute time.** `maxHours` and the
   `elapsed_hours` the `study` tool reports now run from the first run's start,
   not from the study's creation; the minutes spent writing the harness and
