@@ -191,6 +191,8 @@ export const dict = {
   "prompt.attachment.remove": "Remove attachment",
   "prompt.action.send": "Send",
   "prompt.action.stop": "Stop",
+  "prompt.agent.label": "Agent: {name}. Click or press Tab to switch",
+  "prompt.agent.tooltip": "Which primary agent answers. Tab cycles them when the composer is empty.",
 
   "prompt.toast.pasteUnsupported.title": "Unsupported paste",
   "prompt.toast.pasteUnsupported.description": "Paste a supported image, PDF, text, code, or scientific data file.",

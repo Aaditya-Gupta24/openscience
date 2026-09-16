@@ -635,6 +635,8 @@ export type CompactionPart = {
   handoffFile?: string
   trigger?: "proactive" | "overflow" | "manual"
   rootID?: string
+  before?: number
+  after?: number
 }
 
 export type Part =
@@ -9426,6 +9428,8 @@ export type SettingsUpdatesInstallErrors = {
    */
   409: {
     error: string
+    blockers?: Array<string>
+    pausable?: boolean
   }
 }
 
@@ -9565,6 +9569,8 @@ export type SettingsUpdatesApplyErrors = {
    */
   409: {
     error: string
+    blockers?: Array<string>
+    pausable?: boolean
   }
 }
 
@@ -9610,12 +9616,16 @@ export type SettingsUpdatesDisposeErrors = {
    */
   401: {
     error: string
+    blockers?: Array<string>
+    pausable?: boolean
   }
   /**
    * Runtime disposal did not finish within the bounded handoff
    */
   503: {
     error: string
+    blockers?: Array<string>
+    pausable?: boolean
   }
 }
 

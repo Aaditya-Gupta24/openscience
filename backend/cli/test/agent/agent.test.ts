@@ -51,16 +51,18 @@ test("returns default native agents when no config", async () => {
     directory: tmp.path,
     fn: async () => {
       const agents = await Agent.list()
-      // The exact built-in list, its modes, and its hidden flags.
+      // The exact built-in list, its modes, and its hidden flags: the workers
+      // are listed in the composer's @ menu, the system agents are not.
       expect(agents.map((a) => [a.name, a.mode, a.hidden === true])).toEqual([
         ["research", "primary", false],
         ["plan", "primary", true],
-        ["explore", "subagent", true],
-        ["ml", "subagent", true],
-        ["biology", "subagent", true],
-        ["physics", "subagent", true],
-        ["chemistry", "subagent", true],
-        ["data", "subagent", true],
+        ["explore", "subagent", false],
+        ["ml", "subagent", false],
+        ["biology", "subagent", false],
+        ["physics", "subagent", false],
+        ["chemistry", "subagent", false],
+        ["data", "subagent", false],
+        ["general", "subagent", false],
         ["compaction", "primary", true],
         ["title", "primary", true],
         ["summary", "primary", true],
@@ -97,9 +99,14 @@ test("domain agents are delegated specialists instead of competing primary modes
       expect((await Agent.get("biology"))?.mode).toBe("subagent")
       expect((await Agent.get("physics"))?.mode).toBe("subagent")
       expect((await Agent.get("ml"))?.mode).toBe("subagent")
-      expect((await Agent.get("biology"))?.hidden).toBe(true)
-      expect((await Agent.get("physics"))?.hidden).toBe(true)
-      expect((await Agent.get("ml"))?.hidden).toBe(true)
+      expect((await Agent.get("biology"))?.hidden).toBe(false)
+      expect((await Agent.get("physics"))?.hidden).toBe(false)
+      expect((await Agent.get("ml"))?.hidden).toBe(false)
+      // A read-only scout asks for a path outside the project instead of
+      // being refused by its wildcard deny.
+      const explore = await Agent.get("explore")
+      const external = explore!.permission.filter((rule) => rule.permission === "external_directory")
+      expect(external.at(-1)?.action).not.toBe("deny")
     },
   })
 })
@@ -567,7 +574,9 @@ test("persisted Ask mode overrides built-in subagent convenience allows", async 
         expect(evalPerm(explore, permission)).toBe("ask")
       }
       expect(evalPerm(research, "external_directory")).toBe("ask")
-      expect(evalPerm(explore, "external_directory")).toBe("deny")
+      // The scout asks for outside paths like the lead does, instead of a
+      // flat refusal it cannot explain.
+      expect(evalPerm(explore, "external_directory")).toBe("ask")
     },
   })
 })

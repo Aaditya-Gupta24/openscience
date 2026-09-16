@@ -224,10 +224,13 @@ describe("ModalVolume", () => {
     roots.push(root)
     // An ambient modal.py on PYTHONPATH must never be what the probe imports.
     await Bun.write(path.join(root, "modal.py"), "raise RuntimeError('ambient modal module loaded')\n")
-    const installed = Bun.spawnSync([python, "-I", "-c", "import modal; print(modal.__version__)"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    })
+    // The same deep import the driver probes: an ambient modal whose
+    // certifi/aiohttp live only in the user site (invisible under -I) is not
+    // usable for downloads and must fall back to uv.
+    const installed = Bun.spawnSync(
+      [python, "-I", "-c", "import modal, certifi, aiohttp, grpclib, google.protobuf; print(modal.__version__)"],
+      { stdout: "pipe", stderr: "ignore" },
+    )
     const version = installed.exitCode === 0 ? installed.stdout.toString().trim() : undefined
     const atLeast = (a: string, b: string) => {
       const pa = a.split(".").map(Number)

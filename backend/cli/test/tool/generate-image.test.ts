@@ -160,6 +160,69 @@ describe("generate_image response parsing", () => {
     }
   })
 
+  test("a transient gateway failure is retried once, and an HTML error page is never echoed", async () => {
+    let calls = 0
+    const gateway = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname.endsWith("/model-catalog")) return Response.json({ models: [] })
+        if (!url.pathname.endsWith("/images")) return Response.json({})
+        calls += 1
+        // The proxy in front of the image model answers with Cloudflare's page while it restarts.
+        if (calls <= 2) {
+          return new Response(
+            "<!DOCTYPE html><html><head><title>openrouter.ai | 502: Bad gateway</title></head><body>…</body></html>",
+            { status: 502, headers: { "content-type": "text/html" } },
+          )
+        }
+        return Response.json({ data: [{ b64_json: PIXEL.toString("base64"), media_type: "image/png" }] })
+      },
+    })
+    const base = process.env["OPENSCIENCE_API_BASE"]
+    process.env["OPENSCIENCE_API_BASE"] = gateway.url.origin
+    try {
+      await using tmp = await tmpdir({ git: true, config: { billing: { llm: "managed" } } })
+      await OpenScience.saveSession({
+        api_key: "osk_fixture_image",
+        user_id: "fixture",
+        organization_id: "org_image",
+        workspace_locked: true,
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        init: async () => Provider.invalidate(),
+        fn: async () => {
+          const session = await executionSession()
+          const tool = await GenerateImageTool.init()
+          // Two 502s in a row: the tool retries once, then reports plainly.
+          const failed = tool.execute(
+            { prompt: "A benchmark schematic", output_path: "figures/first.png" },
+            context(session, "ace_502"),
+          )
+          await expect(failed).rejects.toThrow(
+            /Ace's image service did not answer \(HTTP 502, openrouter\.ai \| 502: Bad gateway\)/,
+          )
+          await expect(failed).rejects.not.toThrow(/DOCTYPE|<html/)
+          expect(calls).toBe(2)
+          // One 502 then success: the retry delivers the image.
+          calls = 1
+          const result = await tool.execute(
+            { prompt: "A benchmark schematic", output_path: "figures/second.png" },
+            context(session, "ace_retry"),
+          )
+          expect(calls).toBe(3)
+          expect(result.metadata).toMatchObject({ route: "ace", size: PIXEL.byteLength })
+        },
+      })
+    } finally {
+      if (base === undefined) delete process.env["OPENSCIENCE_API_BASE"]
+      if (base !== undefined) process.env["OPENSCIENCE_API_BASE"] = base
+      await OpenScience.clearSession()
+      gateway.stop(true)
+    }
+  }, 30_000)
+
   test("a schematic or illustration is framed by publication standards; an edit stays bare", () => {
     const framed = framedPrompt("Pipeline: Data -> Model -> Eval", "schematic")
     expect(framed.startsWith(SCHEMATIC_GUIDELINES)).toBe(true)

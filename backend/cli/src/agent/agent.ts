@@ -182,7 +182,7 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, own, user),
         mode: "subagent",
         native: true,
-        hidden: true,
+        hidden: false,
         skills: input.skills,
         unlocks: ToolVisibility.unlocks(own),
       }
@@ -239,6 +239,10 @@ export namespace Agent {
             glob: "allow",
             list: "allow",
             read: "allow",
+            // A read-only scout may still need a file outside the project (a
+            // dataset in ~/data, a paper in Downloads): the wildcard deny
+            // above would refuse it outright, so external paths ask instead.
+            external_directory: externalAction,
             bash: safeAction,
             // WebFetch owns a narrowly scoped brokered transfer. Without this
             // explicit rule the profile's wildcard deny blocks the broker's
@@ -257,7 +261,9 @@ export namespace Agent {
         options: {},
         mode: "subagent",
         native: true,
-        hidden: true,
+        // Listed in the composer's @ menu: `@explore find …` hands the
+        // message to the scout directly.
+        hidden: false,
       },
       ml: specialist({
         name: "ml",
@@ -305,6 +311,16 @@ export namespace Agent {
         color: "#0ea5e9",
         skills: ["data-engineering", "coding", "visualization", "cloud-compute"],
         tools: ["r"],
+      }),
+      // The plain worker OpenCode calls `general`: a multi-step brief that
+      // fits no specialty, run with the full toolset and the core skills only.
+      general: specialist({
+        name: "general",
+        label: "general worker",
+        focus: "a bounded multi-step brief that needs reading, running and writing but fits no specialist domain",
+        description: "General worker for a multi-step brief that fits no specialist; runs independent units of work.",
+        color: "#6b7280",
+        skills: [],
       }),
       compaction: {
         name: "compaction",

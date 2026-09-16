@@ -98,6 +98,21 @@ describe("trace rows", () => {
     const note = rows[1] as Extract<ReturnType<typeof buildTraceRows>[number], { kind: "note" }>
     expect(note.text).toBe(COMPACTED_NOTE)
     expect(noteLabel(note.text)).toBe("Context compacted.")
+    // Once the fold's sizes are recorded, the row says how much it shrank; the
+    // runtime's own "continue from the handoff" instruction is not a row.
+    const sized = { ...(marker as object), before: 92_400, after: 6_120 } as Part
+    const continuation = {
+      id: "prt_k",
+      sessionID: "ses_a",
+      messageID: "msg_k",
+      type: "text",
+      synthetic: true,
+      text: "Continue from the 'Next Move' in the handoff above. Trust the handoff. If the Objective is already complete, give the user your result and stop.",
+    } as Part
+    const sizedRows = buildTraceRows(entries([tool("read", "read"), sized, continuation, tool("bash", "bash")]))
+    expect(sizedRows.map((row) => row.kind)).toEqual(["explored", "note", "explored"])
+    const sizedNote = sizedRows[1] as Extract<ReturnType<typeof buildTraceRows>[number], { kind: "note" }>
+    expect(noteLabel(sizedNote.text)).toBe("Context compacted · 92K → 6.1K tokens.")
   })
   test("edit groups include deleted files and sum completed changes without treating missing counts as zero", () => {
     const parts = [

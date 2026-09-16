@@ -22518,6 +22518,15 @@
                   "properties": {
                     "error": {
                       "type": "string"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pausable": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -22806,6 +22815,15 @@
                   "properties": {
                     "error": {
                       "type": "string"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pausable": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -22841,6 +22859,15 @@
                   "properties": {
                     "error": {
                       "type": "string"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pausable": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -22859,6 +22886,15 @@
                   "properties": {
                     "error": {
                       "type": "string"
+                    },
+                    "blockers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pausable": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -57104,6 +57140,16 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "before": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [

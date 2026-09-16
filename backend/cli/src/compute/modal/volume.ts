@@ -226,7 +226,11 @@ export namespace ModalVolume {
           python,
           "-I",
           "-c",
-          `import modal; v = tuple(int(p) for p in modal.__version__.split('.')[:3] if p.isdigit()); assert v >= tuple(int(p) for p in '${MINIMUM}'.split('.')), modal.__version__; assert hasattr(modal.Volume, 'read_file') and hasattr(modal.Volume, 'objects')`,
+          // Import what a Volume download actually touches, not just `modal`:
+          // an ambient install missing certifi or aiohttp imports fine and then
+          // fails on the first block read. Such an interpreter is skipped for
+          // the pinned uv runtime.
+          `import modal, certifi, aiohttp, grpclib, google.protobuf; v = tuple(int(p) for p in modal.__version__.split('.')[:3] if p.isdigit()); assert v >= tuple(int(p) for p in '${MINIMUM}'.split('.')), modal.__version__; assert hasattr(modal.Volume, 'read_file') and hasattr(modal.Volume, 'objects')`,
         ],
         env,
         hooks.value?.probe?.timeout ?? PROBE_TIMEOUT,

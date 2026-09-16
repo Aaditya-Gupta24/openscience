@@ -10,6 +10,50 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Added
 
+- **Agents as in OpenCode.** Type `@` in the composer to hand a job to a worker
+  directly (`@explore where is the split decided?`); the built-in workers are
+  listed with a one-line summary and a worker can opt out with `hidden: true`.
+  A configured primary agent is now selectable in the app: an agent chip
+  appears beside the model control once a second primary exists, and `Tab` in
+  an empty composer cycles them. A `general` worker joins the six built-in
+  workers for briefs that fit no specialty. Agent `color` accepts theme colors
+  (`accent`, `primary`, …) as well as hex, and `openscience agent create`
+  writes `permission:` rules instead of the deprecated `tools:` map.
+
+### Changed
+
+- **Compaction rows say what happened.** The trace shows
+  `Context compacted · 92K → 6.1K tokens` once a fold's sizes are known, and no
+  longer shows the runtime's own "continue from the handoff" instruction as a
+  row. A head whose own estimate exceeds the window goes straight to the
+  reduced-fidelity summary instead of sending a request that can only overflow;
+  a summary that could not be produced leaves no empty record; and a restart
+  that pauses a summarizer no longer announces a compaction that did not happen.
+- **Schematics get trimmed.** The schematics skill ships
+  `scripts/trim_margins.py` and its finalize step runs it: an image model paints
+  the whole 16:9 canvas, so a wide flowchart arrived with empty bands above and
+  below it that would have wasted half a page.
+- **`explore` asks for outside paths.** The read-only scout's wildcard deny
+  also covered `external_directory`, so a dataset in `~/data` was refused
+  outright; it now asks like the lead does. A denied tool call now says which
+  permission and pattern were refused instead of dumping the ruleset as JSON.
+
+### Fixed
+
+- **Image generation retries a gateway hiccup.** A 502/503/504 from the image
+  service (a Cloudflare page from the upstream proxy while it restarted) failed
+  the figure and echoed the HTML into the transcript; the tool now retries once
+  after two seconds and, if that fails too, reports the status in one plain
+  sentence.
+- **The Modal Volume bridge no longer picks a broken ambient Python.** The
+  previous release accepted any system `modal` ≥ 1.1.2; an install whose
+  `certifi`/`aiohttp` live only in the user site (invisible under `-I`) imports
+  fine and then fails on the first block download, which is exactly what
+  happened to a job's artifacts after a restart. The probe now imports what a
+  download needs and falls back to the pinned `uv` runtime otherwise.
+
+### Added
+
 - **Ace API keys work like OpenCode Zen's.** Model access → Ace has _Use an API
   key_: paste a key from the dashboard's Settings → Keys and the gateway bills
   the workspace the key was created in, whether or not an account is signed in

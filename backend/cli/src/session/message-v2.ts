@@ -226,6 +226,11 @@ export namespace MessageV2 {
     /** The session's root user message, pinned verbatim ahead of the summary
      * in every compacted view so the original instruction survives. */
     rootID: z.string().optional(),
+    /** Tokens in the context before the fold and in the handoff that replaced
+     * the folded head, written when the summary is accepted; the trace shows
+     * the reader what the compaction did. */
+    before: z.number().int().nonnegative().optional(),
+    after: z.number().int().nonnegative().optional(),
   }).meta({
     ref: "CompactionPart",
   })

@@ -800,10 +800,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   type AtOption =
     { type: "agent"; name: string; display: string } | { type: "file"; path: string; display: string; recent?: boolean }
 
-  // Research is the only user-facing agent. Existing transcripts can still
-  // render legacy agent parts, but the composer advertises capabilities and
-  // files rather than exposing an internal-worker picker.
-  const agentList = createMemo<AtOption[]>(() => [])
+  // Subagents a person may hand a job to directly: `@explore find …` sends
+  // the message as a brief to that worker (the runtime turns the mention into
+  // a Task). Hidden workers stay out of the list; primary agents are picked
+  // with the agent chip, not mentioned.
+  const agentList = createMemo<AtOption[]>(() => {
+    const agents = Array.isArray(sync.data.agent) ? sync.data.agent : []
+    return agents
+      .filter((agent) => agent.mode === "subagent" && !agent.hidden)
+      .map((agent) => ({
+        type: "agent" as const,
+        name: agent.name,
+        display: agent.description ? `${agent.name} — ${agent.description}` : agent.name,
+      }))
+  })
 
   const handleAtSelect = (option: AtOption | undefined) => {
     if (!option) return
@@ -1297,6 +1307,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   let atPopoverRef: HTMLDivElement | undefined
   const atVisible = createMemo(() => {
     const label = (category: string) => {
+      if (category === "agent") return "Agents"
       if (category === "recent") return "Recent"
       if (category === "file") return atFilter().trim() ? "" : "Files & folders"
       return ""
@@ -1326,6 +1337,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }))
   })
   const atOptionId = (item: AtOption) => `composer-at-${atKey(item).replace(/[^a-zA-Z0-9_-]/g, "_")}`
+  // The worker's description, first clause only, dimmed beside its name the
+  // way a file's folder is.
+  const agentSummary = (item: AtOption) => {
+    if (item.type !== "agent") return
+    const description = item.display.split(" — ")[1]
+    if (!description) return
+    const first = description.split(/(?<=[.;:])\s/)[0] ?? description
+    return first.length > 72 ? `${first.slice(0, 69).trimEnd()}…` : first
+  }
   const atRowMeta = (item: Extract<AtOption, { type: "file" }>) => {
     const folder = item.path.endsWith("/")
     const trimmed = folder ? item.path.slice(0, -1) : item.path
@@ -1841,6 +1861,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         event.preventDefault()
       }
       return
+    }
+
+    // Tab in an empty composer cycles the primary agents, as in OpenCode;
+    // with one agent there is nothing to cycle and Tab keeps moving focus.
+    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !store.popover) {
+      if (local.agent.list().length > 1 && !prompt.dirty()) {
+        local.agent.move(event.shiftKey ? -1 : 1)
+        event.preventDefault()
+        return
+      }
     }
 
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
@@ -2644,6 +2674,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                       <span class="workspace-composer__at-name">
                                         @{(item as { type: "agent"; name: string }).name}
                                       </span>
+                                      <Show when={agentSummary(item)}>
+                                        {(summary) => (
+                                          <span class="workspace-composer__at-path" title={summary()}>
+                                            {summary()}
+                                          </span>
+                                        )}
+                                      </Show>
                                     </>
                                   }
                                 >
@@ -3177,6 +3214,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             role="group"
             aria-label="Model, effort, and send"
           >
+            <Show when={local.agent.list().length > 1}>
+              <Tooltip placement="top" value={language.t("prompt.agent.tooltip")}>
+                <Button
+                  variant="ghost"
+                  class="model-settings-trigger--label min-w-0"
+                  data-prompt-agent
+                  aria-label={language.t("prompt.agent.label", { name: local.agent.current()?.name ?? "" })}
+                  onClick={() => local.agent.move(1)}
+                >
+                  <Icon name="sparkles" size="small" class="shrink-0 text-text-weak" />
+                  <span class="truncate">{local.agent.current()?.name}</span>
+                </Button>
+              </Tooltip>
+            </Show>
             <ModelSettingsPopover />
             <Tooltip
               placement="top"

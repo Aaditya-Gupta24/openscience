@@ -412,7 +412,11 @@ export namespace PermissionNext {
     })
     signal?.throwIfAborted()
     const denied = evaluated.find((rule) => rule.action === "deny")
-    if (denied) throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
+    if (denied)
+      throw new DeniedError(
+        ruleset.filter((r) => Wildcard.match(request.permission, r.permission)),
+        { permission: request.permission, patterns: request.patterns },
+      )
     if (mode !== "ask" && request.permission === "external_directory" && (await filesystem(request))) return
     signal?.throwIfAborted()
     if (evaluated.some((rule) => rule.action === "ask")) {
@@ -712,11 +716,19 @@ export namespace PermissionNext {
     }
   }
 
-  /** Auto-rejected by config rule - halts execution */
+  /** Auto-rejected by config rule - halts execution. The message names the
+   * permission and what was asked for; the rules that denied it stay on the
+   * error for callers, not in prose the model has to wade through. */
   export class DeniedError extends Error {
-    constructor(public readonly ruleset: Ruleset) {
+    constructor(
+      public readonly ruleset: Ruleset,
+      detail?: { permission: string; patterns?: string[] },
+    ) {
+      const what = detail
+        ? `${detail.permission}${detail.patterns?.length ? ` on ${detail.patterns.map((item) => `"${item}"`).join(", ")}` : ""}`
+        : "this tool call"
       super(
-        `The user has specified a rule which prevents you from using this specific tool call. Here are some of the relevant rules ${JSON.stringify(ruleset)}`,
+        `Not allowed here: ${what} is denied by this session's rules. Work within the allowed scope; if the user wants this, they can widen access in Customize → Access.`,
       )
     }
   }

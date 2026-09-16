@@ -28,6 +28,20 @@ const groupable = new Set(["context", "sources", "commands"])
 export const COMPACTED_NOTE =
   "Context compacted. The conversation so far was folded into a handoff and the work continued from it."
 
+/** The runtime's own instruction to continue after a compaction. It is the
+ * compaction's second half, not a note for the reader. */
+const COMPACTION_CONTINUATION = /^Continue from the ['‘]Next Move['’] in the handoff above\b/
+
+function tokens(value: number) {
+  return value >= 1_000 ? `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K` : String(value)
+}
+
+/** "Context compacted · 92K → 6.1K tokens" once the sizes are known. */
+export function compactedLabel(part: { before?: number; after?: number }) {
+  if (part.before === undefined || part.after === undefined || part.before <= 0) return "Context compacted."
+  return `Context compacted · ${tokens(part.before)} → ${tokens(part.after)} tokens`
+}
+
 /** Finished quietly: no failure, no receipt the reader must see on its own. */
 function settled(part: ToolPart) {
   return part.state.status === "completed" && collapsibleTracePart(part)
@@ -94,13 +108,23 @@ export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
     const part = entry.part
     if (part.type === "text" && part.synthetic) {
       const text = part.text.replace(/<\/?system-reminder[^>]*>/g, "").trim()
-      if (text) rows.push({ kind: "note", entry, text })
+      if (text && !COMPACTION_CONTINUATION.test(text)) rows.push({ kind: "note", entry, text })
       return
     }
     // An automatic compaction inside the turn: the reader sees where the
-    // context was folded into a handoff, and that the work went on from it.
+    // context was folded into a handoff, how much it shrank, and that the
+    // work went on from it.
     if (part.type === "compaction") {
-      rows.push({ kind: "note", entry, text: COMPACTED_NOTE })
+      const sized = part as { before?: number; after?: number }
+      const label = compactedLabel(sized)
+      rows.push({
+        kind: "note",
+        entry,
+        text:
+          label === "Context compacted."
+            ? COMPACTED_NOTE
+            : `${label}. ${COMPACTED_NOTE.slice("Context compacted. ".length)}`,
+      })
       return
     }
     if (part.type === "reasoning") {

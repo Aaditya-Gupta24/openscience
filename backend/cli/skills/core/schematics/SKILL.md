@@ -119,11 +119,16 @@ components, one panel, a stated reading order) and render that. A correct simple
 beats a wrong detailed one, and a hand-drawn vector is not an option.
 
 **Step 6. Finalize.** Render the accepted description at `image_size: "2K"` into the working
-folder (`figs/<name>.png` beside a paper), write the caption from the claim (bold phrase,
-then what the arrows and colours mean, every abbreviation defined), reference it in the
-text before it appears, and report anything the image could not do: a label the model kept
-misspelling, a component simplified, a panel dropped. Record the description that produced
-the accepted render so the figure can be regenerated.
+folder (`figs/<name>.png` beside a paper), then trim the canvas to the content: the model
+paints the whole requested aspect ratio, so a wide flowchart arrives with an empty band above
+and below it that would waste half a page. Run
+`python <this skill's directory>/scripts/trim_margins.py figs/<name>.png` (in place, 3% pad;
+`--out` for a copy), and use the trimmed file's real aspect ratio when sizing it in the
+manuscript. Write the caption from the claim (bold phrase, then what the arrows and colours
+mean, every abbreviation defined), reference it in the text before it appears, and report
+anything the image could not do: a label the model kept misspelling, a component
+simplified, a panel dropped. Record the description that produced the accepted render so
+the figure can be regenerated.
 
 ## Refining an existing diagram
 

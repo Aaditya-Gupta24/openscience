@@ -340,6 +340,15 @@ export namespace SessionCompaction {
         after: Math.max(0, before - reclaimed),
         reclaimed,
       })
+      // The carrier's compaction part carries the sizes for the transcript.
+      const carrierPart = current.carrier.parts.find(
+        (part): part is MessageV2.CompactionPart => part.type === "compaction",
+      )
+      if (carrierPart) {
+        await Session.updatePart({ ...carrierPart, before, after: Math.max(0, before - reclaimed) }).catch(
+          () => undefined,
+        )
+      }
       if (trigger !== "manual") {
         noteCompaction({ sessionID: current.carrier.info.sessionID, before, reclaimed })
       }
@@ -947,17 +956,32 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
       return { result, message: processor.message }
     }
 
-    const full = await summarize(false)
+    // A head whose own estimate already exceeds the window cannot ride the
+    // cached prefix; that request would only come back as an overflow, so it
+    // starts at reduced fidelity.
+    const headTokens = MessageV2.composition(head).total
+    const full = headTokens > usable ? undefined : await summarize(false)
     // The summarization request itself exceeded the context window: no summary
     // was produced. Try once more with every tool result capped and media
     // stripped; only if that also overflows is the turn too large to compact.
     const attempt =
-      full.result === "overflow"
-        ? await Session.removeMessage({ sessionID: input.sessionID, messageID: full.message.id })
-            .catch(() => undefined)
-            .then(() => summarize(true))
+      !full || full.result === "overflow"
+        ? await (
+            full
+              ? Session.removeMessage({ sessionID: input.sessionID, messageID: full.message.id }).catch(() => undefined)
+              : Promise.resolve()
+          ).then(() => summarize(true))
         : full
-    if (attempt.result === "overflow") return "overflow"
+    if (attempt.result === "overflow") {
+      // Nothing usable was produced; the text-less record would only confuse a
+      // reader of the transcript.
+      await Session.removeMessage({ sessionID: input.sessionID, messageID: attempt.message.id }).catch(() => undefined)
+      return "overflow"
+    }
+    // A pause for restart (or any other stop) leaves the summary unfinished:
+    // nothing was compacted, and saying so would fire listeners for a fold
+    // that did not happen.
+    if (attempt.result === "stop") return "stop"
 
     if (attempt.result === "continue") {
       const pending = SessionLoopState.pendingCompaction(await Session.messages({ sessionID: input.sessionID }))

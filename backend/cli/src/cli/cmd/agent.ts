@@ -13,10 +13,12 @@ import type { Argv } from "yargs"
 
 type AgentMode = "all" | "primary" | "subagent"
 
+// Permission keys the person can grant. `edit` covers write, edit and
+// apply_patch; `question` is not offered because workers can never ask the
+// user directly and custom primaries deny it by default.
 const AVAILABLE_TOOLS = [
   "bash",
   "read",
-  "write",
   "edit",
   "glob",
   "grep",
@@ -27,7 +29,6 @@ const AVAILABLE_TOOLS = [
   "artifact",
   "task",
   "todowrite",
-  "question",
 ]
 
 const AgentCreateCommand = cmd({
@@ -178,25 +179,24 @@ const AgentCreateCommand = cmd({
           mode = modeResult
         }
 
-        // Build tools config
-        const tools: Record<string, boolean> = {}
+        // Anything not selected is denied, written as `permission:` rules;
+        // the legacy `tools:` map still loads but is deprecated.
+        const permission: Record<string, "deny"> = {}
         for (const tool of AVAILABLE_TOOLS) {
-          if (!selectedTools.includes(tool)) {
-            tools[tool] = false
-          }
+          if (!selectedTools.includes(tool)) permission[tool] = "deny"
         }
 
         // Build frontmatter
         const frontmatter: {
           description: string
           mode: AgentMode
-          tools?: Record<string, boolean>
+          permission?: Record<string, "deny">
         } = {
           description: generated.whenToUse,
           mode,
         }
-        if (Object.keys(tools).length > 0) {
-          frontmatter.tools = tools
+        if (Object.keys(permission).length > 0) {
+          frontmatter.permission = permission
         }
 
         // Write file

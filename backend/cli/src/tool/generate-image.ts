@@ -340,6 +340,10 @@ export function framedPrompt(prompt: string, purpose: Purpose | undefined) {
   return prompt
 }
 
+/** Statuses an upstream image service returns while it is briefly unable
+ * to answer; one retry after a short pause usually succeeds. */
+export const TRANSIENT_IMAGE_STATUSES = new Set([502, 503, 504, 529])
+
 function requestError(route: ImageRoute.Route, status: number, body: OpenRouterImage | undefined, raw: string) {
   const reported =
     typeof body?.error === "string"
@@ -347,7 +351,18 @@ function requestError(route: ImageRoute.Route, status: number, body: OpenRouterI
       : typeof body?.error?.message === "string"
         ? body.error.message
         : body?.message
-  const detail = (reported?.trim() || raw.trim()).replace(/\s+/g, " ").slice(0, 500)
+  // A gateway's HTML error page is not a message for anyone; keep its title at most.
+  const html = /^\s*<(?:!doctype|html)/i.test(raw)
+  const detail = (reported?.trim() || (html ? (raw.match(/<title>([^<]*)<\/title>/i)?.[1] ?? "").trim() : raw.trim()))
+    .replace(/\s+/g, " ")
+    .slice(0, 500)
+  if (TRANSIENT_IMAGE_STATUSES.has(status)) {
+    const where = route.kind === "ace" ? "Ace's image service" : route.label
+    return new Error(
+      `${where} did not answer (HTTP ${status}${detail ? `, ${detail}` : ""}) and one retry also failed. ` +
+        `This is a transient outage on the provider side; try again in a minute, or continue with a placeholder for now.`,
+    )
+  }
   if (status === 402) {
     if (route.kind === "ace")
       return new Error(
@@ -562,7 +577,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
     // or illustration is framed by its purpose's publication standards.
     const purpose = params.purpose ?? (input ? "edit" : undefined)
     const prompt = framedPrompt(params.prompt, purpose)
-    const direct = await (async () => {
+    const attempt = async () => {
       if (route.kind === "gemini")
         return request(`${route.base}/models/${route.model}:generateContent`, {
           contents: [
@@ -631,7 +646,15 @@ export const GenerateImageTool = Tool.define("generate_image", {
             }
           : {}),
       })
-    })()
+    }
+    // The image gateways sit behind proxies that occasionally answer 502/503
+    // while a backend restarts; one retry after two seconds turns most of
+    // those into a normal result instead of a failed figure.
+    const first = await attempt()
+    const direct =
+      !first.response.ok && TRANSIENT_IMAGE_STATUSES.has(first.response.status) && !ctx.abort.aborted
+        ? await Bun.sleep(2_000).then(attempt)
+        : first
     if (!direct.response.ok) throw requestError(route, direct.response.status, direct.body, direct.raw)
     if (!direct.body) throw new Error(`${route.model} returned an unreadable response.`)
     const approvedHosts = new Set<string>()
