@@ -31,6 +31,15 @@ openscience wallet show
 
 On a machine without a browser, `openscience login --no-browser` prints the sign-in instructions. Complete them from a browser you can access.
 
+### Use an API key instead
+
+An Ace API key works the way a provider key does: the key alone selects the workspace it is billed to, with no browser round trip and no account signed in on the device.
+
+1. In the dashboard, open **Settings → Keys**, choose the workspace the key should bill, and create a key (`osk_…`).
+2. In OpenScience, open **Customize → Models → Ace** and choose **Use an API key**, or run `openscience login --key osk_…`.
+
+The key may belong to any workspace you are a member of, including one outside the account signed in here; the Ace card labels it (`API key · Lab`), and **Manage Ace** opens that workspace's billing page. A key pasted into **Provider API keys** is redirected here, since it funds a Wallet rather than a provider. Signing out later forgets the key on this device without revoking it: revoke keys in the dashboard.
+
 ## Choose a funding workspace
 
 Open **Customize → General → Funding workspace**. If you belong to more than one workspace, use **Switch workspace** and complete the browser approval.
@@ -95,7 +104,7 @@ controls, and deletion.
 openscience logout
 ```
 
-Sign-out disconnects this device from your OpenScience account. Your locally saved research remains, and your own provider connections can still be used. To revoke a provider key, remove it separately in **Customize → Models** or at that provider.
+Sign-out disconnects this device from your OpenScience account: a browser sign-in's device key is revoked on the server, while a pasted Ace API key is only forgotten locally and stays valid for the account and any other machine using it. Your locally saved research remains, and your own provider connections can still be used. To revoke a provider key, remove it separately in **Customize → Models** or at that provider.
 
 Signing out is not a billing cancellation. Manage future Ace reloads in your billing account.
 
