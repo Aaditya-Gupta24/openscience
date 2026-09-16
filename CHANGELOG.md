@@ -81,6 +81,17 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
 
 ### Fixed
 
+- **A few large figures no longer kill a turn on Ace.** `read` attaches an
+  image's bytes in full, and the only per-request limit was a count (20 recent
+  images), so three 2K schematics made a 14 MB request that the managed
+  gateway's edge proxy dropped with a bare `ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR`
+  502, and six retries of the same body burned two minutes before the turn died.
+  Inline images are now budgeted in bytes per request as well: 2 MB on the Ace
+  route, 12 MB on a provider's own API, filled newest-first and released by
+  halves so the cached prefix stays put; an image over the route's cap is
+  replaced by the resize nudge instead of shipped. The gateway's router codes
+  are explained in the error instead of echoed. The schematics skill scores
+  the 1K render and leaves the 2K file unread.
 - Restored authenticated session trace delivery after the uploader was removed.
   Trace sharing is on by default for signed-in accounts, including user-owned
   routes, while preserving saved opt-outs. General settings now expose a device

@@ -682,6 +682,29 @@ export namespace MessageV2 {
     return new Set(kept)
   }
 
+  /** The same window measured in decoded bytes: a proxy or provider accepts a
+   * bounded request body however many images are in it, and one 2K figure
+   * can weigh as much as a dozen plots. Filling to the budget and then
+   * releasing the oldest half of the bytes keeps the cached prefix stable the
+   * same way the count window does. The newest image always travels, so a
+   * single large figure is still governed by the per-image cap alone. */
+  export function retainedImageBytes(
+    order: readonly string[],
+    size: (id: string) => number,
+    budget: number,
+  ): Set<string> {
+    if (budget <= 0) return new Set()
+    const kept: string[] = []
+    let total = 0
+    for (const id of order) {
+      kept.push(id)
+      total += size(id)
+      if (total <= budget) continue
+      while (kept.length > 1 && total > budget / 2) total -= size(kept.shift()!)
+    }
+    return new Set(kept)
+  }
+
   /** Whether this model's SDK can carry media inside a tool result. Chat
    * Completions-style transports (OpenRouter, openai-compatible, the Copilot
    * fork) accept only a string there and JSON-stringify anything else, so a
@@ -715,6 +738,10 @@ export namespace MessageV2 {
     options?: {
       stripMedia?: boolean
       keepRecentImages?: number
+      /** Decoded bytes of inline images one request may carry; older images
+       * past it become placeholders. Set from the route: the managed gateway
+       * takes far less than a provider's own API. */
+      imageBytes?: number
       /** The full transcript `input` is a prefix of. The reasoning boundary
        * and the image budget are taken from it, so a compaction head rendered
        * on its own is byte-identical to the same span inside the conversation
@@ -733,12 +760,14 @@ export namespace MessageV2 {
     // bytes twice, so dedupe by payload rather than MIME or filename.
     const isImage = (mime: string) => mime.startsWith("image/")
     const order: string[] = []
+    const bytes = new Map<string, number>()
     const add = (mime: string, url: string) => {
       if (!isImage(mime)) return
       const id = mediaIdentity(url)
       const found = order.indexOf(id)
       if (found >= 0) order.splice(found, 1)
       order.push(id)
+      bytes.set(id, decodedBytes(url))
     }
     for (const msg of scope)
       for (const part of msg.parts) {
@@ -746,8 +775,15 @@ export namespace MessageV2 {
         if (part.type === "tool" && part.state.status === "completed" && !part.state.time.compacted)
           for (const attachment of part.state.attachments ?? []) add(attachment.mime, attachment.url)
       }
-    const retained =
+    const byCount =
       options?.keepRecentImages === undefined ? new Set(order) : retainedImages(order, options.keepRecentImages)
+    const byBytes =
+      options?.imageBytes === undefined
+        ? new Set(order)
+        : retainedImageBytes(order, (id) => bytes.get(id) ?? 0, options.imageBytes)
+    const retained = new Set([...order].filter((id) => byCount.has(id) && byBytes.has(id)))
+    // One image can never exceed what the whole request may carry.
+    const perImage = options?.imageBytes === undefined ? IMAGE_MAX_BYTES : Math.min(IMAGE_MAX_BYTES, options.imageBytes)
     const emitted = new Set<string>()
     // Returns a placeholder string when this image occurrence should be dropped, else undefined.
     const dropImage = (mime: string, url: string, filename?: string): string | undefined => {
@@ -755,15 +791,17 @@ export namespace MessageV2 {
       if (options?.stripMedia) return `[image omitted${filename ? `: ${filename}` : ""}]`
       // Oversized guard (P2.4): a too-large image is replaced by an actionable resize
       // nudge even when it is a recent image we would otherwise keep — shipping it would
-      // 400 the request. Independent of the recency budget below.
-      const oversized = oversizedImageNudge(url, filename)
+      // 400 the request, or 502 at a proxy whose body limit is below the provider's.
+      // Independent of the recency budget below.
+      const oversized = oversizedImageNudge(url, filename, perImage)
       if (oversized) return oversized
       const id = mediaIdentity(url)
       if (emitted.has(id)) return DUPLICATE_IMAGE
       emitted.add(id)
-      return !retained.has(id)
-        ? `[older image omitted to save context${filename ? `: ${filename}` : ""} — read it again if you need it]`
-        : undefined
+      if (retained.has(id)) return undefined
+      return byCount.has(id)
+        ? `[older image omitted to keep this request under the route's image limit${filename ? `: ${filename}` : ""} — read it again if you need it]`
+        : `[older image omitted to save context${filename ? `: ${filename}` : ""} — read it again if you need it]`
     }
 
     const toModelOutput = (output: unknown) => {
@@ -1096,6 +1134,14 @@ export namespace MessageV2 {
     return comma === -1 ? url : url.slice(comma + 1)
   }
 
+  /** Decoded size of an inline data URL's payload; 0 for anything else. */
+  export function decodedBytes(url: string) {
+    if (!url.startsWith("data:")) return 0
+    const comma = url.indexOf(",")
+    if (comma === -1) return 0
+    return Math.floor(((url.length - comma - 1) * 3) / 4)
+  }
+
   export function imageTokens(_url: string) {
     return IMAGE_TOKENS
   }
@@ -1154,11 +1200,12 @@ export namespace MessageV2 {
     const mb = (bytes / (1024 * 1024)).toFixed(1)
     const limit = Math.round(maxBytes / (1024 * 1024))
     const name = filename ? ` ${filename}` : ""
+    const side = maxBytes <= 2 * 1024 * 1024 ? 1400 : 2000
     return (
-      `[Image${name} omitted — too large to send (~${mb} MB, ${limit} MB limit). ` +
-      `To view it, resize the source file to ≤2000px and read the smaller copy, e.g.: ` +
-      `python3 -c "from PIL import Image; im=Image.open(SRC); im.thumbnail((2000,2000)); im.save(OUT)" ` +
-      `(SRC = the file named in the read/attachment just above; OUT = a new path), then read OUT. ` +
+      `[Image${name} omitted — too large to send (~${mb} MB, ${limit} MB limit on this route). ` +
+      `To view it, save a smaller copy and read that instead, e.g.: ` +
+      `python3 -c "from PIL import Image; im=Image.open(SRC).convert('RGB'); im.thumbnail((${side},${side})); im.save(OUT, quality=85)" ` +
+      `(SRC = the file named in the read/attachment just above; OUT = a new .jpg path), then read OUT. ` +
       `If it was rendered by a script, re-run it at a lower dpi/figsize.]`
     )
   }

@@ -13,6 +13,7 @@ import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
 import { asSchema, type Tool as AITool, tool, jsonSchema, type ToolCallOptions } from "ai"
 import { SessionCompaction } from "./compaction"
+import { resolveAccessRoute } from "./access-route"
 import { TokenUsage } from "@synsci/util/token-usage"
 import { SessionTelemetry } from "./telemetry"
 import { Instance } from "../project/instance"
@@ -1937,6 +1938,7 @@ export namespace SessionPrompt {
           // text placeholders so re-shipping media every turn can't bloat the window.
           ...MessageV2.toModelMessages(sessionMessages, model, {
             keepRecentImages: SessionCompaction.recentImages(config),
+            imageBytes: SessionCompaction.imageBytes(await resolveAccessRoute(model.providerID, model.id)),
           }),
           ...(isLastStep
             ? [

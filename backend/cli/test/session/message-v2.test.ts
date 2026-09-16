@@ -169,6 +169,62 @@ describe("session.message-v2.toModelMessage — media budgeting", () => {
     expect(MessageV2.retainedImages(["1", "2", "3"], 0).size).toBe(0)
   })
 
+  test("imageBytes bounds what one request carries; the newest image always travels and a lone giant is nudged instead", () => {
+    // Three 3 MB figures were read in a row; a count window of 20 keeps all
+    // of them, so the request body is what the gateway rejects.
+    const big = (id: string, name: string) => ({
+      ...basePart("m-imgs", id),
+      type: "file" as const,
+      mime: "image/png",
+      filename: name,
+      url: `data:image/png;base64,${Buffer.alloc(3 * 1024 * 1024, id.charCodeAt(0)).toString("base64")}`,
+    })
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-imgs"),
+        parts: [big("x", "x.png"), big("y", "y.png"), big("z", "z.png")] as MessageV2.Part[],
+      },
+    ]
+    const direct = JSON.stringify(
+      MessageV2.toModelMessages(input, model, { keepRecentImages: 20, imageBytes: 12 * 1024 * 1024 }),
+    )
+    expect((direct.match(/"type":"file"/g) ?? []).length).toBe(3)
+
+    const capped = MessageV2.toModelMessages(input, model, { keepRecentImages: 20, imageBytes: 7 * 1024 * 1024 })
+    const s = JSON.stringify(capped)
+    // 9 MB over a 7 MB budget releases down to half: only the newest stays.
+    expect((s.match(/"type":"file"/g) ?? []).length).toBe(1)
+    expect(s).toContain('"filename":"z.png"')
+    expect((s.match(/omitted to keep this request under the route's image limit/g) ?? []).length).toBe(2)
+    expect(s).not.toContain("omitted to save context")
+
+    // On the managed route a single 3 MB figure is over the per-image cap too:
+    // it is replaced by the resize nudge rather than shipped to a certain 502.
+    const managed = JSON.stringify(
+      MessageV2.toModelMessages(input, model, {
+        keepRecentImages: 20,
+        imageBytes: SessionCompaction.IMAGE_BYTES_MANAGED,
+      }),
+    )
+    expect(managed).not.toContain('"type":"file"')
+    expect(managed).toContain("2 MB limit on this route")
+    expect(managed).toContain("thumbnail((1400,1400))")
+
+    // 12 over a budget of 10 releases down to half the budget, not just under it.
+    expect(MessageV2.retainedImageBytes(["a", "b", "c"], () => 4, 10)).toEqual(new Set(["c"]))
+    expect(MessageV2.retainedImageBytes(["a", "b", "c"], () => 2, 10)).toEqual(new Set(["a", "b", "c"]))
+    expect(MessageV2.retainedImageBytes(["a"], () => 40, 10)).toEqual(new Set(["a"]))
+    expect(MessageV2.retainedImageBytes(["a", "b"], () => 4, 0).size).toBe(0)
+    expect(MessageV2.decodedBytes(`data:image/png;base64,${Buffer.alloc(300).toString("base64")}`)).toBe(300)
+    expect(MessageV2.decodedBytes("https://example.com/x.png")).toBe(0)
+  })
+
+  test("the image byte budget follows the route", () => {
+    expect(SessionCompaction.imageBytes("managed")).toBe(2 * 1024 * 1024)
+    expect(SessionCompaction.imageBytes("byok")).toBe(12 * 1024 * 1024)
+    expect(SessionCompaction.imageBytes(undefined)).toBe(12 * 1024 * 1024)
+  })
+
   test("stripMedia replaces every image with a placeholder (compaction summary path)", () => {
     const out = MessageV2.toModelMessages(imagesInput(), model, { stripMedia: true })
     const s = JSON.stringify(out)

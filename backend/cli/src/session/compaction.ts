@@ -19,6 +19,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { SessionFilesystem } from "./filesystem"
 import { SessionLoopState } from "./loop-state"
+import { resolveAccessRoute, type AccessRoute } from "./access-route"
 import { TokenUsage } from "@synsci/util/token-usage"
 import { NamedError } from "@synsci/util/error"
 import type { Tool as AITool } from "ai"
@@ -57,6 +58,18 @@ export namespace SessionCompaction {
   export function recentImages(config: Pick<Config.Info, "compaction">) {
     const value = config.compaction?.recentImages
     return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : KEEP_RECENT_IMAGES
+  }
+
+  /** Decoded image bytes one request may carry. The managed gateway sits
+   * behind an edge proxy that drops request bodies past a few megabytes with
+   * a bare 502, and a retry of the same body fails the same way; a provider's
+   * own API takes tens of megabytes. Text is budgeted separately, so the
+   * managed figure is what leaves a long transcript room beside the images. */
+  export const IMAGE_BYTES_MANAGED = 2 * 1024 * 1024
+  export const IMAGE_BYTES_DIRECT = 12 * 1024 * 1024
+
+  export function imageBytes(route: AccessRoute | undefined) {
+    return route === "managed" ? IMAGE_BYTES_MANAGED : IMAGE_BYTES_DIRECT
   }
 
   // Flat per-image token cost for pruning decisions. A tool output's TEXT is tiny but
@@ -895,7 +908,11 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
           head,
           model,
           shared
-            ? { keepRecentImages: recentImages(config), conversation: input.messages }
+            ? {
+                keepRecentImages: recentImages(config),
+                imageBytes: imageBytes(await resolveAccessRoute(model.providerID, model.id)),
+                conversation: input.messages,
+              }
             : { stripMedia: true, conversation: input.messages },
         ),
         {

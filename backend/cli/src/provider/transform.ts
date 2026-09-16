@@ -1344,10 +1344,26 @@ export namespace ProviderTransform {
     }
   }
 
+  /** The managed gateway's edge proxy answers a request it could not hand to
+   * the model service with a bare router code. The usual cause is a request
+   * body past what the proxy forwards (several inline images), which no retry
+   * repairs; the other is the service restarting, which one does. */
+  export function managedGatewayUnreachable(error: APICallError) {
+    if (error.statusCode !== 502 || !isAtlasProxyURL(error.url)) return
+    const code = error.responseHeaders?.["x-vercel-error"] ?? error.responseBody?.match(/ROUTER_[A-Z_0-9]+/)?.[0]
+    if (!code) return
+    return (
+      `Ace's gateway could not deliver this request to the model service (${code}). ` +
+      `This happens when the request is too large for the gateway, most often several images in recent tool results, ` +
+      `or when the service is restarting. Retry; if it fails again, continue without re-reading large images, ` +
+      `or downscale them first.`
+    )
+  }
+
   export function error(providerID: string, error: APICallError) {
     let message = error.message
     const body = error.responseBody?.toLowerCase() ?? ""
-    const managed = managedPaymentRequired(error)
+    const managed = managedPaymentRequired(error) ?? managedGatewayUnreachable(error)
     if (managed) return managed
     if (
       providerID === "openrouter" &&

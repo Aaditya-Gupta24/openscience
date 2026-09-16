@@ -38,7 +38,9 @@ the standards, score it, and re-render once from the critique.
   or GPT Image 2 through the user's own OpenAI key; the environment line names the route.
 - Use `image_size: "1K"` while iterating and `"2K"` for the accepted render of anything
   printed; set `aspect_ratio` from the page slot (16:9 or 21:9 for a full-width overview,
-  4:3 or 1:1 for a column). Pass `reference_paths` when the paper's earlier figures or a
+  4:3 or 1:1 for a column). Score the 1K render; the 2K file is written for the manuscript
+  and is not read back. It weighs several megabytes, and a request carrying a few of them
+  is too large for the Ace gateway (images over 2 MB are not sent on that route at all). Pass `reference_paths` when the paper's earlier figures or a
   cited paper's diagram set the style (up to 14 on a Gemini or OpenAI key; Ace takes one
   image per request). Output is raster at print resolution; `\includegraphics` takes the PNG.
 - Do not hand-draw a schematic as TikZ, SVG, Graphviz, Mermaid or matplotlib shapes, and do

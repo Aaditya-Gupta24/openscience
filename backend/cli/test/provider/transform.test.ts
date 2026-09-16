@@ -2534,6 +2534,43 @@ describe("ProviderTransform.variants", () => {
   })
 })
 
+describe("ProviderTransform.error for the managed gateway's edge proxy", () => {
+  const router = (url: string, headers?: Record<string, string>) =>
+    new APICallError({
+      message:
+        "Bad Gateway: An error occurred with this application.\n\nROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8\n\nsin1::6rmpm",
+      url,
+      requestBodyValues: {},
+      statusCode: 502,
+      responseHeaders: headers,
+      responseBody:
+        "An error occurred with this application.\n\nROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8\n\nsin1::6rmpm\n",
+      isRetryable: true,
+    })
+
+  test("a router code from the managed proxy names the likely cause and what to do", () => {
+    const text = ProviderTransform.error(
+      "openrouter",
+      router(`${managedOpenRouterBaseURL()}/chat/completions`, {
+        "x-vercel-error": "ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8",
+      }),
+    )
+    expect(text).toContain("Ace's gateway could not deliver this request")
+    expect(text).toContain("ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8")
+    expect(text).toContain("several images")
+    expect(text).not.toContain("An error occurred with this application")
+  })
+
+  test("the code is read from the body when the header is missing; other 502s keep their message", () => {
+    expect(ProviderTransform.error("openrouter", router(`${managedOpenRouterBaseURL()}/chat/completions`))).toContain(
+      "ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8",
+    )
+    expect(ProviderTransform.error("openrouter", router("https://openrouter.ai/api/v1/chat/completions"))).toContain(
+      "Bad Gateway",
+    )
+  })
+})
+
 describe("ProviderTransform.error for the managed gateway's payment-required contract", () => {
   const managed = (body: Record<string, unknown>, url = `${managedOpenRouterBaseURL()}/chat/completions`) =>
     new APICallError({
