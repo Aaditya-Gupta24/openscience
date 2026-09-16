@@ -32,7 +32,14 @@ test("new native model contracts survive an absent or stale model catalog", () =
     expect(fresh.reasoningOptions?.find((option) => option.type === "effort")?.default).toBe(
       providerID === "anthropic" ? "high" : undefined,
     )
-    expect(fresh.modes).toBeUndefined()
+    // Astra offers priority processing on the direct OpenAI route, as through
+    // Ace, at twice the standard rate; Fable has no Fast tier.
+    if (providerID === "openai") {
+      expect(fresh.modes?.fast?.provider).toEqual({ body: { service_tier: "priority" } })
+      expect(fresh.modes?.fast?.cost).toMatchObject({ input: fresh.cost.input * 2, output: fresh.cost.output * 2 })
+    } else {
+      expect(fresh.modes).toBeUndefined()
+    }
     source.models[id] = {
       id,
       name: "Old metadata",

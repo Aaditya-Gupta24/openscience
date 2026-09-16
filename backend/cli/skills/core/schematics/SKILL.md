@@ -1,133 +1,135 @@
 ---
 name: schematics
-description: Creates or refines publication-quality technical diagrams with the native generate_image tool (Nano Banana Pro through Ace or a Gemini key, GPT Image 2 through an OpenAI key), method and architecture overviews, pipelines, experimental workflows, biological pathways and conceptual schematics, planned from the source text, styled from reference figures, rendered at print resolution and checked against the source before it ships. Use for any figure whose content is structure rather than data. Not for plots of measured numbers (use figures) and not for illustrations or artwork (use generate-image). Never hand-drawn as TikZ or SVG.
-summary: "Method and pipeline diagrams rendered with generate_image: plan, style, render, check. Never TikZ."
+description: Creates or refines publication-quality technical diagrams with the native generate_image tool (Nano Banana Pro through Ace or a Gemini key, GPT Image 2 through an OpenAI key), method and architecture overviews, pipelines, CONSORT and PRISMA flows, experimental workflows, biological pathways, circuits and conceptual schematics, described component by component, rendered under publication standards, scored against a document-type threshold and re-rendered once from the critique. Use for any figure whose content is structure rather than data. Not for plots of measured numbers (use figures) and not for illustrations or artwork (use generate-image). Never hand-drawn as TikZ or SVG.
+summary: "Method, pipeline and pathway diagrams rendered with generate_image: describe, render, score, refine. Never TikZ."
 category: core
 role: workflow
 allowed-tools: [Read, Write, Edit, generate_image]
 license: MIT
-version: 1.0.0
+version: 2.0.0
 author: Synthetic Sciences
 metadata:
-  upstream: K-Dense-AI/claude-scientific-writer
-  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/scientific-schematics
   upstream-license: MIT
-  upstream-relationship: references and scripts derived
+  upstream-relationship: workflow, prompt standards, review rubric and references adapted
   adapted-by: Synthetic Sciences
-  skill-author: Synthetic Sciences
-  method: PaperBanana (Zhu et al., 2026), retriever / planner / stylist / visualizer / critic
+  skill-author: K-Dense Inc.
+  method: K-Dense scientific-schematics generate-review-refine loop; PaperBanana (Zhu et al., 2026) content planning
 ---
 
 # Schematics
 
 A methodology diagram carries the paper's central idea in one glance, and it is the figure
 most often faked: outdated palettes, boxes that say nothing, arrows that go the wrong way,
-components the text never mentions. Image models now draw clean diagrams with legible text,
-but left to themselves they are verbose and derivative. The method here is
-reference-driven: plan the content from the source, borrow the style from good figures,
-render, then check the image against the source and regenerate once if it fails.
+components the text never mentions. Image models draw clean diagrams with legible text when
+they are told the publication standards on every call and their output is judged against a
+rubric, not admired. This skill is that loop: describe the diagram precisely, render it under
+the standards, score it, and re-render once from the critique.
 
 ## The medium
 
-- `generate_image` is the medium for every schematic. It renders with Nano Banana Pro
-  (Gemini 3 Pro Image) through Ace or the user's own Gemini key, or with GPT Image 2
-  through the user's own OpenAI key; the environment line names the route in use. Use
-  `image_size: "2K"` for anything that will be printed and `"1K"` while iterating; set
-  `aspect_ratio` from the page slot (16:9 or 21:9 for a full-width overview, 4:3 or 1:1 for
-  a column); pass `reference_paths` for style and component fidelity (up to 14 on a Gemini
-  or OpenAI key; Ace takes one image per request, so pass the single most relevant
-  reference or the draft being edited). Output is raster at print resolution: `\includegraphics`
-  takes the PNG directly, and the check is done at printed size.
+- `generate_image` with `purpose: "schematic"` is the medium for every diagram. The tool
+  prepends the publication framing (white background, one sans-serif face, Okabe-Ito palette
+  with one accent, one reading direction, verbatim labels, no invented parts, no figure
+  numbers or captions inside the image) to your description, so you write the content, not
+  the house style. It renders with Nano Banana Pro through Ace or the user's own Gemini key,
+  or GPT Image 2 through the user's own OpenAI key; the environment line names the route.
+- Use `image_size: "1K"` while iterating and `"2K"` for the accepted render of anything
+  printed; set `aspect_ratio` from the page slot (16:9 or 21:9 for a full-width overview,
+  4:3 or 1:1 for a column). Pass `reference_paths` when the paper's earlier figures or a
+  cited paper's diagram set the style (up to 14 on a Gemini or OpenAI key; Ace takes one
+  image per request). Output is raster at print resolution; `\includegraphics` takes the PNG.
 - Do not hand-draw a schematic as TikZ, SVG, Graphviz, Mermaid or matplotlib shapes, and do
-  not offer that as a fallback. Language models draw these badly (overlapping labels,
-  arrows through boxes, uneven spacing) and the result reads as an unfinished figure. A
-  diagram with many exact labels is handled by giving the image model the exact labels and
-  checking them, one edit round at a time, not by switching medium.
-- Plots of numbers are never image-generated. PaperBanana measured it: prettier, and wrong
-  (hallucinated values, repeated elements). Load the figures skill for data.
+  not offer that as a fallback: language models draw these badly and the result reads as an
+  unfinished figure. Exact labels are handled by giving the model the exact labels and
+  checking them, not by switching medium.
+- Plots of numbers are never image-generated (hallucinated values, repeated elements). Load
+  the figures skill for data.
 - If the environment says image generation is unavailable, stop before drawing: tell the
   user once that schematics need Ace, or a Gemini or OpenAI key connected in Customize →
-  Models, leave a `\fbox{}` placeholder with the planned caption in the manuscript if one is
-  being written, and continue with the rest of the request. Do not ask the user to paste a
-  key into chat.
+  Models, leave an `\fbox{}` placeholder with the planned caption in the manuscript if one is
+  being written, and continue with the rest of the request.
 
 ## Workflow
 
 Copy this checklist and work through it.
 
-- [ ] 1. Read the source: the method section, caption, and any existing figure.
-- [ ] 2. Plan the content (the planner's job).
-- [ ] 3. Fix the style from references (the stylist's job).
-- [ ] 4. Render at 1K; inspect against the plan (the critic's job); regenerate once at most.
-- [ ] 5. Render the accepted plan at 2K, save, write the caption, report open issues.
+- [ ] 1. Read the source and choose the document type.
+- [ ] 2. Write the description: type, components, flow, labels, emphasis.
+- [ ] 3. Render at 1K with `purpose: "schematic"`.
+- [ ] 4. Score the render on the rubric; stop if it meets the threshold.
+- [ ] 5. Otherwise re-render once from the critique; keep the better of the two.
+- [ ] 6. Render the accepted description at 2K, save, write the caption, report open issues.
 
-**Step 1. Read the source.** Identify the claim the figure must make, every component the
-text names, the relationships and their direction, what is input, what is learned, what is
-frozen, what is compared. A figure that shows a component the text never mentions is wrong
-even if it is pretty.
+**Step 1. Read the source.** The method section, the caption slot, and any existing figure.
+Identify the claim the figure must make, every component the text names, the relationships
+and their direction, what is input, what is learned, what is frozen, what is compared. A
+figure that shows a component the text never mentions is wrong even if it is pretty. Note the
+document type: it sets the bar in step 4.
 
-**Step 2. Plan the content.** Write the plan down before prompting:
+**Step 2. Write the description.** The model draws what it is told and nothing it can infer,
+so the description is a specification, not a mood. Name, in this order:
 
-- the one-sentence claim the figure makes;
-- the components, each with its exact label as it appears in the text;
-- the connections, each as `source -> target: meaning`, and the reading direction;
-- what is emphasized (the contribution) versus context (standard parts, drawn plainer);
-- panels, if any, and what each panel isolates;
-- the aspect ratio and the caption slot.
+- **Type**: flowchart, architecture diagram, pipeline, pathway, circuit, block diagram.
+- **Components**: every element, with its exact label as it appears in the text, and counts
+  where they matter (`Screened (n = 500)`).
+- **Flow and direction**: left-to-right or top-to-bottom, and each connection as
+  `A -> B (meaning)`; name the labelled arrows (`RAF -> MEK, labelled "phosphorylation"`).
+- **Emphasis**: the contribution in the single accent colour; standard parts in grey; dashed
+  borders for frozen or optional parts.
+- **Style constraints beyond the defaults**: panel letters, a legend, a scale bar, the
+  reference figures' palette.
 
-Keep it concise: a diagram with more than about twelve labelled elements needs a second
-figure or a zoomed inset, not smaller text.
+Keep it to what fits: more than about twelve labelled elements needs a second figure or a
+zoomed inset, not smaller text. Good and bad descriptions, and four worked examples, are in
+`references/review-loop.md`; the standards a figure is judged against are in
+`references/best-practices.md` and `references/style-guide.md`.
 
-**Step 3. Fix the style.** Pick one to three reference figures whose style fits the venue:
-the user's own earlier figures, a figure from a paper they cite, or a published diagram in
-the working folder. Read `references/style-guide.md` and write two or three sentences of
-style constraints from them: palette (restrained, colorblind-safe, one accent for the
-contribution), typography (one sans face, no text under the caption's size), shape
-vocabulary (rounded blocks for modules, plain rectangles for data, dashed borders for
-frozen or optional parts), whitespace, and a white background. Pass the reference files as
-`reference_paths`.
+**Step 3. Render.** Call `generate_image` with the description as `prompt`,
+`purpose: "schematic"`, the `aspect_ratio`, `image_size: "1K"`, and any `reference_paths`.
+Do not restate the house style in the prompt; the tool adds it. Do not ask for a title,
+caption or figure number.
 
-**Step 4. Render and critique.** Prompt with the plan, not with adjectives. Use this shape:
+**Step 4. Score it.** Open the PNG with `read` and score it yourself on the rubric, 0–2 each:
 
-```text
-Publication methodology diagram for a <venue> paper, <aspect ratio>, white background.
-Claim: <one sentence>.
-Components, left to right: <label 1> (<role>), <label 2> (<role>), ... Use these exact labels.
-Connections: <A> -> <B> (<meaning>); <B> -> <C> (<meaning>); ...
-Emphasize <the contribution> with the single accent color; draw <standard parts> in grey.
-Style: match the reference images' palette, typography and line weight; flat, no shadows, no
-decorative icons, no invented components, no numbers or tables.
-```
-
-Then read the produced PNG with the read tool and check it against the plan:
-
-| Check | Fail means |
+| Criterion | 2 points means |
 | --- | --- |
-| Every planned component present, labelled exactly | a missing or renamed block |
-| No extra components or text | invented parts, filler labels, watermarks |
-| Every connection present, in the right direction, none duplicated | the model's usual failure: connectivity |
-| Emphasis on the contribution, context plainer | everything the same weight |
-| Text legible at printed size, no overlaps or clipping | tiny or colliding labels |
-| Palette restrained and colorblind-safe, white background | rainbow, gradients, dark theme |
+| Scientific accuracy | every named component present and labelled exactly, every connection present and in the right direction, nothing invented |
+| Clarity and readability | the claim is legible at a glance, one visual hierarchy, no ambiguous element |
+| Label quality | every element labelled, no misspelling, sizes consistent and readable at column width |
+| Layout and composition | one reading direction, balanced whitespace, nothing overlapping or clipped |
+| Professional appearance | flat, crisp, white background, restrained colorblind-safe palette, no decoration |
 
-If it fails, write a delta prompt naming the specific defects ("the arrow from Encoder to
-Decoder is reversed; remove the third block labelled 'Model'") and pass the failed image as
-`input_path` for an edit, or regenerate from the plan with the defects listed as
-constraints. Two rounds at most. If connectivity still fails, simplify the plan (fewer
-components, one panel, a stated reading order) and render that: a correct simple diagram
+The threshold depends on where the figure goes: **journal 8.5**, conference, thesis or
+grant **8.0**, preprint or report **7.5**, poster **7.0**, slides **6.5**. Write the score
+and the specific issues in the activity trace. A misspelled label or a wrong arrow is a
+failure regardless of the total.
+
+**Step 5. Refine once.** If the score is below the threshold, re-render from the same
+description with the issues appended as constraints ("the arrow from Encoder to Decoder is
+reversed; remove the third block labelled 'Model'; the label 'Randomised' is misspelled"), or
+pass the failed render as `input_path` with `purpose: "edit"` and the delta as the prompt
+when the layout is right and only details are wrong. Score again; keep the better of the two
+renders. Two renders at most: if connectivity still fails, simplify the description (fewer
+components, one panel, a stated reading order) and render that. A correct simple diagram
 beats a wrong detailed one, and a hand-drawn vector is not an option.
 
-**Step 5. Finalize.** Render the accepted plan at `image_size: "2K"` into the working folder
-(`figs/<name>.png` beside a paper), write the caption from the claim (bold phrase, then
-what the arrows and colors mean), and report anything the image could not do: a label the
-model kept misspelling, a component simplified, a panel dropped.
+**Step 6. Finalize.** Render the accepted description at `image_size: "2K"` into the working
+folder (`figs/<name>.png` beside a paper), write the caption from the claim (bold phrase,
+then what the arrows and colours mean, every abbreviation defined), reference it in the
+text before it appears, and report anything the image could not do: a label the model kept
+misspelling, a component simplified, a panel dropped. Record the description that produced
+the accepted render so the figure can be regenerated.
 
 ## Refining an existing diagram
 
 For a human-drawn figure that needs polish, keep the content and change only the style:
-pass the original as `input_path`, the style references as `reference_paths`, and prompt
-for the same components and connections with the new palette, typography and spacing.
-Check the result with the same table; a polish that adds or removes a box is a failure.
+pass the original as `input_path` with `purpose: "edit"`, the style references as
+`reference_paths`, and describe the same components and connections with the new palette,
+typography and spacing. Score it with the same rubric; a polish that adds or removes a box is
+a failure.
 
 ## Scope
 

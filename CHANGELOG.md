@@ -23,6 +23,21 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   back to hand-drawn TikZ, SVG or Graphviz; `generate-image` and
   `scientific-visualization` join the core skill index; the TikZ scaffold is
   gone.
+- **Schematics render under publication standards, scored before they ship.**
+  `generate_image` takes a `purpose`: `schematic` prepends the scientific-diagram
+  framing adapted from K-Dense's scientific-schematics skill (white background,
+  one sans-serif face, Okabe-Ito palette with one accent, one reading direction,
+  labels verbatim, nothing invented, no figure numbers or captions inside the
+  image) to every render, `illustration` frames a conceptual figure or graphical
+  abstract, and `edit` keeps the instruction bare. The `schematics` skill is
+  rebuilt on the K-Dense loop: a component-by-component description, a 1K
+  render, a five-criterion score (accuracy, clarity, labels, layout, appearance)
+  against the document's threshold (journal 8.5 down to slides 6.5), one
+  critique-driven re-render, then the 2K final; its references carry the
+  K-Dense publication standards and review guide. `generate-image` adopts their
+  five-sentence prompt structure, and `scientific-visualization` is the current
+  upstream release (v1.2) with its publisher profiles and the metadata, palette
+  and export audit CLIs.
 - **An explicit `/skill` is loaded by the loop, not requested of the model.**
   Typing `/scientific-visualization` had produced a system instruction to load
   the skill "before substantive work", which a model could and did skip in
@@ -43,6 +58,24 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   headline says how full the window is and a segmented bar shows what fills
   it, with a legend of the recorded buckets; the exact counts sit in two cards
   (last request, session); custom instructions and raw messages fold away.
+- **Model options has one shape on every route.** The effort ladder sits on a
+  six-track grid that centres a short last row instead of leaving one option
+  hanging; Speed is a heading with the Fast toggle and, where a route does not
+  offer it, a note saying which route does; the Rates table shows standard,
+  Fast and long-context prices per 1M tokens for the route with the active
+  row marked, the tier row muted when the chosen context cap can never reach it,
+  and a caption stating whether the numbers are Wallet rates (with the funding
+  fee) or a catalog estimate. Context caps read `272K` and `1.05M`; Codex GPT-5.6
+  models offer the same cap choices as their OpenAI siblings and Astra offers
+  Fast on the direct OpenAI route as it does through Ace.
+- **The Model access card is one header and two rows.** Ace's identity, status
+  and one-line purpose on the left; the Wallet on the right as what is spendable
+  now (`$700.50 available`, the held amount named only while turns hold funds)
+  beside the one action that applies; an Auto-reload row with its On/Off state,
+  the amount and threshold, a Manage in Wallet link and the authorization terms
+  folded beneath; and Preferred model access as two radio rows whose fixed
+  one-line consequences read side by side. Signed out, the card is the header
+  row plus one sentence.
 
 ### Fixed
 

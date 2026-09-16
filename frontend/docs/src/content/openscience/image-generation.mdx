@@ -32,7 +32,7 @@ Specify composition, intended audience, labels, colors, background, and aspect r
 
 Use a `.png` destination for the most straightforward compatible output (Ace and OpenAI also write `.jpg` and `.webp`). Ask for the exact saved path and open it in Files.
 
-Method, pipeline and architecture diagrams go through the [schematics skill](/openscience/skill-library), which plans the components and connections from your text, renders with the same tool, and checks the image against the plan before it ships.
+Method, pipeline and architecture diagrams go through the [schematics skill](/openscience/skill-library). It describes the diagram component by component from your text, renders it with `purpose: "schematic"` (the tool prepends the publication framing adapted from K-Dense's scientific-schematics skill: white background, one sans-serif face, a colorblind-safe palette with one accent, one reading direction, your labels verbatim, nothing invented, no figure numbers inside the image), scores the render on five criteria against the threshold for the document type (a journal figure needs 8.5 of 10, slides 6.5), re-renders once from the critique when it falls short, and finishes at 2K. Conceptual figures and graphical abstracts use `purpose: "illustration"`; edits of an existing image use `purpose: "edit"`.
 
 ## Edit an existing image
 

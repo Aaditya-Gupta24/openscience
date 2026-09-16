@@ -2072,7 +2072,12 @@ export namespace Provider {
         : {}
     const xai: NonNullable<Model["modes"]> =
       provider.id === "xai" && /^grok-4[.-]6\b/.test(model.id) ? { fast: priority() } : {}
-    const result = provider.id === "openrouter" ? openrouter : { ...direct, ...xai }
+    // OpenAI prices priority processing for GPT-6 Astra ($20/$100 per 1M) but
+    // models.dev's snapshot carries no fast mode for it, so the direct route
+    // lost the tier the Ace route offers for the same model.
+    const openai: NonNullable<Model["modes"]> =
+      provider.id === "openai" && /^gpt-6-astra$/.test(model.id) && !direct.fast ? { fast: priority() } : {}
+    const result = provider.id === "openrouter" ? openrouter : { ...direct, ...xai, ...openai }
     if (Object.keys(result).length === 0) return undefined
     return result
   }
@@ -2480,7 +2485,20 @@ export namespace Provider {
                     { type: "effort", values: ["low", "medium", "high", "xhigh", "max"], default: "medium" },
                   ],
                 }
-              : {}),
+              : {
+                  // The subscription has no per-token price, so the model's
+                  // pricing tiers are zeroed here; the context cap they mark is
+                  // a compaction budget of the model family, the same one the
+                  // paid routes offer, and it stays selectable on this route.
+                  contextOptions: [
+                    ...new Set([
+                      ...(model.cost.tiers ?? [])
+                        .map((tier) => tier.threshold)
+                        .filter((size) => Number.isFinite(size) && size > 0 && size < model.limit.context),
+                      model.limit.context,
+                    ]),
+                  ].sort((a, b) => a - b),
+                }),
             // Codex advertises its own fast tier independently of the public
             // API catalog, so synthesize only the modes in the OAuth contract.
             modes: codexOAuthModes(model.id),

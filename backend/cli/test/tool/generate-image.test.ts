@@ -7,6 +7,8 @@ import { SessionFilesystem } from "../../src/session/filesystem"
 import { ImageRoute } from "../../src/tool/image-route"
 import {
   GenerateImageTool,
+  SCHEMATIC_GUIDELINES,
+  framedPrompt,
   extractGeneratedImage,
   extractGeneratedImageURL,
   generatedImageAttachments,
@@ -156,6 +158,17 @@ describe("generate_image response parsing", () => {
       await OpenScience.clearSession()
       gateway.stop(true)
     }
+  })
+
+  test("a schematic or illustration is framed by publication standards; an edit stays bare", () => {
+    const framed = framedPrompt("Pipeline: Data -> Model -> Eval", "schematic")
+    expect(framed.startsWith(SCHEMATIC_GUIDELINES)).toBe(true)
+    expect(framed).toContain("Okabe-Ito")
+    expect(framed).toContain("DO NOT ADD FIGURE NUMBERS")
+    expect(framed.endsWith("DIAGRAM REQUEST:\nPipeline: Data -> Model -> Eval")).toBe(true)
+    expect(framedPrompt("A helix", "illustration")).toContain("scientific illustration for a research publication")
+    expect(framedPrompt("Widen the margins", "edit")).toBe("Widen the margins")
+    expect(framedPrompt("A cat", undefined)).toBe("A cat")
   })
 
   test("a personal OpenRouter key is not an image route", async () => {

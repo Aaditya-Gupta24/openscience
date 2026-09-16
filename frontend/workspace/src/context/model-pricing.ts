@@ -116,6 +116,93 @@ export function fastRateLabel(fast: Cost | undefined, standard?: Cost): string |
   return `${Number(multiple.toFixed(2))}× standard · ${rates}`
 }
 
+/** What a turn on this route costs per 1M tokens, as the two choices the
+ * popover offers change it: Speed picks the Standard or Fast column, and the
+ * context cap decides whether the long-context tier can ever apply. */
+export type RouteRates = {
+  standard: Cost
+  fast?: Cost
+  /** Fast's multiple of Standard when it is a uniform premium. */
+  multiple?: number
+  /** Rows for prompts past a threshold, Standard and (when offered) Fast. */
+  tiers: Array<{ threshold: number; standard: Cost; fast?: Cost }>
+  /** Wallet rates carry the funding fee; a key is billed by the provider. */
+  basis: "wallet" | "provider"
+  feePercent?: number
+}
+
+export function routeRates(input: {
+  access: "managed" | "byok" | "chatgpt"
+  pricing?: ModelPricing
+  cost: RuntimeCost
+  fast?: RuntimeCost
+}): RouteRates | undefined {
+  if (input.access === "chatgpt") return
+  if (input.access === "managed" && !input.pricing) return
+  const standard = { input: input.cost.input, output: input.cost.output }
+  if (!valid(standard) || (standard.input === 0 && standard.output === 0)) return
+  const fast = input.fast ? { input: input.fast.input, output: input.fast.output } : undefined
+  const fastValid = fast && valid(fast) && !(fast.input === 0 && fast.output === 0) ? fast : undefined
+  const ratio = fastValid && standard.input > 0 && standard.output > 0 ? fastValid.input / standard.input : undefined
+  const uniform =
+    ratio !== undefined && ratio > 1 && fastValid && Math.abs(fastValid.output / standard.output - ratio) <= 0.01
+  const fastTiers = new Map((input.fast?.tiers ?? []).map((tier) => [tier.threshold, tier]))
+  const tiers = (input.cost.tiers ?? [])
+    .filter((tier) => Number.isFinite(tier.threshold) && tier.threshold > 0 && valid(tier))
+    .sort((a, b) => a.threshold - b.threshold)
+    .map((tier) => {
+      const fastTier = fastTiers.get(tier.threshold)
+      return {
+        threshold: tier.threshold,
+        standard: { input: tier.input, output: tier.output },
+        ...(fastValid && fastTier && valid(fastTier)
+          ? { fast: { input: fastTier.input, output: fastTier.output } }
+          : {}),
+      }
+    })
+  return {
+    standard,
+    ...(fastValid ? { fast: fastValid } : {}),
+    ...(uniform && ratio !== undefined ? { multiple: Number(ratio.toFixed(2)) } : {}),
+    tiers,
+    basis: input.access === "managed" ? "wallet" : "provider",
+    ...(input.access === "managed" ? { feePercent: fundingFeePercent(input.pricing) } : {}),
+  }
+}
+
+/** Currency for a rate table: whole cents, three decimals only when a rate
+ * needs them ($0.211), so the columns line up. */
+export const tokenRate = {
+  format(value: number) {
+    const digits = Math.round(value * 100) === value * 100 ? 2 : 3
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: digits,
+    }).format(value)
+  },
+}
+
+/** The sentence under the rate table that ties it to the chosen cap. */
+export function rateCaption(rates: RouteRates, contextCap: number | undefined, contextLabel: (n: number) => string) {
+  const parts: string[] = []
+  const tier = rates.tiers[0]
+  if (tier) {
+    parts.push(
+      contextCap !== undefined && contextCap <= tier.threshold
+        ? `With the ${contextLabel(tier.threshold)} cap, prompts never reach the long-context rate.`
+        : `Prompts past ${contextLabel(tier.threshold)} of input are billed at the long-context rate for the whole request.`,
+    )
+  }
+  parts.push(
+    rates.basis === "wallet"
+      ? `Wallet rates: provider price plus the ${rates.feePercent ?? fundingFeePercent(undefined)}% funding fee.`
+      : "Catalog estimate; billed by your provider.",
+  )
+  return parts.join(" ")
+}
+
 export function pricingUpstream(pricing: ModelPricing | undefined): string | undefined {
   const names: Record<string, string> = {
     anthropic: "Anthropic",

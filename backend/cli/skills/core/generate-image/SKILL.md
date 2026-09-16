@@ -13,7 +13,7 @@ metadata:
   upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
   upstream-path: scientific-skills/generate-image
   upstream-license: MIT
-  upstream-relationship: adapted and rewritten
+  upstream-relationship: prompt guidance adapted; rewritten around the native tool
   skill-author: Synthetic Sciences
   adapted-by: Synthetic Sciences
 ---
@@ -47,8 +47,18 @@ Graphviz or matplotlib shapes in its place.
 
 Call `generate_image` with:
 
-- `prompt` (required): what the image shows and how, in one paragraph. Name the subject,
-  composition, palette, background, and any text that must appear, verbatim.
+- `prompt` (required): what the image shows and how. Prompt quality decides output quality
+  more than the model does. Name, in one sentence each: the **subject** and how much of it is
+  in frame ("a single pipette tip above a 96-well plate"); the **medium and style**
+  (scientific illustration, flat vector, watercolour, 3D render, photograph); the **lighting
+  and palette** ("soft diffuse light, cool blue and white palette"); the **composition**
+  ("wide shot, subject left of centre, empty space on the right for a title"); and what to
+  **avoid** ("no text, no labels, no watermark"). Any text that must appear is quoted
+  verbatim. Asking for empty space where a caption or title will go is the single most useful
+  compositional instruction for posters and slides.
+- `purpose`: `illustration` for a conceptual figure or graphical abstract (the tool prepends
+  publication framing: clean background, restrained palette, no invented text or data);
+  `edit` when changing an existing image; `schematic` belongs to the schematics skill.
 - `output_path`: destination in the workspace, `.png` (any route), `.jpg` or `.webp`
   (Ace and OpenAI). Default `generated-image.png`.
 - `input_path`: an existing image to edit. Omit it entirely for a new image; never pass a
@@ -67,7 +77,8 @@ Example generation:
 
 ```json
 {
-  "prompt": "Editorial scientific illustration of a DNA double helix with one mutation site highlighted, restrained blue and amber palette, white background, no text",
+  "prompt": "A DNA double helix with one mutation site highlighted, close enough that the base pairs read. Flat scientific illustration. Restrained blue and amber palette on white. Helix runs diagonally from lower left to upper right, empty space upper left for a caption. No text, no labels, no watermark.",
+  "purpose": "illustration",
   "output_path": "figures/dna-mutation.png",
   "aspect_ratio": "3:2"
 }
@@ -78,6 +89,7 @@ Example edit:
 ```json
 {
   "prompt": "Keep every element and label exactly as drawn; widen the margins and increase contrast for a two-column paper",
+  "purpose": "edit",
   "input_path": "figures/abstract-draft.png",
   "output_path": "figures/abstract.png",
   "aspect_ratio": "4:3",
@@ -92,7 +104,9 @@ Example edit:
 2. Write the prompt from the communication goal: what a viewer should take from it in one
    glance, what must be present, what must not (no invented text, no logos, no decorative
    icons, no numbers). Set `aspect_ratio` from the slot.
-3. Generate one candidate at `1K`. Never fill an output slot with an image nobody asked for.
+3. Generate one candidate at `1K` with `purpose: "illustration"`. Never fill an output slot with
+   an image nobody asked for. To refine rather than restart, pass the candidate back as
+   `input_path` with `purpose: "edit"` and describe only the change.
 4. Open the saved file with `read` and check it: subject correct, requested text spelled
    exactly, nothing invented, legible at the final size, palette accessible, no watermark or
    border.

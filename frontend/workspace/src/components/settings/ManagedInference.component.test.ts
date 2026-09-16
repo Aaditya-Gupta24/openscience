@@ -168,15 +168,22 @@ describe("Ace account surface", () => {
   test("separates exact purchased balance, authorization and routing with native disclosure", async () => {
     const { host } = await mount()
     await ready(() => host.textContent?.includes("$778.16") === true)
-    expect(host.querySelector("dt")?.textContent).toBe("Purchased Wallet")
+    expect(host.querySelector("dt")?.textContent).toBe("Wallet")
     expect(host.querySelector("dd")?.textContent).toBe("$778.16")
     expect([...host.querySelectorAll("strong")].filter((item) => item.textContent === "Ace")).toHaveLength(1)
     expect(host.querySelector('[role="status"]')?.textContent).toBe("On")
     expect(button(host, "Ace").getAttribute("aria-pressed")).toBe("true")
     expect(button(host, "Manage Ace")).toBeDefined()
+    // Auto-reload is a row with its state and terms, not a disclosure.
+    const reload = host.querySelector("[data-model-reload]")!
+    expect(reload.querySelector(".models-routing__status")?.textContent).toBe("On")
+    expect(reload.querySelector(".models-routing__reload-terms")?.textContent).toBe(
+      "Adds $20 when the Wallet drops below $5.",
+    )
+    expect(button(host, "Manage in Wallet")).toBeDefined()
     const details = host.querySelector("details")!
     expect(details.open).toBe(false)
-    expect(details.querySelector("summary")?.textContent).toBe("Auto-reloadadds $20 when the balance drops below $5")
+    expect(details.querySelector("summary")?.textContent).toBe("Authorization terms")
     details.querySelector("summary")!.click()
     expect(details.open).toBe(true)
     expect(details.textContent).toContain(subject.aceContractLabel(contract))
@@ -189,7 +196,10 @@ describe("Ace account surface", () => {
       aceContract: { ...contract, reloadAmountUsd: 40, reloadThresholdUsd: 9 },
     })
     await ready(
-      () => host.querySelector("summary")?.textContent?.includes("$40 when the balance drops below $9") === true,
+      () =>
+        host
+          .querySelector(".models-routing__reload-terms")
+          ?.textContent?.includes("$40 when the Wallet drops below $9") === true,
     )
     button(host, "Ace").click()
     await settle()
@@ -199,7 +209,7 @@ describe("Ace account surface", () => {
     expect(state.writes).toEqual([{ llm: "byok" }])
     expect(button(host, "Keys & subscriptions").getAttribute("aria-pressed")).toBe("true")
     expect(host.querySelector('[role="status"]')?.textContent).toBe("On")
-    expect(host.querySelector("summary")?.textContent).toContain("Auto-reload")
+    expect(host.querySelector("[data-model-reload] .models-routing__status")?.textContent).toBe("On")
     expect(state.links).toEqual([])
   })
 
@@ -207,6 +217,10 @@ describe("Ace account surface", () => {
     const { host, state } = await mount({ ...funded, balanceUsd: 0, aceEnabled: false, managedUnlocked: false })
     await ready(() => button(host, "Turn on Ace") !== undefined)
     expect(button(host, "Ace").disabled).toBe(true)
+    expect(host.querySelector("[data-model-reload] .models-routing__status")?.textContent).toBe("Off")
+    expect(host.querySelector(".models-routing__reload-terms")?.textContent).toBe(
+      "Turning on Ace adds $20 whenever the Wallet drops below $5.",
+    )
     expect(host.querySelector("details")?.open).toBe(true)
     expect(host.querySelector("details")?.textContent).toContain("$0 authorization, not a purchase or subscription")
     expect(host.querySelector("details")?.textContent).toContain(
@@ -238,7 +252,10 @@ describe("Ace account surface", () => {
     expect(host.querySelector('[role="status"]')?.textContent).toBe("Sign in required")
     expect(host.querySelector("dd")?.textContent).toBe("Sign in to view")
     expect(button(host, "Ace").disabled).toBe(true)
-    expect(host.querySelector("details")?.open).toBe(false)
+    // Signed out, the header row plus one sentence is the whole story.
+    expect(host.querySelector("details")).toBeNull()
+    expect(host.querySelector("[data-model-reload]")).toBeNull()
+    expect(host.textContent).toContain("Sign in to use purchased Wallet funds or turn on Ace.")
     expect(state.writes).toEqual([])
   })
 
@@ -264,25 +281,32 @@ describe("Ace account surface", () => {
     expect(state.errors.filter(Boolean)).toEqual([])
   })
 
-  test("shows what is spendable now beside the purchased balance only when the server knows it", async () => {
+  test("leads with what is spendable now and names held funds only while something is held", async () => {
     const { host, state } = await mount({ ...funded, availableUsd: 700.5 })
     await ready(() => host.textContent?.includes("$700.50") === true)
-    const terms = [...host.querySelectorAll("dt")].map((item) => item.textContent)
-    expect(terms).toEqual(["Purchased Wallet", "Available"])
-    const values = [...host.querySelectorAll("dd")].map((item) => item.textContent)
-    expect(values).toEqual(["$778.16", "$700.50"])
+    expect([...host.querySelectorAll("dt")].map((item) => item.textContent)).toEqual(["Wallet"])
+    expect(host.querySelector("dd")?.textContent).toBe("$700.50 available")
+    expect(host.querySelector(".models-routing__held")?.textContent).toBe("$77.66 held for turns in flight")
+    expect(host.textContent).not.toContain("$778.16")
     expect(host.textContent).not.toContain("credit")
 
+    // Nothing held: the available line stands alone.
+    state.wallet = { ...funded, balanceUsd: 778.16, availableUsd: 778.16 }
+    for (const notify of state.updated) notify()
+    await ready(() => host.querySelector("dd")?.textContent === "$778.16 available")
+    expect(host.querySelector(".models-routing__held")).toBeNull()
+
+    // The server does not know the holds: the purchased balance alone, no claim about availability.
     state.wallet = { ...funded, balanceUsd: 778.16, availableUsd: null }
     for (const notify of state.updated) notify()
-    await ready(() => !host.textContent?.includes("$700.50"))
-    expect([...host.querySelectorAll("dt")].map((item) => item.textContent)).toEqual(["Purchased Wallet"])
+    await ready(() => host.querySelector("dd")?.textContent === "$778.16")
+    expect(host.textContent).not.toContain("available")
 
     // A private balance keeps its holds private too.
     state.wallet = { ...funded, balanceRedacted: true, balanceUsd: null, availableUsd: 700.5 }
     for (const notify of state.updated) notify()
     await ready(() => host.textContent?.includes("Private to admins") === true)
-    expect(host.textContent).not.toContain("Available")
+    expect(host.textContent).not.toContain("available")
     expect(host.textContent).not.toContain("$700.50")
   })
 

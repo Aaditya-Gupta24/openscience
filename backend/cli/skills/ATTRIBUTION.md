@@ -161,7 +161,7 @@ upstream), **vendored** (unchanged apart from paths).
 | `databases/uspto-database` | `scientific-skills/uspto-database` | derived |
 | `databases/zinc-database` | `scientific-skills/zinc-database` | derived |
 | `document-parsing/liteparse` | `scientific-skills/liteparse` | adapted and rewritten |
-| `core/generate-image` | `scientific-skills/generate-image` | adapted and rewritten |
+| `core/generate-image` | `skills/generate-image` | prompt guidance adapted; rewritten around the native tool |
 | `llm-tools/transformers` | `skills/transformers` | derived |
 | `ml-training/adaptyv` | `scientific-skills/adaptyv` | derived |
 | `ml-training/geniml` | `scientific-skills/geniml` | derived |
@@ -188,7 +188,8 @@ upstream), **vendored** (unchanged apart from paths).
 | `scholar-evaluation` | `scientific-skills/scholar-evaluation` | derived |
 | `visualization/matplotlib` | `skills/matplotlib` | derived |
 | `visualization/plotly` | `scientific-skills/plotly` | derived |
-| `core/scientific-visualization` | `scientific-skills/scientific-visualization` | derived |
+| `core/scientific-visualization` | `skills/scientific-visualization` (v1.2) | vendored, frontmatter adapted |
+| `core/schematics` | `skills/scientific-schematics` (v1.7) | workflow, prompt standards, review rubric and references adapted; scripts derived |
 | `visualization/seaborn` | `skills/seaborn` | derived |
 | `writing/markdown-mermaid-writing` | `skills/markdown-mermaid-writing` | derived |
 | `writing/paper-2-web` | `scientific-skills/paper-2-web` | derived |
@@ -211,7 +212,6 @@ upstream), **vendored** (unchanged apart from paths).
 | `core/ml-paper-writing` | — | references and scripts derived |
 | `core/paper-writing` | — | references and scripts derived |
 | `core/peer-review` | — | references and scripts derived |
-| `core/schematics` | — | references and scripts derived |
 | `core/sources` | `skills/verify` | adapted and rewritten |
 | `research/research-grants` | `skills/research-grants/references/core_components.md` | derived |
 | `visualization/infographics` | `skills/infographics` | derived |

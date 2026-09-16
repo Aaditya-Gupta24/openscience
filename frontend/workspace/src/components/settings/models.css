@@ -178,10 +178,15 @@
   align-items: center;
 }
 
-.models-routing__overview,
-.models-routing__preference {
+.models-routing__overview {
   justify-content: space-between;
   gap: var(--models-gap-4);
+}
+
+.models-routing__preference {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--models-gap-3);
 }
 
 .models-routing__identity {
@@ -245,20 +250,36 @@
   border-top: 1px solid var(--color-border-weak);
 }
 
-.models-routing__options {
+/* Two radio rows: the choice on the left at a fixed width, its one-line
+   consequence beside it, so the two routes read as a comparison. */
+.models-routing__modes {
   display: flex;
   min-width: 0;
-  flex: 0 0 auto;
+  flex-direction: column;
   gap: 2px;
-  padding: 2px;
+}
+
+.models-routing__mode {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--models-gap-3);
+  padding: 2px var(--models-gap-2) 2px 2px;
   border-radius: var(--settings-radius-control);
+}
+
+.models-routing__mode[data-selected="true"] {
   background: var(--settings-surface-muted);
 }
 
 .settings-dialog .settings-models-panel .models-routing__option {
+  display: inline-flex;
+  flex: 0 0 auto;
   min-width: 0;
   min-height: var(--models-control-height);
   height: var(--models-control-height);
+  align-items: center;
+  gap: var(--models-gap-2);
   padding: 0 var(--models-gap-2);
   border: 0;
   border-radius: calc(var(--settings-radius-control) - 2px);
@@ -267,30 +288,108 @@
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
   white-space: nowrap;
+  transition: color 140ms ease;
+}
+
+.settings-dialog .settings-models-panel .models-routing__option::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong, var(--color-border));
+  border-radius: 50%;
+  background: transparent;
   transition:
-    background-color 140ms ease,
-    color 140ms ease,
-    transform 140ms ease;
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .settings-dialog .settings-models-panel .models-routing__option:hover:not(:disabled) {
-  background: var(--settings-surface-hover);
   color: var(--color-text);
-}
-
-.settings-dialog .settings-models-panel .models-routing__option:active:not(:disabled) {
-  transform: scale(0.98);
 }
 
 .settings-dialog .settings-models-panel .models-routing__option[aria-pressed="true"] {
-  background: var(--settings-surface-hover);
   color: var(--color-text);
-  box-shadow: none;
+}
+
+.settings-dialog .settings-models-panel .models-routing__option[aria-pressed="true"]::before {
+  border-color: var(--color-text);
+  box-shadow: inset 0 0 0 3px var(--color-surface, var(--settings-surface-muted));
+  background: var(--color-text);
 }
 
 .settings-dialog .settings-models-panel .models-routing__option:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.models-routing__consequence {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-x-small);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.models-routing__consequence[data-disabled="true"] {
+  color: var(--color-text-faint);
+}
+
+/* Auto-reload is a fact about the account, so it gets a row of its own with
+   its state and terms, not a disclosure the reader has to open. */
+.models-routing__reload {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+  padding-top: var(--models-gap-3);
+  border-top: 1px solid var(--color-border-weak);
+}
+
+.models-routing__reload-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--models-gap-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-x-small);
+  line-height: 16px;
+}
+
+.models-routing__reload-row > strong {
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+}
+
+.models-routing__reload-terms {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+
+.settings-dialog .settings-models-panel .models-routing__link {
+  flex: 0 0 auto;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-x-small);
+  line-height: 16px;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong, currentColor);
+  text-underline-offset: 2px;
+}
+
+.settings-dialog .settings-models-panel .models-routing__link:hover {
+  color: var(--color-text);
 }
 
 .models-routing__description {
@@ -334,11 +433,17 @@
   line-height: 18px;
 }
 
-.models-routing__wallet dd[data-secondary] {
+.models-routing__wallet-unit {
   color: var(--color-text-muted);
   font-size: var(--font-size-x-small);
   font-weight: var(--font-weight-regular);
-  line-height: 16px;
+}
+
+.models-routing__held {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-2x-small);
+  line-height: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 .models-routing__sync {
@@ -351,8 +456,7 @@
 }
 
 .models-routing__terms {
-  margin: 0 var(--models-gap-3);
-  border-top: 1px solid var(--color-border-weak);
+  margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-x-small);
   line-height: 17px;
@@ -361,8 +465,8 @@
 .models-routing__terms summary {
   width: fit-content;
   max-width: 100%;
-  min-height: var(--models-control-height);
-  padding: 7px 0;
+  padding: 4px 0 2px;
+  color: var(--color-text-faint);
   cursor: pointer;
 }
 
@@ -375,12 +479,6 @@
   border-radius: 2px;
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
-}
-
-.models-routing__terms-value {
-  margin-left: var(--models-gap-2);
-  color: var(--color-text-faint);
-  font-variant-numeric: tabular-nums;
 }
 
 .models-routing__terms p {

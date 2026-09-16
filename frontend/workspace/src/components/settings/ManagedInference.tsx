@@ -69,12 +69,12 @@ const MODES: { value: Mode; title: string; body: string }[] = [
   {
     value: "byok",
     title: "Keys & subscriptions",
-    body: "Uses your connected provider keys or eligible subscriptions.",
+    body: "Your connected keys and eligible subscriptions. Ace covers only models they cannot.",
   },
   {
     value: "managed",
     title: "Ace",
-    body: "Uses your purchased Wallet for supported models.",
+    body: "Your purchased Wallet for supported models. Your own keys cover the rest.",
   },
 ]
 
@@ -295,12 +295,21 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
     return formatCreditBalance(state.wallet.balanceUsd)
   }
   // Holds for turns in flight come off the purchased balance before the next
-  // turn can spend it, so what is spendable now is shown beside the balance.
-  const availableLabel = () => {
+  // turn can spend it, so the headline is what is spendable now and the held
+  // amount is named only while something is held.
+  const spendable = () => {
     const wallet = state.wallet
     if (!wallet?.signedIn || wallet.balanceRedacted || typeof wallet.availableUsd !== "number") return
-    return formatCreditBalance(wallet.availableUsd)
+    return wallet.availableUsd
   }
+  const heldLabel = () => {
+    const wallet = state.wallet
+    const available = spendable()
+    if (available === undefined || typeof wallet?.balanceUsd !== "number") return
+    const held = wallet.balanceUsd - available
+    return held >= 0.005 ? formatCreditBalance(held) : undefined
+  }
+  const reloadActive = () => Boolean(state.wallet?.aceEnabled && state.wallet.aceContract?.reloadControlledByAce)
   const accountAction = () => {
     if (state.wallet && !state.wallet.signedIn) return state.signingIn ? "Waiting for browser…" : "Sign in"
     if (state.account === "error") return "Retry"
@@ -347,31 +356,30 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
                   {aceLabel()}
                 </span>
               </div>
-              <span>Managed models, no provider keys.</span>
+              <span>
+                <Show when={state.wallet && !state.wallet.signedIn} fallback="Managed models, no provider keys.">
+                  Sign in to use purchased Wallet funds or turn on Ace. Your own provider keys stay separate.
+                </Show>
+              </span>
             </div>
           </div>
           <div class="models-routing__account">
             <dl class="models-routing__wallet">
-              <dt>Purchased Wallet</dt>
+              <dt>Wallet</dt>
               <dd
                 aria-live="polite"
                 class="models-account-summary__balance"
                 data-refreshing={state.wallet?.refreshing ? "true" : undefined}
               >
-                {balanceLabel()}
+                <Show when={spendable() !== undefined} fallback={balanceLabel()}>
+                  {formatCreditBalance(spendable()!)} <span class="models-routing__wallet-unit">available</span>
+                </Show>
                 <Show when={state.wallet?.refreshing}>
                   <span class="models-routing__sync"> Refreshing…</span>
                 </Show>
               </dd>
-              <Show when={availableLabel()}>
-                {(label) => (
-                  <>
-                    <dt>Available</dt>
-                    <dd class="models-account-summary__balance" data-secondary="true">
-                      {label()}
-                    </dd>
-                  </>
-                )}
+              <Show when={heldLabel()}>
+                {(held) => <span class="models-routing__held">{held()} held for turns in flight</span>}
               </Show>
             </dl>
             <Button
@@ -386,78 +394,94 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
             <LoginApproval active={state.signingIn} openLink={(url) => platform.openLink(url)} />
           </div>
         </div>
+
+        <Show when={state.wallet?.signedIn && state.wallet.aceContract}>
+          {(contract) => (
+            <div class="models-routing__reload" data-model-reload>
+              <div class="models-routing__reload-row">
+                <strong>Auto-reload</strong>
+                <span class="models-routing__status" data-active={reloadActive() ? "true" : undefined}>
+                  {reloadActive() ? "On" : "Off"}
+                </span>
+                <span class="models-routing__reload-terms">
+                  <Show
+                    when={reloadActive()}
+                    fallback={`Turning on Ace adds $${contract().reloadAmountUsd} whenever the Wallet drops below $${contract().reloadThresholdUsd}.`}
+                  >
+                    Adds ${contract().reloadAmountUsd} when the Wallet drops below ${contract().reloadThresholdUsd}.
+                  </Show>
+                </span>
+                <button
+                  type="button"
+                  class="models-routing__link"
+                  onClick={() => platform.openLink(URLS.dashboardBilling)}
+                >
+                  Manage in Wallet
+                </button>
+              </div>
+              <details
+                class="models-routing__terms"
+                open={state.wallet?.signedIn && !state.wallet.aceEnabled && !state.wallet.managedUnlocked}
+              >
+                <summary>Authorization terms</summary>
+                <p>{aceContractLabel(contract())}</p>
+                <Show when={state.wallet?.aceEnabled}>
+                  <p>
+                    Changing preferred model access does not turn off Ace or its auto-reload. Manage these in Wallet.
+                  </p>
+                </Show>
+              </details>
+            </div>
+          )}
+        </Show>
+
         <div class="models-routing__preference">
           <div class="models-routing__preference-copy">
             <strong>Preferred model access</strong>
             <p id={description} class="models-routing__description" aria-live="polite">
-              {state.saving ? `Saving ${selected().title}…` : selected().body}
+              <Show when={state.saving} fallback="Which route a model uses when both could serve it.">
+                Saving {selected().title}…
+              </Show>
               <Show when={!state.saving && state.refreshing}>
                 <span class="models-routing__sync"> Updating model availability…</span>
               </Show>
             </p>
           </div>
-          <div
-            class="models-routing__options"
-            role="group"
-            aria-label="Model access mode"
-            aria-describedby={description}
-          >
+          <div class="models-routing__modes" role="group" aria-label="Model access mode" aria-describedby={description}>
             <For each={MODES}>
-              {(option) => (
-                <button
-                  type="button"
-                  aria-pressed={state.mode === option.value}
-                  aria-busy={state.saving}
-                  disabled={
-                    state.saving ||
-                    (option.value === "managed" && (state.account !== "ready" || !canSelectManaged(state.wallet)))
-                  }
-                  class="models-routing__option"
-                  title={
-                    option.value === "managed" && managedUnavailable()
-                      ? "Sign in, add purchased Wallet funds, or turn on Ace to use managed models"
-                      : undefined
-                  }
-                  onClick={() => update(option.value)}
-                >
-                  {option.title}
-                </button>
-              )}
+              {(option) => {
+                const disabled = () =>
+                  state.saving ||
+                  (option.value === "managed" && (state.account !== "ready" || !canSelectManaged(state.wallet)))
+                return (
+                  <div class="models-routing__mode" data-selected={state.mode === option.value ? "true" : undefined}>
+                    <button
+                      type="button"
+                      aria-pressed={state.mode === option.value}
+                      aria-busy={state.saving}
+                      disabled={disabled()}
+                      class="models-routing__option"
+                      title={
+                        option.value === "managed" && managedUnavailable()
+                          ? "Sign in, add purchased Wallet funds, or turn on Ace to use managed models"
+                          : undefined
+                      }
+                      onClick={() => update(option.value)}
+                    >
+                      {option.title}
+                    </button>
+                    <span class="models-routing__consequence" data-disabled={disabled() ? "true" : undefined}>
+                      {option.value === "managed" && managedUnavailable()
+                        ? "Sign in, fund the Wallet or turn on Ace to choose this."
+                        : option.body}
+                    </span>
+                  </div>
+                )
+              }}
             </For>
           </div>
         </div>
       </div>
-
-      <Show when={state.wallet?.aceContract}>
-        {(contract) => (
-          <details
-            class="models-routing__terms"
-            open={state.wallet?.signedIn && !state.wallet.aceEnabled && !state.wallet.managedUnlocked}
-          >
-            <summary>
-              <Show
-                when={state.wallet?.aceEnabled && contract().reloadControlledByAce}
-                fallback={<span>Authorization & reload details</span>}
-              >
-                <span>Auto-reload</span>
-                <span class="models-routing__terms-value">
-                  adds ${contract().reloadAmountUsd} when the balance drops below ${contract().reloadThresholdUsd}
-                </span>
-              </Show>
-            </summary>
-            <p>{aceContractLabel(contract())}</p>
-            <Show when={state.wallet?.aceEnabled}>
-              <p>Changing preferred model access does not turn off Ace or its auto-reload. Manage these in Wallet.</p>
-            </Show>
-          </details>
-        )}
-      </Show>
-
-      <Show when={state.wallet && !state.wallet.signedIn}>
-        <p class="settings-inline-note text-12-regular text-text-weak">
-          Sign in to use purchased Wallet funds or authorize Ace. Your own provider connections remain separate.
-        </p>
-      </Show>
     </div>
   )
 }

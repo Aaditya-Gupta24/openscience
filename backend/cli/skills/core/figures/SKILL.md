@@ -122,7 +122,9 @@ Pick by the question the figure answers, not by the shape in mind.
 | What does this 2D grid, confusion matrix or sweep look like? | `references/matrix.md` |
 
 For a method, architecture or pipeline diagram, load the schematics skill instead: those
-are rendered with `generate_image`, never hand-drawn as TikZ or SVG.
+are rendered with `generate_image`, never hand-drawn as TikZ or SVG. When a plot must meet a
+named journal's requirements, or needs a colour, metadata or export audit before submission,
+load scientific-visualization alongside this skill for its publisher profiles and audit CLIs.
 
 ## Before you hand it over
 

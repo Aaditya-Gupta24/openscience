@@ -1,33 +1,38 @@
 import { describe, expect, test } from "bun:test"
-import { exactRouteFastMode } from "./model-fast"
+import { exactRouteFastMode, routeModelBase } from "./model-fast"
 
 describe("exact-route fast mode", () => {
-  test("is absent when the exact selected route does not advertise fast", () => {
-    const selected = { modes: { standard: {} } }
-    const logicalSibling = { modes: { standard: {}, fast: {} } }
-
-    expect(exactRouteFastMode(selected, "standard")).toBeUndefined()
-    expect(exactRouteFastMode(logicalSibling, "standard")).toEqual({ active: false })
+  test("is absent when no route of the model advertises fast", () => {
+    const selected = { id: "gemini-3.7-flash", modes: { standard: {} }, provider: { id: "google" } }
+    expect(exactRouteFastMode(selected, "standard", [selected])).toBeUndefined()
+    expect(exactRouteFastMode(undefined, "standard")).toBeUndefined()
   })
 
-  test("carries the Fast price consequence once the route's pricing has loaded", () => {
-    const priced = {
-      cost: { input: 5, output: 30 },
-      modes: { fast: { cost: { input: 10, output: 60, cache: { read: 1, write: 0 } } } },
-    }
-    expect(exactRouteFastMode(priced, "fast")).toEqual({
-      active: true,
-      rate: "2× standard · $10.00 in · $60.00 out per 1M tokens",
-    })
-    // Without the standard rates the multiple is unknown; the Fast rates still are.
-    expect(exactRouteFastMode({ modes: priced.modes }, "standard")).toEqual({
+  test("is offered by the exact route that advertises it", () => {
+    const route = { id: "gpt-5.6-sol", modes: { standard: {}, fast: {} }, provider: { id: "openai", name: "OpenAI" } }
+    expect(exactRouteFastMode(route, "fast")).toEqual({ active: true, offered: true })
+    expect(exactRouteFastMode(route, "standard")).toEqual({ active: false, offered: true })
+  })
+
+  test("a subscription route says the tier is included", () => {
+    const codex = { id: "gpt-5.6-sol", modes: { fast: {} }, provider: { id: "openai-codex", name: "OpenAI (Codex)" } }
+    expect(exactRouteFastMode(codex, "standard")).toEqual({
       active: false,
-      rate: "$10.00 in · $60.00 out per 1M tokens",
+      offered: true,
+      note: "Included in your ChatGPT subscription.",
     })
-    // A placeholder price before the catalog loads is not "free Fast".
-    expect(exactRouteFastMode({ modes: { fast: { cost: { input: 0, output: 0 } } } }, "standard")).toEqual({
+  })
+
+  test("a route without the tier names the routes of the same model that have it", () => {
+    const ace = { id: "anthropic/claude-opus-5", modes: {}, provider: { id: "openrouter", name: "Ace" } }
+    const key = { id: "claude-opus-5", modes: { fast: {} }, provider: { id: "anthropic", name: "Anthropic" } }
+    const other = { id: "claude-sonnet-5", modes: { fast: {} }, provider: { id: "anthropic", name: "Anthropic" } }
+    expect(exactRouteFastMode(ace, "standard", [ace, key, other])).toEqual({
       active: false,
+      offered: false,
+      note: "Not offered on this route. Available through Anthropic.",
     })
-    expect(exactRouteFastMode({ modes: { fast: { cost: { input: "10" } } } }, "standard")).toEqual({ active: false })
+    expect(routeModelBase("openai/gpt-5.6-sol")).toBe("gpt-5.6-sol")
+    expect(routeModelBase("gpt-5.6-sol")).toBe("gpt-5.6-sol")
   })
 })

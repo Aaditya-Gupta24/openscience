@@ -142,13 +142,14 @@ export function inferenceSourceLabel(source: InferenceSource | undefined, fallba
   return fallback
 }
 
+/** Token counts read the way the header pill reads them: `272K`, `1.05M`. */
 export function modelContext(limit: number): string {
   if (limit >= 1_000_000) {
     const value = limit / 1_000_000
     const rounded = Number(value.toFixed(2))
-    return `${rounded.toLocaleString()}m`
+    return `${rounded.toLocaleString()}M`
   }
-  if (limit >= 1_000) return `${Math.round(limit / 1_000).toLocaleString()}k`
+  if (limit >= 1_000) return `${Math.round(limit / 1_000).toLocaleString()}K`
   return limit.toLocaleString()
 }
 

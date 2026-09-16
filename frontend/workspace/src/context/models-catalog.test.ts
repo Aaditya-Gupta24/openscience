@@ -136,11 +136,11 @@ describe("frontier model canonicalization", () => {
   })
 
   test("model metadata stays factual and formats advertised windows calmly", () => {
-    expect(modelContext(1_050_000)).toBe("1.05m")
-    expect(modelContext(1_310_720)).toBe("1.31m")
-    expect(modelContext(400_000)).toBe("400k")
+    expect(modelContext(1_050_000)).toBe("1.05M")
+    expect(modelContext(1_310_720)).toBe("1.31M")
+    expect(modelContext(400_000)).toBe("400K")
     expect(modelSummary({ reasoning: true, context: 1_050_000, provider: "OpenAI" })).toBe(
-      "Reasoning · 1.05m context · OpenAI",
+      "Reasoning · 1.05M context · OpenAI",
     )
   })
 

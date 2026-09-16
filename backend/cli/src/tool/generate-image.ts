@@ -280,6 +280,66 @@ export function generatedImageAttachments(input: {
   ]
 }
 
+/**
+ * The framing every scientific diagram is rendered under. Adapted from
+ * K-Dense Inc.'s scientific-schematics skill (MIT), whose renders read as
+ * paper figures because the model is told the publication standards on every
+ * call rather than left to infer them from the description.
+ */
+export const SCHEMATIC_GUIDELINES = `Create a publication-quality scientific diagram with these requirements.
+
+VISUAL QUALITY:
+- Clean white background (no textures, gradients, shadows or 3D effects)
+- High contrast for readability and printing
+- Sharp, clear lines and text; flat shapes with consistent line weight
+- Adequate spacing between elements to prevent crowding
+
+TYPOGRAPHY:
+- One clear sans-serif font (Arial or Helvetica style) throughout
+- Every label large enough to read at the printed column width; consistent sizes
+- All text horizontal, spelled exactly as given, with no overlapping text
+- Sentence case; units in parentheses where applicable
+
+SCIENTIFIC STANDARDS:
+- Show exactly the components and connections described, with the labels given verbatim
+- Do not invent components, numbers, tables, citations or filler labels
+- Use standard scientific notation and symbols; scale bars, legends or axes only where the description asks
+
+ACCESSIBILITY:
+- Colorblind-safe palette (Okabe-Ito) with one accent colour for the emphasised element and grey for context
+- Redundant encoding (shape and colour, not colour alone); must still read in grayscale
+
+LAYOUT:
+- One reading direction as described (left-to-right or top-to-bottom), clear visual hierarchy
+- Balanced composition with purposeful whitespace; no decorative icons, illustrations or clutter
+- Arrows connect exactly the elements named, in the direction named, none duplicated
+
+DO NOT ADD FIGURE NUMBERS OR CAPTIONS:
+- No "Figure 1", "Fig. 1", title banner or caption text inside the image; the document adds those
+- The image contains only the diagram itself`
+
+/** The framing for a conceptual illustration or graphical abstract: a
+ * scientific illustration, not a diagram with boxes and arrows, and not
+ * marketing art. */
+export const ILLUSTRATION_GUIDELINES = `Create a scientific illustration for a research publication with these requirements.
+
+- Clean white or very light background, flat or lightly shaded rendering, no photographic clutter
+- Restrained palette (two or three colours plus greys), high contrast, works in grayscale
+- Compose for the stated aspect ratio with purposeful whitespace; leave room for a caption if asked
+- Any text spelled exactly as given; otherwise no text, labels, watermarks, logos or figure numbers
+- Depict only what the description states; do not imply data, results or mechanisms it does not mention`
+
+export const PURPOSES = ["schematic", "illustration", "edit"] as const
+export type Purpose = (typeof PURPOSES)[number]
+
+/** The prompt actually sent: the purpose's framing, then the request. An edit
+ * carries the request alone so the instruction stays about the change. */
+export function framedPrompt(prompt: string, purpose: Purpose | undefined) {
+  if (purpose === "schematic") return `${SCHEMATIC_GUIDELINES}\n\nDIAGRAM REQUEST:\n${prompt}`
+  if (purpose === "illustration") return `${ILLUSTRATION_GUIDELINES}\n\nREQUEST:\n${prompt}`
+  return prompt
+}
+
 function requestError(route: ImageRoute.Route, status: number, body: OpenRouterImage | undefined, raw: string) {
   const reported =
     typeof body?.error === "string"
@@ -308,6 +368,12 @@ export const GenerateImageTool = Tool.define("generate_image", {
     "Generate or edit an image with Nano Banana Pro (Gemini 3 Pro Image) through Ace or the user's own Gemini key, or with GPT Image 2 through the user's own OpenAI key. Saves the image directly in the connected workspace.",
   parameters: z.object({
     prompt: z.string().trim().min(1).max(20_000).describe("Detailed description or editing instruction"),
+    purpose: z
+      .enum(PURPOSES)
+      .optional()
+      .describe(
+        "schematic: a method, pipeline, architecture or pathway diagram (publication framing is prepended: white background, sans-serif labels, Okabe-Ito palette, one reading direction, no figure numbers). illustration: a conceptual figure or graphical abstract. edit: change an existing image (input_path) as instructed. Omit for anything else.",
+      ),
     output_path: z
       .string()
       .trim()
@@ -492,6 +558,10 @@ export const GenerateImageTool = Tool.define("generate_image", {
       return { response, raw, body: parsed }
     }
     const size = params.image_size ?? "1K"
+    // An edit of a supplied image keeps the instruction bare; a new schematic
+    // or illustration is framed by its purpose's publication standards.
+    const purpose = params.purpose ?? (input ? "edit" : undefined)
+    const prompt = framedPrompt(params.prompt, purpose)
     const direct = await (async () => {
       if (route.kind === "gemini")
         return request(`${route.base}/models/${route.model}:generateContent`, {
@@ -499,7 +569,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
             {
               role: "user",
               parts: [
-                { text: params.prompt },
+                { text: prompt },
                 ...sources.map((item) => ({ inlineData: { mimeType: item.mime, data: item.data } })),
               ],
             },
@@ -522,7 +592,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
         if (!sources.length)
           return request(`${route.base}/images/generations`, {
             model: route.model,
-            prompt: params.prompt,
+            prompt,
             n: 1,
             size: frame,
             quality,
@@ -531,7 +601,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
         // Edits and reference-guided generations take the images as files.
         const form = new FormData()
         form.set("model", route.model)
-        form.set("prompt", params.prompt)
+        form.set("prompt", prompt)
         form.set("n", "1")
         form.set("size", frame)
         form.set("quality", quality)
@@ -547,7 +617,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
       }
       return request(`${route.base}/images`, {
         model: route.model,
-        prompt: params.prompt,
+        prompt,
         n: 1,
         output_format: format,
         ...(params.aspect_ratio ? { aspect_ratio: params.aspect_ratio } : {}),
@@ -598,6 +668,7 @@ export const GenerateImageTool = Tool.define("generate_image", {
         size: image.bytes.byteLength,
         model: route.model,
         route: route.kind,
+        ...(purpose ? { purpose } : {}),
         attachment: attachments.length ? "inline" : "artifact_only",
         artifact: {
           kind: "image",

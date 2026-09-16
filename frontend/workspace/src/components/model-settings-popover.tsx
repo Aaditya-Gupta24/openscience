@@ -16,6 +16,7 @@ import {
   COMPOSER_MODEL_ROSTER,
   displayProviderForModel,
   groupModelRoutes,
+  inferenceSource,
   logicalModelKey,
   modelContext,
   modelDisplayName,
@@ -25,7 +26,8 @@ import {
 } from "@/context/model-catalog"
 import { DialogSettings } from "./dialog-settings"
 import { modelGroup, modelGroupLabel, modelGroupLabelRank } from "./model-groups"
-import { exactRouteFastMode } from "./model-fast"
+import { exactRouteFastMode, type FastMode } from "./model-fast"
+import { rateCaption, routeRates, tokenRate, type RouteRates } from "@/context/model-pricing"
 import { modelControl } from "./model-presentation"
 import { curateQuickModelRows, curateQuickModels } from "./model-quick"
 import "./model-settings-popover.css"
@@ -141,22 +143,26 @@ export const ModelOptionList: Component<ModelOptionListProps> = (props) => {
     select(value)
   }
 
+  // Compact lists sit on a six-track grid with two tracks per option: three
+  // to a row, and a short last row (5 → 3 + 2, 7 → 3 + 3 + 1) centres its
+  // options instead of leaving a dead cell. Four options make two rows of two.
+  const columns = () => (props.options.length === 4 ? 2 : Math.min(3, props.options.length))
+  const placement = (index: number) => {
+    const per = columns()
+    const span = 6 / per
+    const count = props.options.length
+    const rest = count % per
+    const lastRow = index >= count - rest
+    if (!rest || !lastRow || rest === per) return { "grid-column": `span ${span}` }
+    const offset = (6 - rest * span) / 2
+    return { "grid-column": `${offset + (index - (count - rest)) * span + 1} / span ${span}` }
+  }
+
   return (
     <div data-model-option-group={props.kind} data-model-options-compact={props.compact ? "" : undefined}>
-      <div
-        id={props.id}
-        role="radiogroup"
-        aria-label={props.title}
-        class="flex flex-col"
-        style={
-          props.compact
-            ? { "--model-option-columns": props.options.length === 4 ? 2 : Math.min(3, props.options.length) }
-            : undefined
-        }
-        onKeyDown={onKeyDown}
-      >
+      <div id={props.id} role="radiogroup" aria-label={props.title} class="flex flex-col" onKeyDown={onKeyDown}>
         <For each={props.options}>
-          {(option) => (
+          {(option, index) => (
             <button
               type="button"
               role="radio"
@@ -165,6 +171,7 @@ export const ModelOptionList: Component<ModelOptionListProps> = (props) => {
               aria-checked={selected() === option.id}
               tabindex={selected() === option.id ? 0 : -1}
               class={row}
+              style={props.compact ? placement(index()) : undefined}
               onClick={() => {
                 select(option.id)
                 props.onDone?.()
@@ -265,9 +272,10 @@ export const ModelPopoverSurface: Component<ModelPopoverSurfaceProps> = (props) 
 type ModelEffortPanelProps = {
   current: string
   options: Array<{ id: string; label: string }>
-  /** `rate` is the Fast price consequence, present once the route's pricing has loaded. */
-  fast?: { active: boolean; rate?: string }
+  fast?: FastMode
   context?: { current: string; options: Array<{ id: string; label: string }> }
+  /** What the route charges, present once its pricing is known. */
+  rates?: RouteRates
   onEffortSelect: (id: string) => void
   onTierSelect: (id: "standard" | "fast") => void
   onContextSelect?: (id: string) => void
@@ -326,15 +334,20 @@ export const ModelEffortPanel: Component<ModelEffortPanelProps> = (props) => (
     <Show when={props.fast}>
       {(fast) => (
         <section class="model-settings-option-section model-settings-speed-section" aria-label="Fast mode">
-          <div data-model-fast-toggle>
-            <Switch checked={fast().active} onChange={(checked) => props.onTierSelect(checked ? "fast" : "standard")}>
+          <div class="model-settings-heading">Speed</div>
+          <div data-model-fast-toggle data-disabled={fast().offered ? undefined : "true"}>
+            <Switch
+              checked={fast().active}
+              disabled={!fast().offered}
+              onChange={(checked) => props.onTierSelect(checked ? "fast" : "standard")}
+            >
               <span class="model-settings-fast-label">Fast mode</span>
             </Switch>
           </div>
-          <Show when={fast().rate}>
-            {(rate) => (
-              <p class="model-settings-fast-rate" data-model-fast-rate>
-                {rate()}
+          <Show when={fast().note}>
+            {(note) => (
+              <p class="model-settings-fast-note" data-model-fast-note>
+                {note()}
               </p>
             )}
           </Show>
@@ -356,6 +369,67 @@ export const ModelEffortPanel: Component<ModelEffortPanelProps> = (props) => (
           />
         </section>
       )}
+    </Show>
+    <Show when={props.rates}>
+      {(rates) => {
+        const cap = () => {
+          const value = Number(props.context?.current)
+          return Number.isFinite(value) && value > 0 ? value : undefined
+        }
+        const fastActive = () => !!props.fast?.active && !!rates().fast
+        // The tier row is the rate a request past the threshold pays; under a
+        // cap at or below the threshold it cannot apply, and reads muted.
+        const tierReachable = () => cap() === undefined || rates().tiers.some((tier) => cap()! > tier.threshold)
+        return (
+          <section class="model-settings-option-section model-settings-rates-section" aria-label="Rates">
+            <div class="model-settings-heading">
+              Rates <span class="model-settings-heading-unit">per 1M tokens</span>
+            </div>
+            <table class="model-settings-rates" data-model-rates>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <span class="sr-only">Tier</span>
+                  </th>
+                  <th scope="col">Input</th>
+                  <th scope="col">Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-active={fastActive() ? undefined : "true"}>
+                  <th scope="row">Standard</th>
+                  <td>{tokenRate.format(rates().standard.input)}</td>
+                  <td>{tokenRate.format(rates().standard.output)}</td>
+                </tr>
+                <Show when={rates().fast}>
+                  {(fast) => (
+                    <tr data-active={fastActive() ? "true" : undefined}>
+                      <th scope="row">Fast{rates().multiple ? ` · ${rates().multiple}×` : ""}</th>
+                      <td>{tokenRate.format(fast().input)}</td>
+                      <td>{tokenRate.format(fast().output)}</td>
+                    </tr>
+                  )}
+                </Show>
+                <For each={rates().tiers}>
+                  {(tier) => {
+                    const column = () => (fastActive() && tier.fast ? tier.fast : tier.standard)
+                    return (
+                      <tr data-muted={tierReachable() ? undefined : "true"}>
+                        <th scope="row">Over {modelContext(tier.threshold)} input</th>
+                        <td>{tokenRate.format(column().input)}</td>
+                        <td>{tokenRate.format(column().output)}</td>
+                      </tr>
+                    )
+                  }}
+                </For>
+              </tbody>
+            </table>
+            <p class="model-settings-fast-note" data-model-rates-note>
+              {rateCaption(rates(), cap(), modelContext)}
+            </p>
+          </section>
+        )
+      }}
     </Show>
   </div>
 )
@@ -430,6 +504,7 @@ export const ModelEffortPopover: Component<ModelEffortPopoverProps> = (props) =>
           options={props.options}
           fast={props.fast}
           context={props.context}
+          rates={props.rates}
           onEffortSelect={props.onEffortSelect}
           onTierSelect={props.onTierSelect}
           onContextSelect={props.onContextSelect}
@@ -637,7 +712,19 @@ export const ModelSettingsPopover: Component<{ trigger?: "label" | "icon" }> = (
     }),
   )
   const fast = createMemo(() => {
-    return exactRouteFastMode(current(), local.model.tier.current())
+    return exactRouteFastMode(current(), local.model.tier.current(), local.model.list())
+  })
+  // The rate table is the route's own price list; a subscription has none.
+  const rates = createMemo(() => {
+    const model = current()
+    if (!model) return
+    const access =
+      inferenceSource({
+        providerID: model.provider.id,
+        credential: model.provider.source,
+        billing: sync.data.config.billing?.llm,
+      }) ?? (model.provider.id.startsWith("synsci") ? "managed" : "byok")
+    return routeRates({ access, pricing: model.pricing, cost: model.cost, fast: model.modes?.fast?.cost })
   })
   const unavailable = createMemo(() => current()?.provider.source === "managed" && !current()?.pricing)
   const optionsKey = createMemo(() => `${sync.data.project ?? ""}/${current()?.provider.id}/${current()?.id}`)
@@ -1027,6 +1114,7 @@ export const ModelSettingsPopover: Component<{ trigger?: "label" | "icon" }> = (
           current={control().effort?.current.id ?? "standard"}
           options={control().effort?.options ?? []}
           fast={fast()}
+          rates={rates()}
           unavailable={
             unavailable()
               ? { loading: options.loading, error: options.error, refresh: () => void refreshOptions() }
