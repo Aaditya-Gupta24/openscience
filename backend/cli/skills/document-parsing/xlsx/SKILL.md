@@ -5,10 +5,15 @@ category: document-parsing
 allowed-tools: Read Write Edit Bash Grep Glob
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
-  upstream: K-Dense-AI/scientific-agent-skills
+  upstream: anthropics/skills
+  upstream-url: https://github.com/anthropics/skills
+  upstream-path: skills/xlsx
+  upstream-license: Anthropic terms (see LICENSE.txt)
+  upstream-relationship: vendored
+  upstream-via: K-Dense-AI/scientific-agent-skills
+  adapted-by: Synthetic Sciences
   version: "2.2"
   skill-author: Anthropic, PBC
-  adapted-by: K-Dense Inc.
   source: https://github.com/anthropics/skills/tree/main/skills/xlsx
 compatibility: Requires Python 3.8+, LibreOffice (soffice on PATH), and gcc only when Unix sockets are restricted
 ---

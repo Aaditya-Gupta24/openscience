@@ -6,6 +6,11 @@ license: BSD-3-Clause
 compatibility: Requires Python 3.10+ with scvelo, scanpy, and anndata. Verified against scvelo 0.3.4, whose dynamical model and pl.scatter need pandas<3 and whose stochastic estimator needs numpy<2; the deterministic estimator works on current releases.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/scvelo
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: Kuan-lin Huang
 ---

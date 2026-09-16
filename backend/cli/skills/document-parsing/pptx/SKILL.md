@@ -4,7 +4,13 @@ description: "Use this skill any time a .pptx or .potx file is involved in any w
 category: document-parsing
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
-  upstream: K-Dense-AI/scientific-agent-skills
+  upstream: anthropics/skills
+  upstream-url: https://github.com/anthropics/skills
+  upstream-path: skills/pptx
+  upstream-license: Anthropic terms (see LICENSE.txt)
+  upstream-relationship: vendored
+  upstream-via: K-Dense-AI/scientific-agent-skills
+  adapted-by: Synthetic Sciences
   version: "2.1"
   skill-author: Anthropic, PBC
   source: https://github.com/anthropics/skills/tree/main/skills/pptx

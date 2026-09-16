@@ -4,7 +4,13 @@ description: Meta-skill for publication-ready figures. Use when creating journal
 category: visualization
 license: MIT license
 metadata:
-    skill-author: Synthetic Sciences
+    upstream: K-Dense-AI/scientific-agent-skills
+    upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+    upstream-path: scientific-skills/scientific-visualization
+    upstream-license: MIT
+    upstream-relationship: derived
+    adapted-by: Synthetic Sciences
+    skill-author: K-Dense Inc.
 ---
 
 # Scientific Visualization

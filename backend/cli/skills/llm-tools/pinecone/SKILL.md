@@ -3,10 +3,18 @@ name: pinecone
 description: Managed vector database for production AI applications. Fully managed, auto-scaling, with hybrid search (dense + sparse), metadata filtering, and namespaces. Low latency (<100ms p95). Use for production RAG, recommendation systems, or semantic search at scale. Best for serverless, managed infrastructure.
 category: llm-tools
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [RAG, Pinecone, Vector Database, Managed Service, Serverless, Hybrid Search, Production, Auto-Scaling, Low Latency, Recommendations]
 dependencies: [pinecone-client]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 15-rag/pinecone
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # Pinecone - Managed Vector Database

@@ -7,6 +7,14 @@ author: Synthetic Sciences
 license: MIT
 tags: [Hugging Face, Cloud Compute, Training Jobs, GPU]
 dependencies: [huggingface-hub, datasets, vllm, torch]
+metadata:
+  upstream: huggingface/skills
+  upstream-url: https://github.com/huggingface/skills
+  upstream-path: skills/hugging-face-jobs
+  upstream-license: Apache-2.0
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Running Workloads on Hugging Face Jobs

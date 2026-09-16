@@ -4,7 +4,13 @@ description: Access and analyze comprehensive drug information from the DrugBank
 category: databases
 license: Unknown
 metadata:
-    skill-author: Synthetic Sciences
+    upstream: K-Dense-AI/scientific-agent-skills
+    upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+    upstream-path: scientific-skills/drugbank-database
+    upstream-license: MIT
+    upstream-relationship: derived
+    adapted-by: Synthetic Sciences
+    skill-author: K-Dense Inc.
 ---
 
 # DrugBank Database

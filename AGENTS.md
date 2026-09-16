@@ -91,6 +91,9 @@ Things that bite:
   it changes how something is used, the page in `frontend/docs`.
 - A new skill, connector, tool, or plugin → the guide in `docs/notes/adding-*.md`
   or `writing-a-plugin.md` says what else must change.
+- A skill or code taken from another project → its author and license stay
+  with it: `metadata.upstream*` in the skill's frontmatter,
+  `backend/cli/skills/ATTRIBUTION.md`, and `NOTICE` for a new source or license.
 - Never edit package versions in a PR; `publish.yml` bumps them.
 
 ## Releases

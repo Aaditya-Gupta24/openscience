@@ -6,6 +6,11 @@ license: MIT
 compatibility: Requires Python 3.10+ with `waypoint-bio` (pulls torch, transformers, datasets, peft, scikit-learn). Needs network access and a Hugging Face token with access granted to the gated outpost-bio repos. A GPU is strongly recommended for pretraining and benchmarking.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/waypoint-bio
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
   upstream-version: "waypoint-bio 1.0.2 (PyPI); GitHub main 1.0.4"

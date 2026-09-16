@@ -3,6 +3,14 @@ name: research-grants
 description: "Write competitive research proposals for NSF, NIH, DOE, and DARPA. Agency-specific formatting, review criteria, budget preparation, broader impacts, significance statements, innovation narratives, and compliance with submission requirements."
 category: research
 allowed-tools: [Read, Write, Edit, Bash]
+metadata:
+  upstream: K-Dense-AI/claude-scientific-writer
+  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream-path: skills/research-grants/references/core_components.md
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: K-Dense Inc.
+  adapted-by: Synthetic Sciences
 ---
 
 # Research Grant Writing

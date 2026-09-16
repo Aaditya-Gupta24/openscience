@@ -3,10 +3,18 @@ name: weights-and-biases
 description: Track ML experiments with automatic logging, visualize training in real-time, optimize hyperparameters with sweeps, and manage model registry with W&B - collaborative MLOps platform
 category: ml-training
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [MLOps, Weights And Biases, WandB, Experiment Tracking, Hyperparameter Tuning, Model Registry, Collaboration, Real-Time Visualization, PyTorch, TensorFlow, HuggingFace]
 dependencies: [wandb]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 13-mlops/weights-and-biases
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # Weights & Biases: ML Experiment Tracking & MLOps

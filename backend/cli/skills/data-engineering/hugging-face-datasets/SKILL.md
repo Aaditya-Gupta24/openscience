@@ -7,6 +7,14 @@ author: Synthetic Sciences
 license: MIT
 tags: [Hugging Face, Datasets, Data Loading, Data Processing]
 dependencies: [huggingface-hub, duckdb, datasets, pandas]
+metadata:
+  upstream: huggingface/skills
+  upstream-url: https://github.com/huggingface/skills
+  upstream-path: skills/huggingface-datasets
+  upstream-license: Apache-2.0
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Overview

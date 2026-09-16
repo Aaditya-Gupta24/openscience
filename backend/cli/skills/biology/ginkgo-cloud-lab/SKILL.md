@@ -6,6 +6,11 @@ license: MIT license
 allowed-tools: Read
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/ginkgo-cloud-lab
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "2.1"
   skill-author: K-Dense Inc.
 ---

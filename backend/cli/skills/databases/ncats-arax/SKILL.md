@@ -7,6 +7,11 @@ license: MIT
 compatibility: Requires Python 3.10+ and outbound HTTPS access to arax.transltr.io. The client uses only the Python standard library and needs no API key. Queries and caller metadata may be publicly visible; never submit sensitive or patient-specific content.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/ncats-arax
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.0"
   skill-author: neuroepithelial
 ---

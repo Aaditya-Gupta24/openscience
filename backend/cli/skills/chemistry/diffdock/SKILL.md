@@ -4,9 +4,15 @@ description: Diffusion-based molecular docking. Predict protein-ligand binding p
 category: chemistry
 license: MIT license
 metadata:
-    skill-author: Synthetic Sciences
+    upstream: K-Dense-AI/scientific-agent-skills
+    upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+    upstream-path: skills/diffdock
+    upstream-license: MIT
+    upstream-relationship: derived
+    adapted-by: Synthetic Sciences
+    skill-author: K-Dense Inc.
 version: 1.0.0
-author: Synthetic Sciences
+author: K-Dense Inc.
 tags: [Molecular Docking, Drug Discovery, Deep Learning, Protein-Ligand]
 dependencies: ["torch>=1.12.0", "fair-esm", "torch-geometric", "rdkit-pypi", "biopython"]
 ---

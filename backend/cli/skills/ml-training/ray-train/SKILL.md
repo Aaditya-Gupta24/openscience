@@ -3,10 +3,18 @@ name: ray-train
 description: Distributed training orchestration across clusters. Scales PyTorch/TensorFlow/HuggingFace from laptop to 1000s of nodes. Built-in hyperparameter tuning with Ray Tune, fault tolerance, elastic scaling. Use when training massive models across multiple machines or running distributed hyperparameter sweeps.
 category: ml-training
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [Ray Train, Distributed Training, Synthetic Sciencestion, Ray, Hyperparameter Tuning, Fault Tolerance, Elastic Scaling, Multi-Node, PyTorch, TensorFlow]
 dependencies: ["ray[train]", torch, transformers]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 08-distributed-training/ray-train
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # Ray Train - Distributed Training Synthetic Sciencestion

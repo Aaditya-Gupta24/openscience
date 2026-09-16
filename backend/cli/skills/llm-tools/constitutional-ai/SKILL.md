@@ -3,10 +3,18 @@ name: constitutional-ai
 description: Anthropic's method for training harmless AI through self-improvement. Two-phase approach - supervised learning with self-critique/revision, then RLAIF (RL from AI Feedback). Use for safety alignment, reducing harmful outputs without human labels. Powers Claude's safety system.
 category: llm-tools
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [Safety Alignment, Constitutional AI, RLAIF, Self-Critique, Harmlessness, Anthropic, AI Safety, RL From AI Feedback, Claude]
 dependencies: [transformers, torch, trl]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 07-safety-alignment/constitutional-ai
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # Constitutional AI - Harmlessness from AI Feedback

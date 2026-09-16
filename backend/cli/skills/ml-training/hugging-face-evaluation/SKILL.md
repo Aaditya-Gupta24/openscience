@@ -7,6 +7,14 @@ author: Synthetic Sciences
 license: MIT
 tags: [Hugging Face, Evaluation, Benchmarking, Metrics]
 dependencies: [huggingface-hub, markdown-it-py, pyyaml, requests, python-dotenv]
+metadata:
+  upstream: huggingface/skills
+  upstream-url: https://github.com/huggingface/skills
+  upstream-path: skills/huggingface-community-evals
+  upstream-license: Apache-2.0
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Overview

@@ -7,6 +7,11 @@ compatibility: Needs deepspotm 1.0.0 from PyPI (Python 3.10 to 3.13) plus PyTorc
 allowed-tools: Read Write Edit Bash
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/deepspot-m
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.0"
   skill-author: Ratschlab, ETH Zurich
 ---

@@ -5,6 +5,13 @@ category: data-engineering
 allowed-tools: [Read, Write, Edit, Bash]
 license: MIT
 source: https://github.com/microsoft/markitdown
+metadata:
+  upstream: microsoft/markitdown
+  upstream-url: https://github.com/microsoft/markitdown
+  upstream-license: MIT
+  upstream-relationship: vendored
+  skill-author: Microsoft Corporation
+  adapted-by: Synthetic Sciences
 ---
 
 # MarkItDown - File to Markdown Conversion

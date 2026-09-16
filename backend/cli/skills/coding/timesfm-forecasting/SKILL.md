@@ -6,6 +6,11 @@ allowed-tools: Read Write Edit Bash
 license: Apache-2.0 license
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/timesfm-forecasting
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: Clayton Young / Superior Byte Works, LLC (@borealBytes)
   skill-version: 1.0.0

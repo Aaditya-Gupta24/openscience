@@ -179,6 +179,21 @@ The desktop app updates itself. For the CLI, run `openscience upgrade`, or `npm 
 - Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 - Billing and account questions: use the account support channel rather than a public issue.
 
+## Acknowledgements
+
+OpenScience is inspired by [OpenCode](https://opencode.ai) by [Anomaly](https://github.com/anomalyco/opencode) and shares its commitment to excellent open-source agents. We want to bring strong, open-source scientific agents to everyone.
+
+Most of the bundled skills come from open collections written by other people:
+
+- [Scientific Agent Skills](https://github.com/K-Dense-AI/scientific-agent-skills) and [Claude Scientific Writer](https://github.com/K-Dense-AI/claude-scientific-writer) by **K-Dense Inc.** (MIT) — 180 of the biology, chemistry, database, research, writing and visualization skills. If they contribute to published work, cite Kassis, Agarwal, He, Patel and Brueckner, [_Scientific Agent Skills: A Library of Procedural Knowledge for Research Agents_](https://arxiv.org/abs/2609.00065) (2026).
+- [AI Research Skills](https://github.com/Orchestra-Research/AI-Research-SKILLs) by **Orchestra Research** (MIT) — 79 of the ML training, inference, LLM-tooling and cloud-compute skills.
+- [Hugging Face skills](https://github.com/huggingface/skills) by **Hugging Face** (Apache-2.0) — the `hugging-face-*` skills.
+- [Anthropic's document skills](https://github.com/anthropics/skills) (docx, pdf, pptx, xlsx), under Anthropic's terms.
+- [NVIDIA BioNeMo Agent Toolkit](https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit) (CC-BY-4.0 / Apache-2.0) — the protein binder design workflow.
+- [MarkItDown](https://github.com/microsoft/markitdown) by Microsoft (MIT), [Claude-Science-System-Prompts](https://github.com/Shoko-official/Claude-Science-System-Prompts) by Shoko-official (Apache-2.0), [pacsomatic](backend/cli/skills/biology/pacsomatic) by Beifang Niu (MIT), and [Iconoir](https://github.com/iconoir-icons/iconoir) icons (MIT).
+
+[`backend/cli/skills/ATTRIBUTION.md`](backend/cli/skills/ATTRIBUTION.md) lists every derived skill with its upstream path and license, and each skill's frontmatter names its original author. [NOTICE](NOTICE) carries the license texts.
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

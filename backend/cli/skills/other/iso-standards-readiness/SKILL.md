@@ -7,6 +7,11 @@ compatibility: Python 3.11+; bundled CLIs use only the standard library and boun
 allowed-tools: Read Write Bash Glob
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/iso-standards-readiness
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
   supersedes: iso-13485-certification

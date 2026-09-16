@@ -4,9 +4,15 @@ description: Interactive visualization library. Use when you need hover info, zo
 category: visualization
 license: MIT license
 metadata:
-    skill-author: Synthetic Sciences
+    upstream: K-Dense-AI/scientific-agent-skills
+    upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+    upstream-path: scientific-skills/plotly
+    upstream-license: MIT
+    upstream-relationship: derived
+    adapted-by: Synthetic Sciences
+    skill-author: K-Dense Inc.
 version: 1.0.0
-author: Synthetic Sciences
+author: K-Dense Inc.
 tags: [Visualization, Interactive, Dashboards, Charts]
 dependencies: ["plotly>=5.22.0"]
 ---

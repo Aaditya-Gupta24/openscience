@@ -7,6 +7,11 @@ license: MIT
 allowed-tools: Read Write Edit Bash
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/datalad
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.0"
   skill-author: Dylan Pulver
 ---

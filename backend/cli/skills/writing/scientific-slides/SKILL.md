@@ -3,6 +3,14 @@ name: scientific-slides
 description: "[EXPERIMENTAL] Build slide decks and presentations for research talks using Nano Banana Pro AI. Generates stunning PDF presentations with AI-generated slides. Use for conference presentations, seminar talks, thesis defense slides, or any scientific talk. Provides slide structure, design guidance, timing recommendations, and visual validation."
 category: writing
 allowed-tools: [Read, Write, Edit, Bash]
+metadata:
+  upstream: K-Dense-AI/claude-scientific-writer
+  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream-path: skills/scientific-slides
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: K-Dense Inc.
+  adapted-by: Synthetic Sciences
 ---
 
 # Scientific Slides

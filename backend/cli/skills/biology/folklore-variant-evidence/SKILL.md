@@ -6,6 +6,11 @@ license: MIT
 compatibility: Requires network access to api.helena.bio (stateless Streamable HTTP MCP, no credentials); works from any MCP-capable host or via JSON-RPC POST with curl.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/folklore-variant-evidence
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.0"
   skill-author: "Helena Bioinformatics"
   website: "https://folklore.helena.bio"

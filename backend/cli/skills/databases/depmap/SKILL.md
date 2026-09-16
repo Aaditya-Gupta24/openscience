@@ -5,6 +5,11 @@ category: databases
 license: CC-BY-4.0
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/depmap
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.0"
   skill-author: Kuan-lin Huang
 ---

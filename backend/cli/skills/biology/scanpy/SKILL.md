@@ -2,11 +2,17 @@
 name: scanpy
 description: Standard single-cell RNA-seq analysis pipeline. Use for QC, normalization, dimensionality reduction (PCA/UMAP/t-SNE), clustering, differential expression, and visualization. Best for exploratory scRNA-seq analysis with established workflows. For deep learning models use scvi-tools; for data format questions use anndata.
 category: biology
-license: SD-3-Clause license
+license: BSD-3-Clause license
 metadata:
-    skill-author: Synthetic Sciences
+    upstream: K-Dense-AI/scientific-agent-skills
+    upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+    upstream-path: skills/scanpy
+    upstream-license: MIT
+    upstream-relationship: derived
+    adapted-by: Synthetic Sciences
+    skill-author: K-Dense Inc.
 version: 1.0.0
-author: Synthetic Sciences
+author: K-Dense Inc.
 tags: [Single-Cell, RNA-seq, Clustering, UMAP, Bioinformatics]
 dependencies: ["scanpy>=1.10.0", "anndata>=0.10.0", "numpy>=1.25.0"]
 ---

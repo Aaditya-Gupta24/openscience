@@ -5,6 +5,11 @@ category: data-engineering
 license: MIT License
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/geomaster
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.3"
   skill-author: K-Dense Inc.
 ---

@@ -5,6 +5,11 @@ category: biology
 license: MIT
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/pacsomatic
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: Beifang Niu
   contributors: Haidong, Wenchao

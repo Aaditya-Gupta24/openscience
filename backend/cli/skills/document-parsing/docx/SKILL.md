@@ -4,7 +4,13 @@ description: "Use this skill whenever the user wants to create, read, edit, or m
 category: document-parsing
 license: Proprietary. LICENSE.txt has complete terms
 metadata:
-  upstream: K-Dense-AI/scientific-agent-skills
+  upstream: anthropics/skills
+  upstream-url: https://github.com/anthropics/skills
+  upstream-path: skills/docx
+  upstream-license: Anthropic terms (see LICENSE.txt)
+  upstream-relationship: vendored
+  upstream-via: K-Dense-AI/scientific-agent-skills
+  adapted-by: Synthetic Sciences
   version: "2.1"
   skill-author: Anthropic, PBC
   source: https://github.com/anthropics/skills/tree/main/skills/docx

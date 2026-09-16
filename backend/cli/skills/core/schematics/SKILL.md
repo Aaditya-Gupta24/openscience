@@ -9,6 +9,11 @@ license: MIT
 version: 1.0.0
 author: Synthetic Sciences
 metadata:
+  upstream: K-Dense-AI/claude-scientific-writer
+  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream-license: MIT
+  upstream-relationship: references and scripts derived
+  adapted-by: Synthetic Sciences
   skill-author: Synthetic Sciences
   method: PaperBanana (Zhu et al., 2026), retriever / planner / stylist / visualizer / critic
 ---

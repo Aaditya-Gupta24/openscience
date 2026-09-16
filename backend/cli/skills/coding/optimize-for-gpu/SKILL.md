@@ -6,6 +6,11 @@ license: MIT
 compatibility: Requires an NVIDIA CUDA-capable GPU for GPU execution. RAPIDS 26.06 requires Python 3.11+ on Linux or WSL2 and matching CUDA 12 or 13 wheels. Package installation needs network access.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/optimize-for-gpu
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.4"
   skill-author: K-Dense, Inc.
 ---

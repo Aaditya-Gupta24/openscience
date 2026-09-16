@@ -9,6 +9,11 @@ license: MIT
 version: 1.0.0
 author: Synthetic Sciences
 metadata:
+  upstream: K-Dense-AI/claude-scientific-writer
+  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream-license: MIT
+  upstream-relationship: references and scripts derived
+  adapted-by: Synthetic Sciences
   skill-author: Synthetic Sciences
   adapted-from: K-Dense peer-review and scientific-critical-thinking (MIT)
 ---

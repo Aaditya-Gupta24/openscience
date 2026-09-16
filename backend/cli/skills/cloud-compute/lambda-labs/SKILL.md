@@ -7,6 +7,14 @@ author: Synthetic Sciences
 license: MIT
 tags: [Infrastructure, GPU Cloud, Lambda, Cloud API, SSH]
 dependencies: [curl, ssh]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: lambda-labs
+  upstream-license: MIT
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Lambda Cloud

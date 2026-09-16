@@ -10,6 +10,11 @@ category: biology
 license: https://creativecommons.org/licenses/by/4.0/
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/bids
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: Yaroslav Halchenko
 ---

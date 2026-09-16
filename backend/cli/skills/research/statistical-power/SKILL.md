@@ -7,6 +7,11 @@ compatibility: Requires Python >=3.10. Examples target statsmodels >=0.14.6, sci
 license: MIT license
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/statistical-power
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
 ---

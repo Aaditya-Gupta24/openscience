@@ -13,10 +13,10 @@ registry), so update them in the final work package.
 
 ## 1. Intent
 
-OpenScience is a fork of OpenCode. The goal of this refinement is to make the
-harness as small and functional as OpenCode's `build` agent path while being a
-research harness: science lives in skills, agents, headers and a handful of
-switchable units, not in the loop. Concretely:
+OpenScience is inspired by OpenCode. The goal of this refinement is to make the
+harness small and functional while being a research harness: science lives in
+skills, agents, headers and a handful of switchable units, not in the loop.
+Concretely:
 
 - Tool visibility derives from permissions, as in OpenCode. No keyword
   heuristics.

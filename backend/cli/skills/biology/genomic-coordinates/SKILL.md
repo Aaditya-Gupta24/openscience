@@ -7,6 +7,11 @@ compatibility: Requires Python 3.11+. Scripts use only the standard library - no
 allowed-tools: Read Write Edit Bash
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/genomic-coordinates
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
 ---

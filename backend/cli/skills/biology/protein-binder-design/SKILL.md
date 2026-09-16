@@ -8,6 +8,14 @@ tags:
   - modal
 role: workflow
 capability: protein-binder-design
+metadata:
+  upstream: NVIDIA-BioNeMo/bionemo-agent-toolkit
+  upstream-url: https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit
+  upstream-path: workflows/generative-protein-binder-design/protein-binder-design
+  upstream-license: CC-BY-4.0 (skills) / Apache-2.0 (code)
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Protein binder design

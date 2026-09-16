@@ -9,6 +9,12 @@ license: MIT
 version: 1.0.0
 author: Synthetic Sciences
 metadata:
+  upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: scientific-skills/research-lookup
+  upstream-license: MIT
+  upstream-relationship: adapted and rewritten
+  adapted-by: Synthetic Sciences
   skill-author: Synthetic Sciences
 ---
 

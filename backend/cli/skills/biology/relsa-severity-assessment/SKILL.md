@@ -7,6 +7,11 @@ allowed-tools: Read Write Edit Bash
 compatibility: Requires Python >=3.10 with numpy, pandas, and scipy; statsmodels >=0.14 for forecasting and matplotlib for figures. Tested with numpy 2.5, pandas 3.0, scipy 1.18, statsmodels 0.14.6. No network access needed.
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/relsa-severity-assessment
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
 ---

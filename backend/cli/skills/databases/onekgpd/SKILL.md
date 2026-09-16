@@ -16,6 +16,11 @@ compatibility: Requires Python >=3.11. Variant and sample queries require outbou
 allowed-tools: Write Bash
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/onekgpd
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: Dnaerys
 ---

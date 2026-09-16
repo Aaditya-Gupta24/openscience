@@ -3,10 +3,18 @@ name: llamaguard
 description: Meta's 7-8B specialized moderation model for LLM input/output filtering. 6 safety categories - violence/hate, sexual content, weapons, substances, self-harm, criminal planning. 94-95% accuracy. Deploy with vLLM, HuggingFace, Sagemaker. Integrates with NeMo Guardrails.
 category: llm-tools
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [Safety Alignment, LlamaGuard, Content Moderation, Meta, Guardrails, Safety Classification, Input Filtering, Output Filtering, AI Safety]
 dependencies: [transformers, torch, vllm]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 07-safety-alignment/llamaguard
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # LlamaGuard - AI Content Moderation

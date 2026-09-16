@@ -46,9 +46,15 @@ category: biology
 tags: [Single-Cell, Data Format, h5ad, Bioinformatics]
 license: BSD-3-Clause license
 version: 1.0.0
-author: Synthetic Sciences
+author: K-Dense Inc.
 metadata:
-  skill-author: Synthetic Sciences
+  upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/anndata
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
+  skill-author: K-Dense Inc.
 dependencies: ["anndata>=0.10.0", "numpy>=1.25.0"]
 ---
 ```
@@ -72,6 +78,18 @@ The body is plain Markdown: an overview, when to use it, the workflow, and the
 pitfalls. Reference helper scripts by path relative to the skill directory.
 `backend/cli/skills/` is excluded from Prettier, so format the file by hand and
 keep lines readable.
+
+### Attribution
+
+A skill taken or adapted from another collection keeps its author. Set `author`
+and `metadata.skill-author` to the upstream author, record the source under
+`metadata.upstream`, `upstream-url`, `upstream-path`, `upstream-license` and
+`upstream-relationship` (`derived`, `adapted and rewritten`, `references and
+scripts derived`, or `vendored`), and add `adapted-by: Synthetic Sciences`. Add
+the skill to `backend/cli/skills/ATTRIBUTION.md`, and to `NOTICE` when it is
+the first skill from a new source or arrives under a new license. Keep any
+`LICENSE` file that came with it. A skill written here from scratch needs none
+of this; `author: Synthetic Sciences` is the default.
 
 ## Validate and test
 

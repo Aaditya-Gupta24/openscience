@@ -3,6 +3,14 @@ name: latex-posters
 description: "Create professional research posters in LaTeX using beamerposter, tikzposter, or baposter. Support for conference presentations, academic posters, and scientific communication. Includes layout design, color schemes, multi-column formats, figure integration, and poster-specific best practices for visual communication."
 category: writing
 allowed-tools: [Read, Write, Edit, Bash]
+metadata:
+  upstream: K-Dense-AI/claude-scientific-writer
+  upstream-url: https://github.com/K-Dense-AI/claude-scientific-writer
+  upstream-path: skills/latex-posters/references/ai_graphics_for_posters.md
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: K-Dense Inc.
+  adapted-by: Synthetic Sciences
 ---
 
 # LaTeX Research Posters

@@ -7,6 +7,11 @@ compatibility: Requires Python 3.12+. The numeric CLIs need pint, uncertainties,
 allowed-tools: Read Write Edit Bash
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/uncertainty-and-units
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.1"
   skill-author: K-Dense Inc.
 ---

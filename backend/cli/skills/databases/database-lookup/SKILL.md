@@ -6,6 +6,11 @@ allowed-tools: Read Bash
 license: MIT
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/database-lookup
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.6"
   skill-author: "K-Dense Inc."
 ---

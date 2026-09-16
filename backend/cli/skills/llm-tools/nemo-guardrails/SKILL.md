@@ -3,10 +3,18 @@ name: nemo-guardrails
 description: NVIDIA's runtime safety framework for LLM applications. Features jailbreak detection, input/output validation, fact-checking, hallucination detection, PII filtering, toxicity detection. Uses Colang 2.0 DSL for programmable rails. Production-ready, runs on T4 GPU.
 category: llm-tools
 version: 1.0.0
-author: Synthetic Sciences
+author: Orchestra Research
 license: MIT
 tags: [Safety Alignment, NeMo Guardrails, NVIDIA, Jailbreak Detection, Guardrails, Colang, Runtime Safety, Hallucination Detection, PII Filtering, Production]
 dependencies: [nemoguardrails]
+metadata:
+  upstream: Orchestra-Research/AI-Research-SKILLs
+  upstream-url: https://github.com/Orchestra-Research/AI-Research-SKILLs
+  upstream-path: 07-safety-alignment/nemo-guardrails
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: Orchestra Research
+  adapted-by: Synthetic Sciences
 ---
 
 # NeMo Guardrails - Programmable Safety for LLMs

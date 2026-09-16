@@ -7,6 +7,11 @@ compatibility: Python 3.10-3.14 with build123d 0.11.1 and matplotlib for snapsho
 allowed-tools: Read Write Edit Bash Glob Grep
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/lab-hardware-cad
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.3"
   skill-author: K-Dense Inc.
   last-reviewed: "2026-08-15"

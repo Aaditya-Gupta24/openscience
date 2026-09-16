@@ -7,6 +7,14 @@ author: Synthetic Sciences
 license: MIT
 tags: [Hugging Face, CLI, Model Download, Hub]
 dependencies: [huggingface-hub, transformers]
+metadata:
+  upstream: huggingface/skills
+  upstream-url: https://github.com/huggingface/skills
+  upstream-path: skills/hf-cli
+  upstream-license: Apache-2.0
+  upstream-relationship: adapted and rewritten
+  skill-author: Synthetic Sciences
+  adapted-by: Synthetic Sciences
 ---
 
 # Hugging Face CLI

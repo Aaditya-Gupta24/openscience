@@ -3,6 +3,14 @@ name: market-research-reports
 description: "Generate comprehensive market research reports (50+ pages) in the style of top consulting firms (McKinsey, BCG, Gartner). Features professional LaTeX formatting, extensive visual generation with scientific-schematics and generate-image, deep integration with research-lookup for data gathering, and multi-framework strategic analysis including Porter's Five Forces, PESTLE, SWOT, TAM/SAM/SOM, and BCG Matrix."
 category: research
 allowed-tools: [Read, Write, Edit, Bash]
+metadata:
+  upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/market-research-reports
+  upstream-license: MIT
+  upstream-relationship: derived
+  skill-author: K-Dense Inc.
+  adapted-by: Synthetic Sciences
 ---
 
 # Market Research Reports

@@ -7,6 +7,11 @@ compatibility: Requires Python >=3.10. Scripts use numpy, pandas, and pyDOE3 (DO
 license: MIT license
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/experimental-design
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: K-Dense Inc.
 ---

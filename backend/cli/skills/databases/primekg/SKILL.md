@@ -5,6 +5,11 @@ category: databases
 license: Unknown
 metadata:
   upstream: K-Dense-AI/scientific-agent-skills
+  upstream-url: https://github.com/K-Dense-AI/scientific-agent-skills
+  upstream-path: skills/primekg
+  upstream-license: MIT
+  upstream-relationship: derived
+  adapted-by: Synthetic Sciences
   version: "1.2"
   skill-author: K-Dense Inc. (PrimeKG original from Harvard MIMS)
 ---
