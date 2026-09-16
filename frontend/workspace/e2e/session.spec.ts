@@ -92,7 +92,11 @@ test("session lifecycle works through the sidebar UI", async ({ page, slug, sdk,
     await expect(page).toHaveURL(new RegExp(`/${slug}/session/new(?:\\?|#|$)`))
     await expect(rows).toHaveCount(baselineCount)
 
-    const created = await sdk.session.create().then((response) => response.data)
+    // A unique seed title: earlier specs leave "New session" rows behind, and
+    // a text filter on the default title would match those too.
+    const created = await sdk.session
+      .create({ title: `e2e ui lifecycle seed ${Date.now()}` })
+      .then((response) => response.data)
     if (!created?.id || !created.title) throw new Error("Session create returned no id or title")
     sessionID = created.id
     await gotoSession(sessionID)
