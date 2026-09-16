@@ -3,7 +3,6 @@ import { Button } from "@synsci/ui/button"
 import { Icon } from "@synsci/ui/icon"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { showToast } from "@synsci/ui/toast"
-import { confirmDialog } from "@/atlas/dialogs"
 import { UpdateRefused } from "@/utils/update-error"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
@@ -65,6 +64,9 @@ export const StartupUpdateCheck: Component = () => {
       // the server pauses them with a named reason and continues them after
       // the restart. Offer that instead of a toast that leads nowhere.
       if (restarting && error instanceof UpdateRefused && error.pausable) {
+        // Loaded here: the dialog helper pulls in client-only components,
+        // and this module's pure helpers are imported in server-side tests.
+        const { confirmDialog } = await import("@/atlas/dialogs")
         const ok = await confirmDialog(dialog, {
           title: "Pause running work and restart?",
           message: (
