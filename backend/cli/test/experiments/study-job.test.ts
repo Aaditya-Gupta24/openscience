@@ -80,7 +80,12 @@ describe("a study run through a real local compute job", () => {
             },
             options,
           )
-          await Experiments.bindJob(run.id, job.id)
+          // The run row exists before dispatch, which can wait on an approval
+          // card; the clock the kill rules read starts when the job is bound.
+          await Bun.sleep(30)
+          const bound = await Experiments.bindJob(run.id, job.id)
+          expect(bound?.startedAt).toBeGreaterThan(run.startedAt!)
+          expect((await Experiments.getIdea(idea!.id))?.startedAt).toBe(bound!.startedAt)
           StudyDriver.configure({
             idle: () => true,
             prompt: async () => undefined,

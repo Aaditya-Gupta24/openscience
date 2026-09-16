@@ -597,11 +597,17 @@ export namespace Experiments {
     return { accepted: valid.length, run: updated }
   }
 
-  /** A run learns its compute job once dispatch succeeds. */
+  /** A run learns its compute job once dispatch succeeds. Its clock starts
+   * here too: the run row is written before dispatch, and dispatch can wait
+   * on the person's approval card for as long as it takes; a kill rule that
+   * counted that wait killed the first run of a study seconds after its job
+   * started. The idea's start moves with it, so both read the same clock. */
   export async function bindJob(runID: string, jobID: string, input?: { projectID?: string }) {
     const project = projectID(input)
     const database = await db(project)
-    database.query(`UPDATE run SET job_id = ? WHERE id = ?`).run(jobID, runID)
+    const now = Date.now()
+    database.query(`UPDATE run SET job_id = ?, started_at = ? WHERE id = ?`).run(jobID, now, runID)
+    database.query(`UPDATE idea SET started_at = ? WHERE run_id = ?`).run(now, runID)
     const updated = await getRun(runID, { projectID: project })
     if (updated) await publish(Event.RunUpdated, { run: updated })
     return updated

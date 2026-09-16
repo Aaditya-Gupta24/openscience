@@ -79,6 +79,12 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   primary action, _Approve this study_, grants the study's pattern for the
   session so every run inside the budget proceeds; _Only this request_ remains
   available.
+- **A run's kill clock starts when its job starts.** A study run's record is
+  written before dispatch, and dispatch waits on the approval card for as long
+  as the person takes; the kill rule then measured from the record's creation
+  and killed the first run of a study ("time budget reached (12 minutes)") six
+  seconds after its Modal sandbox was requested. The clock now starts when the
+  compute job is bound to the run.
 - **A study's hour budget counts compute time.** `maxHours` and the
   `elapsed_hours` the `study` tool reports now run from the first run's start,
   not from the study's creation; the minutes spent writing the harness and
