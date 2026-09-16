@@ -346,7 +346,7 @@ upstream), **vendored** (unchanged apart from paths).
 | `document-parsing/xlsx` | `skills/xlsx` | vendored |
 
 
-## NVIDIA BioNeMo Agent Toolkit — 1 skill
+## NVIDIA BioNeMo Agent Toolkit — 2 skills
 
 - Repository: https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit
 - Copyright: NVIDIA Corporation
@@ -358,6 +358,7 @@ upstream), **vendored** (unchanged apart from paths).
 | Skill | Upstream path | Relationship |
 | --- | --- | --- |
 | `biology/protein-binder-design` | `workflows/generative-protein-binder-design/protein-binder-design` | adapted and rewritten |
+| `biology/bionemo-nims` | the toolkit's NIM usage guidance | written for the hosted adapters; model names and terms from NVIDIA |
 
 
 ## Microsoft MarkItDown — 1 skill

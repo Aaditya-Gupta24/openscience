@@ -40,6 +40,14 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+- **The BioNeMo NIM adapters were unreachable from a session.** The
+  `scientific_capability` tool, the one gateway to the ten hosted NVIDIA
+  BioNeMo NIMs, had been dropped from the tool registry in the harness-core
+  rewrite and never re-offered, so every "predict this with Boltz-2" ended in a
+  guess about Modal secrets. It is registered again, offered to the biology and
+  chemistry specialists and unlocked by the new `bionemo-nims` skill, which
+  documents the hosted route (list, describe, plan, start, wait, artifacts; one
+  approval per request) and, without a key, says exactly where to connect one.
 - **Image generation retries a gateway hiccup.** A 502/503/504 from the image
   service (a Cloudflare page from the upstream proxy while it restarted) failed
   the figure and echoed the HTML into the transcript; the tool now retries once

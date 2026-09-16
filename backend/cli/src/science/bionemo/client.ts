@@ -744,7 +744,10 @@ export namespace BioNemoHosted {
     const { selected, bodyText, preview, legacyApprovalSha256 } = built
     const fields = await resolveCredentialFields("nvidia")
     const secret = fields?.api_key?.trim()
-    if (!secret) throw new Error(`NVIDIA NIM credential is not configured for ${id}`)
+    if (!secret)
+      throw new Error(
+        `No NVIDIA API key is connected, so the hosted ${id} NIM cannot be called. Add one under Customize → Connectors → NVIDIA API (an nvapi-… key from build.nvidia.com); requests are billed to that NVIDIA account.`,
+      )
     let dispatch = await BioNemoHostedDispatch.begin({ preview, sessionID, legacyApprovalSha256 })
     if (dispatch.existing?.status === "retryable") {
       const retryNotBefore = dispatch.existing.retry_not_before

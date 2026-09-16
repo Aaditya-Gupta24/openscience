@@ -281,7 +281,7 @@ export namespace Agent {
         description: "Biology specialist for bioinformatics, biological databases, and evidence-backed data analysis.",
         color: "#10b981",
         skills: ["biology", "databases"],
-        tools: [...BIOLOGY_TOOL_IDS, "science_list_dbs", "science_search", "science_fetch"],
+        tools: [...BIOLOGY_TOOL_IDS, "science_list_dbs", "science_search", "science_fetch", "scientific_capability"],
       }),
       physics: specialist({
         name: "physics",
@@ -300,7 +300,7 @@ export namespace Agent {
           "Chemistry specialist for cheminformatics, molecular modeling, property prediction, and chemical databases.",
         color: "#f59e0b",
         skills: ["chemistry", "databases"],
-        tools: ["science_list_dbs", "science_search", "science_fetch"],
+        tools: ["science_list_dbs", "science_search", "science_fetch", "scientific_capability"],
       }),
       data: specialist({
         name: "data",

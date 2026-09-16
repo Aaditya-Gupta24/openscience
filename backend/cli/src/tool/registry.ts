@@ -41,6 +41,7 @@ import { State } from "@/project/state"
 import { ProjectTrust } from "@/project/trust"
 import { AuthoritySignal } from "@/project/authority-signal"
 import { GenerateImageTool } from "./generate-image"
+import { ScientificCapabilityTool } from "./scientific-capability"
 import { ProviderComputeTool } from "./provider-compute"
 import { Identifier } from "../id/id"
 import { RecallTool } from "./recall"
@@ -210,6 +211,10 @@ export namespace ToolRegistry {
       RTool,
       GenerateImageTool,
       ArtifactTool,
+      // The hosted scientific capabilities (the BioNeMo NIM adapters): offered
+      // to the biology and chemistry specialists and to any agent once a
+      // skill that names it is loaded.
+      ScientificCapabilityTool,
       ComputeJobTool,
       ProviderComputeTool,
       ExperimentsTool,

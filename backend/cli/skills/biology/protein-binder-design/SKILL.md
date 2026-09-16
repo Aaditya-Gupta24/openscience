@@ -26,6 +26,8 @@ The reviewed upstream source is NVIDIA BioNeMo Agent Toolkit commit `0e67a612e40
 
 This adapted skill is self-contained; it has no local helper files or references to inspect. Resolve upstream details through the pinned public repository only when the active route needs them.
 
+For a single hosted prediction (Boltz-2, OpenFold, DiffDock, ProteinMPNN, RFdiffusion) with the user's own NVIDIA API key, load `bionemo-nims` instead: it goes through the `scientific_capability` tool and needs no Modal target. This skill is the self-hosted campaign route.
+
 ## Start with capabilities
 
 1. Call `compute_job` with `action: "targets"` once. Respect the returned Modal network and credential capabilities.
