@@ -55,15 +55,10 @@ import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { responseText } from "./session-turn-response"
 import { isContinuationCarrier } from "./session-turn-carrier"
 import { headerProgress, progressStatus } from "./session-turn-progress"
-import {
-  collapsibleTracePart,
-  elapsedLabel,
-  settledCollapsible,
-  visibleResearchTrace,
-  type ResearchTraceEntry,
-} from "./research-trace"
+import { elapsedLabel, visibleResearchTrace, type ResearchTraceEntry } from "./research-trace"
 import {
   buildTraceRows,
+  collapsedTraceRows,
   editedChanges,
   editedLabel,
   exploredLabel,
@@ -292,23 +287,17 @@ function AssistantTrace(props: {
       }),
     )
   })
-  // Collapsed, the turn shows what the reader asked for: the answer, plus
-  // anything that still needs them (a failure, a pending request). Once the
-  // turn has ended in an answer, a failure it recovered from along the way
-  // needs nobody, so only saved Results and open requests stay; the whole
-  // story is one click away. Expanded, the whole trace appears as rows,
-  // chronological, with narration in place.
+  // Expanded, the whole trace appears as rows, chronological, with narration
+  // in place; collapsed, collapsedTraceRows keeps what the reader needs.
   const rows = createMemo(() => {
     const all = buildTraceRows(entries())
     if (props.expanded) return all
-    return all.filter((row) => {
-      if (row.kind === "text") return !row.narration
-      if (row.kind === "note") return !props.settled
-      if (row.kind === "tool" || row.kind === "agent") {
-        if (props.settled) return !settledCollapsible(row.entry.part, props.pendingRequestCallID, pendingChildRequest)
-        return !collapsibleTracePart(row.entry.part, props.pendingRequestCallID, pendingChildRequest)
-      }
-      return false
+    return collapsedTraceRows(all, {
+      working: props.working,
+      settled: !!props.settled,
+      final: props.messages.at(-1)?.id,
+      pendingRequestCallID: props.pendingRequestCallID,
+      pendingChildRequest,
     })
   })
   // A burst keeps the key of its first call, so a call that joins it later

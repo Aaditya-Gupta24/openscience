@@ -1,7 +1,7 @@
 ---
 name: schematics
-description: Creates or refines publication-quality technical diagrams with Nano Banana Pro through the native generate_image tool, method and architecture overviews, pipelines, experimental workflows, biological pathways and conceptual schematics, planned from the source text, styled from reference figures, rendered at print resolution and checked against the source before it ships. Use for any figure whose content is structure rather than data. Not for plots of measured numbers (use figures) and not for illustrations or artwork (use generate-image).
-summary: "Method and pipeline diagrams with Nano Banana Pro: plan, style, render, check."
+description: Creates or refines publication-quality technical diagrams with the native generate_image tool (Nano Banana Pro through Ace or a Gemini key, GPT Image 2 through an OpenAI key), method and architecture overviews, pipelines, experimental workflows, biological pathways and conceptual schematics, planned from the source text, styled from reference figures, rendered at print resolution and checked against the source before it ships. Use for any figure whose content is structure rather than data. Not for plots of measured numbers (use figures) and not for illustrations or artwork (use generate-image). Never hand-drawn as TikZ or SVG.
+summary: "Method and pipeline diagrams rendered with generate_image: plan, style, render, check. Never TikZ."
 category: core
 role: workflow
 allowed-tools: [Read, Write, Edit, generate_image]
@@ -29,20 +29,26 @@ render, then check the image against the source and regenerate once if it fails.
 
 ## The medium
 
-- `generate_image` renders with Nano Banana Pro on the user's connected Gemini or OpenRouter
-  account. Use `image_size: "2K"` for anything that will be printed and `"1K"` while
-  iterating; pass up to 14 `reference_paths` for style and component fidelity; set
+- `generate_image` is the medium for every schematic. It renders with Nano Banana Pro
+  (Gemini 3 Pro Image) through Ace or the user's own Gemini key, or with GPT Image 2
+  through the user's own OpenAI key; the environment line names the route in use. Use
+  `image_size: "2K"` for anything that will be printed and `"1K"` while iterating; set
   `aspect_ratio` from the page slot (16:9 or 21:9 for a full-width overview, 4:3 or 1:1 for
-  a column). Output is raster: convert downstream if the venue demands PDF, and check it at
-  printed size.
-- Prefer an editable vector drawing (TikZ scaffold in the figures skill's
-  `assets/tikz-preamble.tex`, or the user's drawing tool) when exact labels, matrices,
-  timelines or many small text elements matter, or when the figure will be edited by hand
-  later. An image model cannot guarantee character-exact text in twenty labels.
+  a column); pass `reference_paths` for style and component fidelity (up to 14 on a Gemini
+  or OpenAI key; Ace takes one image per request, so pass the single most relevant
+  reference or the draft being edited). Output is raster at print resolution: `\includegraphics`
+  takes the PNG directly, and the check is done at printed size.
+- Do not hand-draw a schematic as TikZ, SVG, Graphviz, Mermaid or matplotlib shapes, and do
+  not offer that as a fallback. Language models draw these badly (overlapping labels,
+  arrows through boxes, uneven spacing) and the result reads as an unfinished figure. A
+  diagram with many exact labels is handled by giving the image model the exact labels and
+  checking them, one edit round at a time, not by switching medium.
 - Plots of numbers are never image-generated. PaperBanana measured it: prettier, and wrong
   (hallucinated values, repeated elements). Load the figures skill for data.
-- If `generate_image` reports no connected route, say so once and fall back to a vector
-  drawing when the request authorizes making the figure. Do not ask the user to paste a
+- If the environment says image generation is unavailable, stop before drawing: tell the
+  user once that schematics need Ace, or a Gemini or OpenAI key connected in Customize →
+  Models, leave a `\fbox{}` placeholder with the planned caption in the manuscript if one is
+  being written, and continue with the rest of the request. Do not ask the user to paste a
   key into chat.
 
 ## Workflow
@@ -107,8 +113,9 @@ Then read the produced PNG with the read tool and check it against the plan:
 If it fails, write a delta prompt naming the specific defects ("the arrow from Encoder to
 Decoder is reversed; remove the third block labelled 'Model'") and pass the failed image as
 `input_path` for an edit, or regenerate from the plan with the defects listed as
-constraints. One round. If the second render still fails on connectivity, switch to the
-vector scaffold rather than iterating: connectivity errors are the model's blind spot.
+constraints. Two rounds at most. If connectivity still fails, simplify the plan (fewer
+components, one panel, a stated reading order) and render that: a correct simple diagram
+beats a wrong detailed one, and a hand-drawn vector is not an option.
 
 **Step 5. Finalize.** Render the accepted plan at `image_size: "2K"` into the working folder
 (`figs/<name>.png` beside a paper), write the caption from the claim (bold phrase, then

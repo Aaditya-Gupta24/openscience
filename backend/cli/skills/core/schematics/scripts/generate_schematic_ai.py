@@ -171,8 +171,8 @@ LAYOUT:
         if not self.api_key:
             raise ValueError(
                 "OpenRouter BYOK is not connected. Add an OpenRouter key in OpenScience Settings → "
-                "Models, or set OPENROUTER_API_KEY for this run. Inside OpenScience, connect Gemini or "
-                "OpenRouter and call the native generate_image tool. Get an OpenRouter key from "
+                "Models, or set OPENROUTER_API_KEY for this run. Inside OpenScience, turn on Ace or connect "
+                "Gemini or OpenAI and call the native generate_image tool. Get an OpenRouter key from "
                 "https://openrouter.ai/keys"
             )
 

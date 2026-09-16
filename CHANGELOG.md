@@ -8,6 +8,60 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Added
+
+- **Image generation is a core capability with three routes.** `generate_image`
+  renders Nano Banana Pro through Ace (the managed gateway's funded image
+  endpoint, which the client had refused to use behind a stale "not proxied"
+  comment) or the user's own Gemini key, and GPT Image 2 through the user's own
+  OpenAI key (generations as JSON, edits and references as multipart). A
+  personal OpenRouter key is no longer an image route. The billing mode picks
+  the route as it does for chat, the environment line names the model and
+  route in use, and the tool's receipts and errors name them too. The
+  `schematics`, `figures`, `paper-writing` and `ml-paper-writing` skills now
+  render every diagram, schematic and illustration with the tool and never fall
+  back to hand-drawn TikZ, SVG or Graphviz; `generate-image` and
+  `scientific-visualization` join the core skill index; the TikZ scaffold is
+  gone.
+- **An explicit `/skill` is loaded by the loop, not requested of the model.**
+  Typing `/scientific-visualization` had produced a system instruction to load
+  the skill "before substantive work", which a model could and did skip in
+  favour of a skill it judged closer. The loop now performs the load before the
+  first step of the turn (one assistant wrapper carrying the completed `skill`
+  tool call, marked `invoked`), so the instructions and the tools the skill
+  unlocks are in place when the model reads the request. `/autoresearch` gets
+  its `study` and `experiments` tools the same way.
+- **The `@` picker reads like Cursor's.** Name first with the folder dimmed
+  beside it, grouped under Recent and Files & folders, folder icons for
+  directories, and a pane beside the list that draws the active row's place in
+  the tree when the composer is wide enough. Browsing with nothing typed lists
+  the project's top level (folders before files at each depth) instead of its
+  deepest directories, and generated caches (`__pycache__`, `.ruff_cache`,
+  `node_modules`, `.venv`, the study SDK) stay out of results unless the query
+  names them.
+- **The Context dialog shows the window, not a grid of sixteen numbers.** A
+  headline says how full the window is and a segmented bar shows what fills
+  it, with a legend of the recorded buckets; the exact counts sit in two cards
+  (last request, session); custom instructions and raw messages fold away.
+
+### Fixed
+
+- **The context pill is measured against the window in use.** A tiered model
+  such as GPT-5.6 is budgeted at its first pricing boundary (272K) unless the
+  full window is chosen, and compaction fires against that cap, but the header
+  pill and the dialog divided by the model's raw 1.05M maximum: 11% while the
+  cap was nearly half used. Both now use the chosen or default cap and say
+  when it sits below the model maximum.
+- **A collapsed turn hides failures the agent recovered from.** Folded traces
+  showed every failed edit and command in red while the turn was still working
+  and after it had answered. A failure is the agent's to deal with while it
+  works and part of the story once it has answered; collapsed, only a turn that
+  stopped without an answer shows the failures of its final step, which are
+  what stopped it. Pending requests and saved Results stay visible in every
+  state.
+
+## v2.0.105 — 2026-09-16
+
 ### Fixed
 
 From a trace review of a ten-hour `/autoresearch` session on GPT-5.6 via

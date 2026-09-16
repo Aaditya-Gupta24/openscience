@@ -16,11 +16,24 @@ const MAX_IMAGE_BYTES = 30 * 1024 * 1024
 const MAX_IMAGE_RESPONSE_BYTES = Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 1024 * 1024
 const MAX_IMAGE_ERROR_BYTES = 1024 * 1024
 const MAX_IMAGE_ATTACHMENT_BYTES = 8 * 1024 * 1024
-const DEFAULT_MODEL = "google/gemini-3-pro-image"
-const GEMINI_MODEL = "gemini-3-pro-image"
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"]
 /** Nano Banana Pro accepts up to 14 reference images per request. */
 const MAX_REFERENCES = 14
+
+/** GPT Image 2 takes any size whose edges are multiples of 16 within a 3:1
+ * ratio and 655,360–8,294,400 pixels; these are the requested aspect ratios
+ * at the working (1K) and print (2K) scales, and the true 4K frame where the
+ * pixel ceiling allows one. */
+const OPENAI_SIZES: Record<string, { "1K": string; "2K": string; "4K": string }> = {
+  "1:1": { "1K": "1024x1024", "2K": "2048x2048", "4K": "2048x2048" },
+  "3:2": { "1K": "1536x1024", "2K": "3072x2048", "4K": "3072x2048" },
+  "2:3": { "1K": "1024x1536", "2K": "2048x3072", "4K": "2048x3072" },
+  "4:3": { "1K": "1408x1056", "2K": "2816x2112", "4K": "2816x2112" },
+  "3:4": { "1K": "1056x1408", "2K": "2112x2816", "4K": "2112x2816" },
+  "16:9": { "1K": "1536x864", "2K": "3072x1728", "4K": "3840x2160" },
+  "9:16": { "1K": "864x1536", "2K": "1728x3072", "4K": "2160x3840" },
+  "21:9": { "1K": "1792x768", "2K": "3584x1536", "4K": "3584x1536" },
+}
 
 function mimeOf(extension: string | undefined) {
   if (extension === ".webp") return "image/webp"
@@ -267,7 +280,7 @@ export function generatedImageAttachments(input: {
   ]
 }
 
-function requestError(status: number, body: OpenRouterImage | undefined, raw: string) {
+function requestError(route: ImageRoute.Route, status: number, body: OpenRouterImage | undefined, raw: string) {
   const reported =
     typeof body?.error === "string"
       ? body.error
@@ -276,17 +289,23 @@ function requestError(status: number, body: OpenRouterImage | undefined, raw: st
         : body?.message
   const detail = (reported?.trim() || raw.trim()).replace(/\s+/g, " ").slice(0, 500)
   if (status === 402) {
-    return new Error("Your connected OpenRouter account does not have enough credit for this image request.")
+    if (route.kind === "ace")
+      return new Error(
+        "Your Ace Wallet does not have enough balance for this image. Add funds in Customize → Billing and retry.",
+      )
+    return new Error(`The account behind ${route.label} has no credit left for this image request.`)
   }
   if (status === 401 || status === 403) {
-    return new Error("OpenRouter rejected the connected key. Reconnect it in Customize → Models and retry.")
+    if (route.kind === "ace")
+      return new Error("Ace rejected the request. Sign in again in Customize → Billing and retry.")
+    return new Error(`The provider rejected ${route.label}. Reconnect it in Customize → Models and retry.`)
   }
-  return new Error(`Nano Banana request failed (${status})${detail ? `: ${detail}` : "."}`)
+  return new Error(`Image generation with ${route.model} failed (${status})${detail ? `: ${detail}` : "."}`)
 }
 
 export const GenerateImageTool = Tool.define("generate_image", {
   description:
-    "Generate or edit an image with Gemini 3 Pro Image using the user's connected Gemini or OpenRouter account. Saves the image directly in the connected workspace.",
+    "Generate or edit an image with Nano Banana Pro (Gemini 3 Pro Image) through Ace or the user's own Gemini key, or with GPT Image 2 through the user's own OpenAI key. Saves the image directly in the connected workspace.",
   parameters: z.object({
     prompt: z.string().trim().min(1).max(20_000).describe("Detailed description or editing instruction"),
     output_path: z
@@ -407,13 +426,24 @@ export const GenerateImageTool = Tool.define("generate_image", {
     if (route.kind === "gemini" && extension !== ".png") {
       throw new Error("Gemini image generation returns PNG. Use an output_path ending in .png.")
     }
+    // Every image sent along: the one being edited first, then the style
+    // references. Ace's managed envelope accepts one per request.
+    const sources = [
+      ...(input && inputMime ? [{ mime: inputMime, data: input.bytes.toString("base64") }] : []),
+      ...references,
+    ]
+    if (route.kind === "ace" && sources.length > 1) {
+      throw new Error(
+        "Ace accepts one reference image per request: pass either input_path or a single reference_paths entry, or connect your own Gemini key for up to 14 references.",
+      )
+    }
 
     await ctx.ask({
       permission: "generate_image",
-      patterns: [DEFAULT_MODEL],
+      patterns: [route.model],
       always: ["*"],
       metadata: {
-        model: DEFAULT_MODEL,
+        model: route.model,
         output,
         input: source,
         route: route.kind,
@@ -427,94 +457,113 @@ export const GenerateImageTool = Tool.define("generate_image", {
     })
 
     const format = extension === ".jpg" ? "jpeg" : extension.slice(1)
-    const headers =
+    const authorization =
       route.kind === "gemini"
-        ? { "x-goog-api-key": route.key, "Content-Type": "application/json" }
+        ? { "x-goog-api-key": route.key }
         : {
             Authorization: `Bearer ${route.key}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/synthetic-sciences/OpenScience",
-            "X-Title": "OpenScience",
+            ...(route.kind === "ace"
+              ? { "HTTP-Referer": "https://github.com/synthetic-sciences/OpenScience", "X-Title": "OpenScience" }
+              : {}),
           }
-    const request = async (url: string, payload: Record<string, unknown>) => {
-      const text = JSON.stringify(payload)
+    const request = async (url: string, payload: Record<string, unknown> | FormData) => {
       const requestHeaders = new Headers()
-      for (const [name, value] of Object.entries(headers)) {
+      for (const [name, value] of Object.entries(authorization)) {
         if (value) requestHeaders.set(name, value)
       }
+      const body = payload instanceof FormData ? payload : JSON.stringify(payload)
+      if (!(payload instanceof FormData)) requestHeaders.set("Content-Type", "application/json")
       const response = await fetch(url, {
         method: "POST",
-        signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(120_000)]),
+        signal: AbortSignal.any([ctx.abort, AbortSignal.timeout(180_000)]),
         headers: requestHeaders,
-        body: text,
+        body,
       })
       const raw = (
         await readBoundedImageResponse(response, response.ok ? MAX_IMAGE_RESPONSE_BYTES : MAX_IMAGE_ERROR_BYTES)
       ).toString("utf8")
-      const body = (() => {
+      const parsed = (() => {
         try {
           return JSON.parse(raw) as OpenRouterImage
         } catch {
           return undefined
         }
       })()
-      return { response, raw, body }
+      return { response, raw, body: parsed }
     }
-    const direct =
-      route.kind === "gemini"
-        ? await request(`${route.base}/models/${GEMINI_MODEL}:generateContent`, {
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { text: params.prompt },
-                  ...(input ? [{ inlineData: { mimeType: inputMime, data: input.bytes.toString("base64") } }] : []),
-                  ...references.map((reference) => ({
-                    inlineData: { mimeType: reference.mime, data: reference.data },
-                  })),
-                ],
-              },
-            ],
-            generationConfig: {
-              responseModalities: ["IMAGE"],
-              ...(params.aspect_ratio || params.image_size
-                ? {
-                    imageConfig: {
-                      ...(params.aspect_ratio ? { aspectRatio: params.aspect_ratio } : {}),
-                      ...(params.image_size ? { imageSize: params.image_size } : {}),
-                    },
-                  }
-                : {}),
+    const size = params.image_size ?? "1K"
+    const direct = await (async () => {
+      if (route.kind === "gemini")
+        return request(`${route.base}/models/${route.model}:generateContent`, {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: params.prompt },
+                ...sources.map((item) => ({ inlineData: { mimeType: item.mime, data: item.data } })),
+              ],
             },
-          })
-        : await request(`${route.base}/images`, {
-            model: DEFAULT_MODEL,
-            prompt: params.prompt,
-            n: 1,
-            output_format: format,
-            ...(params.aspect_ratio ? { aspect_ratio: params.aspect_ratio } : {}),
-            ...(params.image_size ? { image_size: params.image_size } : {}),
-            ...(input || references.length
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"],
+            ...(params.aspect_ratio || params.image_size
               ? {
-                  input_references: [
-                    ...(input
-                      ? [
-                          {
-                            type: "image_url",
-                            image_url: { url: `data:${inputMime};base64,${input.bytes.toString("base64")}` },
-                          },
-                        ]
-                      : []),
-                    ...references.map((reference) => ({
-                      type: "image_url",
-                      image_url: { url: `data:${reference.mime};base64,${reference.data}` },
-                    })),
-                  ],
+                  imageConfig: {
+                    ...(params.aspect_ratio ? { aspectRatio: params.aspect_ratio } : {}),
+                    ...(params.image_size ? { imageSize: params.image_size } : {}),
+                  },
                 }
               : {}),
+          },
+        })
+      if (route.kind === "openai") {
+        const frame = OPENAI_SIZES[params.aspect_ratio ?? "1:1"]?.[size] ?? "1024x1024"
+        const quality = size === "1K" ? "medium" : "high"
+        if (!sources.length)
+          return request(`${route.base}/images/generations`, {
+            model: route.model,
+            prompt: params.prompt,
+            n: 1,
+            size: frame,
+            quality,
+            output_format: format,
           })
-    if (!direct.response.ok) throw requestError(direct.response.status, direct.body, direct.raw)
-    if (!direct.body) throw new Error("Nano Banana returned an unreadable response.")
+        // Edits and reference-guided generations take the images as files.
+        const form = new FormData()
+        form.set("model", route.model)
+        form.set("prompt", params.prompt)
+        form.set("n", "1")
+        form.set("size", frame)
+        form.set("quality", quality)
+        form.set("output_format", format)
+        sources.forEach((item, index) => {
+          form.append(
+            "image[]",
+            new Blob([Buffer.from(item.data, "base64")], { type: item.mime }),
+            `reference-${index + 1}.${item.mime === "image/jpeg" ? "jpg" : item.mime.slice("image/".length)}`,
+          )
+        })
+        return request(`${route.base}/images/edits`, form)
+      }
+      return request(`${route.base}/images`, {
+        model: route.model,
+        prompt: params.prompt,
+        n: 1,
+        output_format: format,
+        ...(params.aspect_ratio ? { aspect_ratio: params.aspect_ratio } : {}),
+        ...(params.image_size ? { resolution: params.image_size } : {}),
+        ...(sources.length
+          ? {
+              input_references: sources.map((item) => ({
+                type: "image_url",
+                image_url: { url: `data:${item.mime};base64,${item.data}` },
+              })),
+            }
+          : {}),
+      })
+    })()
+    if (!direct.response.ok) throw requestError(route, direct.response.status, direct.body, direct.raw)
+    if (!direct.body) throw new Error(`${route.model} returned an unreadable response.`)
     const approvedHosts = new Set<string>()
     const image = await materializeImage(direct.body, ctx.abort, async (input) => {
       if (approvedHosts.has(input.host)) return
@@ -542,12 +591,12 @@ export const GenerateImageTool = Tool.define("generate_image", {
     })
     return {
       title: path.relative(directory, output),
-      output: `Generated ${path.basename(output)} with ${DEFAULT_MODEL} via ${route.label}.`,
+      output: `Generated ${path.basename(output)} with ${route.model} via ${route.label}.`,
       metadata: {
         filepath: output,
         mime: image.mime,
         size: image.bytes.byteLength,
-        model: DEFAULT_MODEL,
+        model: route.model,
         route: route.kind,
         attachment: attachments.length ? "inline" : "artifact_only",
         artifact: {

@@ -12,7 +12,13 @@ import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 import { useLanguage } from "@/context/language"
 import { SessionContextTab } from "@/components/session/session-context-tab"
-import { compactContextTokens, formatContextTokens, usageSample, type ContextSample } from "@/pages/session-context"
+import {
+  compactContextTokens,
+  contextWindow,
+  formatContextTokens,
+  usageSample,
+  type ContextSample,
+} from "@/pages/session-context"
 
 interface SessionContextUsageProps {
   variant?: "button" | "indicator" | "header"
@@ -67,24 +73,30 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
     const sample = props.sample ?? usageSample(messages())
     if (!sample) return
     // A compaction summary runs on the compaction agent's model; size the window by the
-    // model the conversation itself uses.
+    // model the conversation itself uses, at the cap the conversation is budgeted
+    // against rather than the model's raw maximum.
     const last = findLast(messages(), (x) => x.role === "assistant" && !x.summary) as AssistantMessage | undefined
     const model = last ? sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID] : undefined
+    const window = contextWindow(messages(), model).window
     return {
       tokens: formatContextTokens(sample.total, locale),
       compact: compactContextTokens(sample.total, locale),
-      percentage: model?.limit.context ? Math.round((sample.total / model.limit.context) * 100) : null,
+      percentage: window ? Math.round((sample.total / window) * 100) : null,
+      window: window ? compactContextTokens(window, locale) : undefined,
       estimate: sample.source === "estimate",
     }
   })
 
   const openContext = () => {
     if (!params.id) return
+    const sample = props.sample ?? usageSample(messages())
     dialog.show(() => (
       <Dialog title={language.t("session.tab.context")} size="large" transition>
         <div style={{ width: "min(760px, 82vw)", height: "min(680px, 75vh)", overflow: "hidden" }}>
           <SessionContextTab
-            composition={props.sample?.composition}
+            composition={sample?.composition}
+            total={sample?.total}
+            estimate={sample?.source === "estimate"}
             messages={messages}
             visibleUserMessages={visibleUserMessages}
             view={() => view}
@@ -112,7 +124,11 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
             </div>
             <div class="flex items-center gap-2">
               <span class="text-text-invert-strong">{ctx().percentage ?? 0}%</span>
-              <span class="text-text-invert-base">{language.t("context.usage.usage")}</span>
+              <span class="text-text-invert-base">
+                {ctx().window
+                  ? language.t("context.usage.ofWindow", { window: ctx().window! })
+                  : language.t("context.usage.usage")}
+              </span>
             </div>
             <Show when={ctx().estimate}>
               <div class="text-text-invert-base">{language.t("context.usage.estimate")}</div>

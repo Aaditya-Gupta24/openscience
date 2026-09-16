@@ -77,9 +77,13 @@ the abstract last (the paper in miniature: question, approach, main result with 
 implication). Titles state the finding when the venue allows it.
 
 **Figures and tables.** Each makes one claim, named in its caption's first clause; the
-figures skill builds plots, the schematics skill builds diagrams. Tables carry the numbers
-the prose cites, with uncertainty and n. Reference every figure and table in the text
-before it appears.
+figures skill builds plots, the schematics skill renders diagrams and the generate-image
+skill renders illustrations and graphical abstracts, all with `generate_image`, never
+hand-drawn as TikZ or SVG. A report with a method section gets an overview schematic; a
+report that argues a mechanism gets a conceptual figure. When image generation is
+unavailable, leave a placeholder box with the planned caption and say what is needed to
+render it, rather than drawing it by hand. Tables carry the numbers the prose cites, with
+uncertainty and n. Reference every figure and table in the text before it appears.
 
 **Verification.** This is part of writing, done here, not handed to a worker. Compile
 (`latexmk -pdf` or `pdflatex` twice with `bibtex`), fix every error, then read the PDF:

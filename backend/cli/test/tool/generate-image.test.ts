@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
+import { OpenScience } from "../../src/openscience"
 import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
 import { SessionFilesystem } from "../../src/session/filesystem"
+import { ImageRoute } from "../../src/tool/image-route"
 import {
   GenerateImageTool,
   extractGeneratedImage,
@@ -13,42 +15,61 @@ import {
 import type { Tool } from "../../src/tool/tool"
 import { executionSession, tmpdir } from "../fixture/fixture"
 
+const PIXEL = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+)
+
+function context(session: { id: string }, id: string, asks?: Parameters<Tool.Context["ask"]>[0][]): Tool.Context {
+  return {
+    sessionID: session.id,
+    messageID: `msg_${id}`,
+    callID: `call_${id}`,
+    agent: "research",
+    abort: new AbortController().signal,
+    messages: [],
+    metadata() {},
+    async ask(input) {
+      asks?.push(input)
+    },
+  }
+}
+
 describe("generate_image response parsing", () => {
-  test("executes the native BYOK image route and writes its result into the session workspace", async () => {
+  test("Ace renders through the managed gateway's image endpoint, one reference at a time", async () => {
     const requests: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = []
-    const image = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-      "base64",
-    )
-    const server = Bun.serve({
+    const gateway = Bun.serve({
       port: 0,
       async fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname.endsWith("/model-catalog")) return Response.json({ models: [] })
+        if (!url.pathname.endsWith("/images")) return Response.json({})
         requests.push({
-          url: new URL(request.url).pathname,
+          url: url.pathname,
           authorization: request.headers.get("authorization"),
           body: (await request.json()) as Record<string, unknown>,
         })
-        return Response.json({ data: [{ b64_json: image.toString("base64"), media_type: "image/png" }] })
+        return Response.json({
+          data: [{ b64_json: PIXEL.toString("base64"), media_type: "image/png" }],
+          usage: { cost: 0.13 },
+        })
       },
     })
+    const base = process.env["OPENSCIENCE_API_BASE"]
+    process.env["OPENSCIENCE_API_BASE"] = gateway.url.origin
     try {
-      await using tmp = await tmpdir({
-        git: true,
-        config: {
-          provider: {
-            openrouter: {
-              options: {
-                apiKey: "sk-local-image-route",
-                baseURL: `http://127.0.0.1:${server.port}/v1`,
-              },
-            },
-          },
-        },
+      await using tmp = await tmpdir({ git: true, config: { billing: { llm: "managed" } } })
+      await OpenScience.saveSession({
+        api_key: "osk_fixture_image",
+        user_id: "fixture",
+        organization_id: "org_image",
+        workspace_locked: true,
       })
       await Instance.provide({
         directory: tmp.path,
         init: async () => Provider.invalidate(),
         fn: async () => {
+          expect((await Provider.getProvider("openrouter"))?.source).toBe("managed")
           const session = await executionSession()
           const workspace = await SessionFilesystem.workspace(session.id)
           const asks: Parameters<Tool.Context["ask"]>[0][] = []
@@ -59,91 +80,223 @@ describe("generate_image response parsing", () => {
             input_path: "/dev/null",
             model: "meta-llama/llama-3.3-70b-instruct",
             aspect_ratio: "16:9",
+            image_size: "2K",
           })
           expect(input).not.toHaveProperty("model")
-          const result = await tool.execute(input, {
-            sessionID: session.id,
-            messageID: "msg_generate_image",
-            callID: "call_generate_image",
-            agent: "research",
-            abort: new AbortController().signal,
-            messages: [],
-            metadata() {},
-            async ask(input) {
-              asks.push(input)
-            },
-          })
+          const result = await tool.execute(input, context(session, "ace", asks))
 
           expect(requests).toHaveLength(1)
+          // The managed envelope: OpenRouter's image API shape, `resolution`
+          // for the size, funded by the Wallet behind the account key.
           expect(requests[0]).toMatchObject({
-            url: "/v1/images",
-            authorization: "Bearer sk-local-image-route",
+            url: "/api/llm/proxy/openrouter/v1/images",
+            authorization: "Bearer osk_fixture_image",
             body: {
               model: "google/gemini-3-pro-image",
               prompt: "A precise monochrome benchmark schematic",
               n: 1,
               output_format: "png",
               aspect_ratio: "16:9",
+              resolution: "2K",
             },
           })
+          expect(requests[0]?.body).not.toHaveProperty("image_size")
           expect(asks.map((request) => request.permission)).toEqual(["generate_image", "edit"])
+          expect(asks[0]?.metadata).toMatchObject({ model: "google/gemini-3-pro-image", route: "ace" })
           expect(await Bun.file(path.join(workspace, "figures", "benchmark.png")).arrayBuffer()).toEqual(
-            image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength),
+            PIXEL.buffer.slice(PIXEL.byteOffset, PIXEL.byteOffset + PIXEL.byteLength),
           )
           expect(result).toMatchObject({
             title: "figures/benchmark.png",
-            metadata: { route: "openrouter", mime: "image/png", size: image.byteLength, attachment: "inline" },
+            output: expect.stringContaining("via Ace"),
+            metadata: {
+              route: "ace",
+              model: "google/gemini-3-pro-image",
+              mime: "image/png",
+              size: PIXEL.byteLength,
+              attachment: "inline",
+            },
           })
           expect(result.attachments).toHaveLength(1)
 
-          const directoryPlaceholder = await tool.execute(
-            {
-              prompt: "A second precise monochrome benchmark schematic",
-              output_path: "figures/benchmark-directory-placeholder.png",
-              input_path: ".",
-            },
-            {
-              sessionID: session.id,
-              messageID: "msg_generate_image_directory_placeholder",
-              callID: "call_generate_image_directory_placeholder",
-              agent: "research",
-              abort: new AbortController().signal,
-              messages: [],
-              metadata() {},
-              async ask(input) {
-                asks.push(input)
-              },
-            },
-          )
-          expect(requests).toHaveLength(2)
-          expect(requests[1]?.body).not.toHaveProperty("input_references")
-          expect(directoryPlaceholder.metadata).toMatchObject({ mime: "image/png", route: "openrouter" })
-
-          await Bun.write(path.join(workspace, "input.png"), image)
+          await Bun.write(path.join(workspace, "input.png"), PIXEL)
           await tool.execute(
             {
               prompt: "Preserve the source and improve its contrast",
               output_path: "figures/benchmark-edited.png",
               input_path: "input.png",
             },
-            {
-              sessionID: session.id,
-              messageID: "msg_generate_image_edit",
-              callID: "call_generate_image_edit",
-              agent: "research",
-              abort: new AbortController().signal,
-              messages: [],
-              metadata() {},
-              async ask(input) {
-                asks.push(input)
-              },
-            },
+            context(session, "ace_edit"),
           )
-          expect(requests).toHaveLength(3)
-          expect(requests[2]?.body).toMatchObject({
+          expect(requests).toHaveLength(2)
+          expect(requests[1]?.body).toMatchObject({
             input_references: [
               { type: "image_url", image_url: { url: expect.stringContaining("data:image/png;base64,") } },
             ],
+          })
+          // Ace's envelope takes one image; the tool says so before spending.
+          await Bun.write(path.join(workspace, "style.png"), PIXEL)
+          await expect(
+            tool.execute(
+              {
+                prompt: "Restyle",
+                output_path: "figures/benchmark-restyled.png",
+                input_path: "input.png",
+                reference_paths: ["style.png"],
+              },
+              context(session, "ace_two"),
+            ),
+          ).rejects.toThrow("Ace accepts one reference image per request")
+          expect(requests).toHaveLength(2)
+        },
+      })
+    } finally {
+      if (base === undefined) delete process.env["OPENSCIENCE_API_BASE"]
+      if (base !== undefined) process.env["OPENSCIENCE_API_BASE"] = base
+      await OpenScience.clearSession()
+      gateway.stop(true)
+    }
+  })
+
+  test("a personal OpenRouter key is not an image route", async () => {
+    const requests = { value: 0 }
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests.value++
+        return Response.json({ data: [{ b64_json: PIXEL.toString("base64") }] })
+      },
+    })
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          provider: {
+            openrouter: {
+              options: { apiKey: "sk-or-personal-key", baseURL: `http://127.0.0.1:${server.port}/v1` },
+            },
+          },
+        },
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        init: async () => Provider.invalidate(),
+        fn: async () => {
+          expect(await Provider.getProvider("openrouter")).toBeDefined()
+          expect(await ImageRoute.resolve()).toBeUndefined()
+          expect(await ImageRoute.line()).toContain("unavailable")
+          const session = await executionSession()
+          const tool = await GenerateImageTool.init()
+          await expect(
+            tool.execute({ prompt: "A benchmark schematic", output_path: "figure.png" }, context(session, "personal")),
+          ).rejects.toThrow("Turn on Ace, or connect a Gemini or OpenAI key")
+          expect(requests.value).toBe(0)
+        },
+      })
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("renders with GPT Image 2 through the user's own OpenAI key, edits as multipart", async () => {
+    const requests: Array<{
+      url: string
+      authorization: string | null
+      json?: Record<string, unknown>
+      form?: Record<string, string | { name: string; type: string; size: number }[]>
+    }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url).pathname
+        const authorization = request.headers.get("authorization")
+        if (request.headers.get("content-type")?.startsWith("multipart/form-data")) {
+          const data = await request.formData()
+          const form: Record<string, string | { name: string; type: string; size: number }[]> = {}
+          for (const [key, value] of data.entries()) {
+            if (typeof value === "string") {
+              form[key] = value
+              continue
+            }
+            const file = value as File
+            const files = (form[key] ?? []) as { name: string; type: string; size: number }[]
+            files.push({ name: file.name, type: file.type, size: file.size })
+            form[key] = files
+          }
+          requests.push({ url, authorization, form })
+        } else {
+          requests.push({ url, authorization, json: (await request.json()) as Record<string, unknown> })
+        }
+        return Response.json({
+          data: [{ b64_json: PIXEL.toString("base64") }],
+          usage: { input_tokens: 12, output_tokens: 1056 },
+        })
+      },
+    })
+    try {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          provider: {
+            openai: {
+              options: { apiKey: "sk-openai-local-image", baseURL: `http://127.0.0.1:${server.port}/v1` },
+            },
+          },
+        },
+      })
+      await Instance.provide({
+        directory: tmp.path,
+        init: async () => Provider.invalidate(),
+        fn: async () => {
+          const session = await executionSession()
+          const workspace = await SessionFilesystem.workspace(session.id)
+          const tool = await GenerateImageTool.init()
+          const result = await tool.execute(
+            { prompt: "A benchmark schematic", output_path: "figures/openai.webp", aspect_ratio: "16:9" },
+            context(session, "openai"),
+          )
+          expect(requests[0]).toMatchObject({
+            url: "/v1/images/generations",
+            authorization: "Bearer sk-openai-local-image",
+            json: {
+              model: "gpt-image-2",
+              prompt: "A benchmark schematic",
+              n: 1,
+              size: "1536x864",
+              quality: "medium",
+              output_format: "webp",
+            },
+          })
+          expect(result.metadata).toMatchObject({ route: "openai", model: "gpt-image-2" })
+          expect(result.output).toContain("via your OpenAI key")
+
+          await Bun.write(path.join(workspace, "draft.png"), PIXEL)
+          await Bun.write(path.join(workspace, "style.png"), PIXEL)
+          await tool.execute(
+            {
+              prompt: "Keep the layout, match the reference palette",
+              output_path: "figures/openai-edited.png",
+              input_path: "draft.png",
+              reference_paths: ["style.png"],
+              image_size: "2K",
+            },
+            context(session, "openai_edit"),
+          )
+          expect(requests[1]).toMatchObject({
+            url: "/v1/images/edits",
+            authorization: "Bearer sk-openai-local-image",
+            form: {
+              model: "gpt-image-2",
+              prompt: "Keep the layout, match the reference palette",
+              n: "1",
+              size: "2048x2048",
+              quality: "high",
+              output_format: "png",
+              "image[]": [
+                { name: "reference-1.png", type: "image/png", size: PIXEL.byteLength },
+                { name: "reference-2.png", type: "image/png", size: PIXEL.byteLength },
+              ],
+            },
           })
         },
       })
@@ -216,7 +369,7 @@ describe("generate_image response parsing", () => {
             },
           })
           expect(result.metadata).toMatchObject({
-            model: "google/gemini-3-pro-image",
+            model: "gemini-3-pro-image",
             route: "gemini",
           })
 
@@ -380,7 +533,7 @@ describe("generate_image response parsing", () => {
                 async ask() {},
               },
             ),
-          ).rejects.toThrow("Connect your Gemini or OpenRouter account")
+          ).rejects.toThrow("Turn on Ace, or connect a Gemini or OpenAI key")
           expect(requests.value).toBe(0)
         },
       })

@@ -123,7 +123,7 @@ def generate_image(
         print("❌ Error: OpenRouter BYOK is not connected!")
         print("\nAdd an OpenRouter key in OpenScience Settings → Models & providers,")
         print("or set it for this run: export OPENROUTER_API_KEY=your-api-key-here.")
-        print("Inside OpenScience, connect Gemini or OpenRouter in Customize → Models and call generate_image.")
+        print("Inside OpenScience, turn on Ace or connect Gemini or OpenAI in Customize → Models and call generate_image.")
         print("\nGet your own API key from: https://openrouter.ai/keys")
         sys.exit(1)
 

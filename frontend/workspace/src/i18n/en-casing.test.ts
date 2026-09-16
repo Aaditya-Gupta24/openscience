@@ -4,6 +4,11 @@ import { dict } from "./en"
 const deliberateFragments = new Set([
   "provider.connect.oauth.code.visit.suffix",
   "provider.connect.oauth.auto.visit.suffix",
+  // Continuations of a number the panel renders in front of them: "124.9K of 272K tokens".
+  "context.headline.of",
+  "context.headline.tokens",
+  "context.headline.cap",
+  "context.usage.ofWindow",
 ])
 
 describe("English interface copy", () => {

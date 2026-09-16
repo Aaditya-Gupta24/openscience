@@ -819,7 +819,13 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return x.type === "agent" ? `agent:${x.name}` : `file:${x.path}`
   }
 
+  // Open tabs ride at the top of the picker as "Recent"; a handful is a
+  // shortcut, the whole tab strip would bury the search results.
+  const AT_RECENT = 5
+
   const {
+    grouped: atGrouped,
+    filter: atFilter,
     flat: atFlat,
     active: atActive,
     setActive: setAtActive,
@@ -828,7 +834,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   } = useFilteredList<AtOption>({
     items: async (query) => {
       const agents = agentList()
-      const open = recent()
+      const open = recent().slice(0, AT_RECENT)
       const seen = new Set(open)
       const pinned: AtOption[] = open.map((path) => ({ type: "file", path, display: path, recent: true }))
       const paths = await files.searchFilesAndDirectories(query)
@@ -1266,20 +1272,78 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }),
   )
 
+  const scrollPopoverRow = (viewport: HTMLElement | undefined, element: HTMLElement | null) => {
+    if (!viewport || !element) return
+    const frame = viewport.getBoundingClientRect()
+    const top = frame.top + viewport.clientTop
+    const bottom = top + viewport.clientHeight
+    const row = element.getBoundingClientRect()
+    if (row.top < top) {
+      viewport.scrollTop -= top - row.top
+      return
+    }
+    if (row.bottom > bottom) viewport.scrollTop += row.bottom - bottom
+  }
+
   const scrollSlashActive = () => {
     const activeId = slashActive()
     if (!activeId || !slashPopoverRef) return
-    const element = slashPopoverRef.querySelector<HTMLElement>(`[data-slash-id="${activeId}"]`)
-    if (!element) return
-    const viewport = slashPopoverRef.getBoundingClientRect()
-    const top = viewport.top + slashPopoverRef.clientTop
-    const bottom = top + slashPopoverRef.clientHeight
-    const row = element.getBoundingClientRect()
-    if (row.top < top) {
-      slashPopoverRef.scrollTop -= top - row.top
-      return
+    scrollPopoverRow(slashPopoverRef, slashPopoverRef.querySelector<HTMLElement>(`[data-slash-id="${activeId}"]`))
+  }
+
+  // The @ picker reads the way Cursor's does: the name first, its folder
+  // dimmed beside it, grouped under "Recent" and "Files & folders", and the
+  // active row's place in the tree drawn in a pane alongside the list.
+  let atPopoverRef: HTMLDivElement | undefined
+  const atVisible = createMemo(() => {
+    const label = (category: string) => {
+      if (category === "recent") return "Recent"
+      if (category === "file") return atFilter().trim() ? "" : "Files & folders"
+      return ""
     }
-    if (row.bottom > bottom) slashPopoverRef.scrollTop += row.bottom - bottom
+    return (atGrouped.latest ?? []).map((group) => ({
+      category: group.category,
+      label: label(group.category),
+      items: group.items,
+    }))
+  })
+  const atCurrent = createMemo(() => {
+    const active = atActive()
+    return atFlat().find((item) => atKey(item) === active) ?? atFlat()[0]
+  })
+  const atPreview = createMemo(() => {
+    const item = atCurrent()
+    if (!item || item.type !== "file") return
+    const folder = item.path.endsWith("/")
+    const segments = item.path.split("/").filter(Boolean)
+    if (segments.length < 2) return
+    return segments.map((name, index) => ({
+      name,
+      depth: index,
+      path: segments.slice(0, index + 1).join("/"),
+      type: index < segments.length - 1 || folder ? ("directory" as const) : ("file" as const),
+      last: index === segments.length - 1,
+    }))
+  })
+  const atOptionId = (item: AtOption) => `composer-at-${atKey(item).replace(/[^a-zA-Z0-9_-]/g, "_")}`
+  const atRowMeta = (item: Extract<AtOption, { type: "file" }>) => {
+    const folder = item.path.endsWith("/")
+    const trimmed = folder ? item.path.slice(0, -1) : item.path
+    const parent = getDirectory(trimmed)
+    // The folder icon says what the row is; a trailing slash would only repeat it.
+    return {
+      folder,
+      name: getFilename(trimmed),
+      parent: parent && parent !== "." ? parent.replace(/\/$/, "") : "",
+    }
+  }
+  const scrollAtActive = () => {
+    const item = atCurrent()
+    if (!item || !atPopoverRef) return
+    scrollPopoverRow(
+      atPopoverRef,
+      atPopoverRef.querySelector<HTMLElement>(`[data-at-key="${CSS.escape(atKey(item))}"]`),
+    )
   }
 
   const selectPopoverActive = () => {
@@ -1748,6 +1812,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       if (nav || ctrlNav) {
         if (store.popover === "at") {
           atOnKeyDown(event)
+          requestAnimationFrame(scrollAtActive)
           event.preventDefault()
           return
         }
@@ -2522,6 +2587,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         <div
           ref={(el) => {
             if (store.popover === "slash") slashPopoverRef = el
+            if (store.popover === "at") atPopoverRef = el
           }}
           class="workspace-composer__suggestions absolute inset-x-0 -top-3 -translate-y-full origin-bottom-left
                  min-h-10 overflow-auto no-scrollbar flex flex-col"
@@ -2534,50 +2600,99 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             <Match when={store.popover === "at"}>
               <Show
                 when={atFlat().length > 0}
-                fallback={<div class="text-text-weak px-2 py-1">{language.t("prompt.popover.emptyResults")}</div>}
+                fallback={
+                  <div class="workspace-composer__suggestion-empty">{language.t("prompt.popover.emptyResults")}</div>
+                }
               >
-                <For each={atFlat().slice(0, 10)}>
-                  {(item) => (
-                    <button
-                      classList={{
-                        "workspace-composer__suggestion w-full flex items-center gap-x-2": true,
-                        "bg-surface-raised-base-hover": atActive() === atKey(item),
-                      }}
-                      onClick={() => handleAtSelect(item)}
-                      onMouseEnter={() => setAtActive(atKey(item))}
-                    >
-                      <Show
-                        when={item.type === "agent"}
-                        fallback={
-                          <>
-                            <FileIcon
-                              node={{ path: (item as { type: "file"; path: string }).path, type: "file" }}
-                              class="shrink-0 size-4"
-                            />
-                            <div class="flex items-center text-14-regular min-w-0">
-                              <span class="text-text-weak whitespace-nowrap truncate min-w-0">
-                                {(() => {
-                                  const path = (item as { type: "file"; path: string }).path
-                                  return path.endsWith("/") ? path : getDirectory(path)
-                                })()}
-                              </span>
-                              <Show when={!(item as { type: "file"; path: string }).path.endsWith("/")}>
-                                <span class="text-text-strong whitespace-nowrap">
-                                  {getFilename((item as { type: "file"; path: string }).path)}
-                                </span>
-                              </Show>
+                <div class="workspace-composer__at" data-preview={atPreview() ? "true" : undefined}>
+                  <div
+                    class="workspace-composer__at-list"
+                    id="composer-at-listbox"
+                    role="listbox"
+                    aria-label="Files and folders"
+                  >
+                    <For each={atVisible()}>
+                      {(group) => (
+                        <section class="workspace-composer__slash-group" aria-label={group.label || "Results"}>
+                          <Show when={group.label}>
+                            <header class="workspace-composer__slash-heading" aria-hidden="true">
+                              {group.label}
+                            </header>
+                          </Show>
+                          <For each={group.items}>
+                            {(item) => (
+                              <button
+                                type="button"
+                                id={atOptionId(item)}
+                                role="option"
+                                aria-selected={atActive() === atKey(item)}
+                                data-at-key={atKey(item)}
+                                classList={{
+                                  "workspace-composer__at-row": true,
+                                  "is-active": atActive() === atKey(item),
+                                }}
+                                onClick={() => handleAtSelect(item)}
+                                onMouseEnter={() => setAtActive(atKey(item))}
+                              >
+                                <Show
+                                  when={item.type === "file" ? item : undefined}
+                                  fallback={
+                                    <>
+                                      <span class="workspace-composer__at-icon" aria-hidden="true">
+                                        <Icon name="brain" size="small" />
+                                      </span>
+                                      <span class="workspace-composer__at-name">
+                                        @{(item as { type: "agent"; name: string }).name}
+                                      </span>
+                                    </>
+                                  }
+                                >
+                                  {(file) => {
+                                    const meta = () => atRowMeta(file())
+                                    return (
+                                      <>
+                                        <span class="workspace-composer__at-icon" aria-hidden="true">
+                                          <FileIcon
+                                            node={{ path: file().path, type: meta().folder ? "directory" : "file" }}
+                                            class="size-4"
+                                          />
+                                        </span>
+                                        <span class="workspace-composer__at-name">{meta().name}</span>
+                                        <Show when={meta().parent}>
+                                          <span class="workspace-composer__at-path" title={file().path}>
+                                            {meta().parent}
+                                          </span>
+                                        </Show>
+                                      </>
+                                    )
+                                  }}
+                                </Show>
+                              </button>
+                            )}
+                          </For>
+                        </section>
+                      )}
+                    </For>
+                  </div>
+                  <Show when={atPreview()}>
+                    {(crumbs) => (
+                      <aside class="workspace-composer__at-preview" aria-hidden="true">
+                        <For each={crumbs()}>
+                          {(crumb) => (
+                            <div
+                              class="workspace-composer__at-crumb"
+                              data-last={crumb.last ? "true" : undefined}
+                              style={{ "--depth": crumb.depth }}
+                            >
+                              <FileIcon node={{ path: crumb.path, type: crumb.type }} class="size-4" />
+                              <span>{crumb.name}</span>
                             </div>
-                          </>
-                        }
-                      >
-                        <Icon name="brain" size="small" class="text-icon-info-active shrink-0" />
-                        <span class="text-14-regular text-text-strong whitespace-nowrap">
-                          @{(item as { type: "agent"; name: string }).name}
-                        </span>
-                      </Show>
-                    </button>
-                  )}
-                </For>
+                          )}
+                        </For>
+                      </aside>
+                    )}
+                  </Show>
+                </div>
               </Show>
             </Match>
             <Match when={store.popover === "conversation"}>
@@ -2836,10 +2951,20 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             aria-busy={submitting()}
             aria-autocomplete="list"
             aria-haspopup="listbox"
-            aria-expanded={store.popover === "slash"}
-            aria-controls={store.popover === "slash" ? "composer-slash-listbox" : undefined}
+            aria-expanded={store.popover === "slash" || store.popover === "at"}
+            aria-controls={
+              store.popover === "slash"
+                ? "composer-slash-listbox"
+                : store.popover === "at"
+                  ? "composer-at-listbox"
+                  : undefined
+            }
             aria-activedescendant={
-              store.popover === "slash" && slashActive() ? slashOptionId({ id: slashActive()! }) : undefined
+              store.popover === "slash" && slashActive()
+                ? slashOptionId({ id: slashActive()! })
+                : store.popover === "at" && atCurrent()
+                  ? atOptionId(atCurrent()!)
+                  : undefined
             }
             dir="auto"
             contenteditable={submitting() ? "false" : "true"}

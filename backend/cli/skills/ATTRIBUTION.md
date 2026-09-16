@@ -161,7 +161,7 @@ upstream), **vendored** (unchanged apart from paths).
 | `databases/uspto-database` | `scientific-skills/uspto-database` | derived |
 | `databases/zinc-database` | `scientific-skills/zinc-database` | derived |
 | `document-parsing/liteparse` | `scientific-skills/liteparse` | adapted and rewritten |
-| `llm-tools/generate-image` | `scientific-skills/generate-image` | adapted and rewritten |
+| `core/generate-image` | `scientific-skills/generate-image` | adapted and rewritten |
 | `llm-tools/transformers` | `skills/transformers` | derived |
 | `ml-training/adaptyv` | `scientific-skills/adaptyv` | derived |
 | `ml-training/geniml` | `scientific-skills/geniml` | derived |
@@ -188,7 +188,7 @@ upstream), **vendored** (unchanged apart from paths).
 | `scholar-evaluation` | `scientific-skills/scholar-evaluation` | derived |
 | `visualization/matplotlib` | `skills/matplotlib` | derived |
 | `visualization/plotly` | `scientific-skills/plotly` | derived |
-| `visualization/scientific-visualization` | `scientific-skills/scientific-visualization` | derived |
+| `core/scientific-visualization` | `scientific-skills/scientific-visualization` | derived |
 | `visualization/seaborn` | `skills/seaborn` | derived |
 | `writing/markdown-mermaid-writing` | `skills/markdown-mermaid-writing` | derived |
 | `writing/paper-2-web` | `scientific-skills/paper-2-web` | derived |

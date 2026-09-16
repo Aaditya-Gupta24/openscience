@@ -1,4 +1,5 @@
 import type { ContextCompositionEstimate } from "@/components/session/context-composition"
+import { modelDefaultContext } from "@/context/model-context"
 import type { AssistantMessage, Message } from "@synsci/sdk/v2/client"
 import { findLast } from "@synsci/util/array"
 import { TokenUsage } from "@synsci/util/token-usage"
@@ -50,6 +51,24 @@ export function latestContext(messages: Message[], live?: ContextEstimate): Cont
   if (live && (!last || last.id < live.after)) return { total: live.total, source: "estimate", ...composition }
   const reported = sample(last)
   return reported ? { ...reported, ...composition } : undefined
+}
+
+type WindowModel = Parameters<typeof modelDefaultContext>[0]
+
+/** The window the conversation is budgeted against. A tiered model such as
+ * GPT-5.6 is capped at its first pricing boundary (272K) unless the person
+ * chose the full window, and compaction fires against that cap; a percentage
+ * of the raw 1M maximum would say 11% while the cap is nearly half used. */
+export function contextWindow(messages: Message[], model: WindowModel | undefined) {
+  const chosen = findLast(messages, (message) => message.role === "user" && typeof message.context === "number")
+  const selected = chosen?.role === "user" ? chosen.context : undefined
+  const full = model?.limit.context || undefined
+  const window = selected ?? (model ? modelDefaultContext(model) : undefined) ?? full
+  return {
+    window: window || undefined,
+    full,
+    capped: full !== undefined && window !== undefined && window < full,
+  }
 }
 
 export function formatContextTokens(total: number, locale: string) {

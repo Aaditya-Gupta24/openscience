@@ -34,8 +34,10 @@ const scenarios = [
     category: "skills",
     title: "Session after skill addition",
     prompt: "What is the bounded fixture result? /late-session-skill",
-    stimulus: { kind: "tool", name: "skill", input: { name: "late-session-skill" } },
-    expect: { terminal: "completed", tools: 1, artifacts: "none" },
+    // The loop loads an invoked skill before the first step; the model
+    // answers from the loaded instructions without a load of its own.
+    stimulus: { kind: "reply", text: "BOUNDED_FIXTURE_RESULT" },
+    expect: { terminal: "completed", tools: 0, artifacts: "none" },
   },
   {
     id: FOLLOWUP,
@@ -106,9 +108,15 @@ describe("provider-driven skill routing", () => {
           expect(request?.tools).toContain("skill")
           expect(request?.text).toContain("<slash-skill-invocation>")
           expect(request?.text).toContain('skill({name:"late-session-skill"})')
-          expect(tools(await Session.messages({ sessionID: session.id }))).toContainEqual(
-            expect.objectContaining({ tool: "skill", state: expect.objectContaining({ status: "completed" }) }),
-          )
+          // The invoked skill was loaded by the loop before this request, so
+          // the request already carries its instructions as a tool result.
+          expect(request?.text).toContain("Return the bounded fixture result.")
+          const invoked = tools(await Session.messages({ sessionID: session.id })).find((part) => part.tool === "skill")
+          expect(invoked?.state).toMatchObject({
+            status: "completed",
+            input: { name: "late-session-skill" },
+            metadata: { invoked: true },
+          })
 
           const followup = await SessionPrompt.prompt({
             sessionID: session.id,

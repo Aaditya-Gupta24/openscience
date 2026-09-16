@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import type { AssistantMessage, Message, UserMessage } from "@synsci/sdk/v2/client"
-import { compactContextTokens, estimate, formatContextTokens, latestContext, usageSample } from "./session-context"
+import {
+  compactContextTokens,
+  contextWindow,
+  estimate,
+  formatContextTokens,
+  latestContext,
+  usageSample,
+} from "./session-context"
 
 const user = (id: string): UserMessage =>
   ({
@@ -96,6 +103,23 @@ describe("session context samples", () => {
     expect(formatContextTokens(128_432, "en")).toBe("128,432")
     expect(compactContextTokens(128_432, "en")).toBe("128.4K")
     expect(compactContextTokens(950, "en")).toBe("950")
+  })
+
+  test("the window is the cap the conversation is budgeted against, not the model's raw maximum", () => {
+    const tiered = { limit: { context: 1_050_000 }, cost: { tiers: [{ threshold: 272_000 }] } }
+    // A tiered model defaults to its first pricing boundary, as the server does.
+    expect(contextWindow([user("u1")], tiered)).toEqual({ window: 272_000, full: 1_050_000, capped: true })
+    // The person's choice for the turn wins, including the full window.
+    expect(contextWindow([{ ...user("u1"), context: 1_050_000 }], tiered)).toEqual({
+      window: 1_050_000,
+      full: 1_050_000,
+      capped: false,
+    })
+    expect(contextWindow([{ ...user("u1"), context: 272_000 }, user("u2")], tiered).window).toBe(272_000)
+    // A flat model is budgeted at its whole window.
+    const flat = { limit: { context: 200_000 }, cost: {} }
+    expect(contextWindow([user("u1")], flat)).toEqual({ window: 200_000, full: 200_000, capped: false })
+    expect(contextWindow([user("u1")], undefined)).toEqual({ window: undefined, full: undefined, capped: false })
   })
 })
 

@@ -6,7 +6,7 @@ const python = Bun.which("python3") ?? Bun.which("python")
 const root = path.resolve(import.meta.dir, "../..")
 const schematic = path.join(root, "skills/core/schematics/scripts")
 const slides = path.join(root, "skills/writing/scientific-slides/scripts")
-const image = path.join(root, "skills/llm-tools/generate-image/scripts/generate_image.py")
+const image = path.join(root, "skills/core/generate-image/scripts/generate_image.py")
 
 async function environment(dir: string, byok = "") {
   return {
@@ -86,7 +86,7 @@ print(json.dumps(errors))
   const errors = JSON.parse(output) as string[]
   expect(errors).toHaveLength(2)
   expect(errors.every((error) => error.includes("OpenRouter BYOK is not connected"))).toBe(true)
-  expect(errors.every((error) => error.includes("connect Gemini or OpenRouter"))).toBe(true)
+  expect(errors.every((error) => error.includes("turn on Ace or connect Gemini or OpenAI"))).toBe(true)
   expect(errors.every((error) => error.includes("native generate_image tool"))).toBe(true)
 })
 
@@ -112,17 +112,18 @@ test("standalone wrappers direct OpenScience sessions to the native user-provide
     const text = `${output}\n${error}`
     expect(await proc.exited).toBe(1)
     expect(text).toContain("OpenRouter BYOK is not connected")
-    expect(text).toContain("connect Gemini or OpenRouter")
+    expect(text).toContain("turn on Ace or connect Gemini or OpenAI")
     expect(text).toContain("generate_image")
     expect(text).not.toContain("OPENROUTER_API_KEY environment variable not set")
   }
 })
 
 test("the image skill requires the native user-provider route", async () => {
-  const skill = await Bun.file(path.join(root, "skills/llm-tools/generate-image/SKILL.md")).text()
+  const skill = await Bun.file(path.join(root, "skills/core/generate-image/SKILL.md")).text()
   const registry = await Bun.file(path.join(root, "src/tool/registry.ts")).text()
 
-  expect(skill).toContain("always call the native `generate_image` tool")
-  expect(skill).toContain("connected Gemini or OpenRouter account")
+  expect(skill).toContain("Generate or edit an image with the native `generate_image` tool")
+  expect(skill).toContain("A personal OpenRouter key is not a route")
+  expect(skill).toContain("never draw the image by hand")
   expect(registry).toContain("GenerateImageTool")
 })

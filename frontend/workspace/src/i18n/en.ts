@@ -265,6 +265,19 @@ export const dict = {
   "context.composition.instructions": "Custom instructions",
   "context.composition.note":
     "Approximate shares of loaded text before this call, using four characters per token. Excludes this response, complete system instructions, tool definitions, media, and server-side context changes. These shares do not measure provider token usage.",
+  "context.composition.recordedNote":
+    "Estimates from the last observed pre-call context. Documents and images are separate from text. Excludes tool definitions and provider-specific wrappers; these are not billed token counts.",
+  "context.composition.notReported": "Not reported",
+  "context.headline.of": "of {{window}} tokens",
+  "context.headline.tokens": "tokens",
+  "context.headline.cap": "capped below the {{full}} maximum",
+  "context.headline.reported": "Reported by the provider for the last request",
+  "context.section.composition": "What fills the window",
+  "context.section.lastRequest": "Last request",
+  "context.section.session": "Session",
+  "context.stats.cacheRead": "Cache read",
+  "context.stats.cacheWrite": "Cache write",
+  "context.stats.messagesDetail": "{{user}} yours · {{assistant}} agent",
 
   "context.rawMessages.title": "Raw messages",
 
@@ -287,6 +300,7 @@ export const dict = {
 
   "context.usage.tokens": "Tokens",
   "context.usage.usage": "Usage",
+  "context.usage.ofWindow": "of the {{window}} window",
   "context.usage.cost": "Cost",
   "context.usage.workerCost": "Includes {{cost}} spent by delegated workers",
   "context.usage.clickToView": "Click to view context",

@@ -45,6 +45,8 @@ import { fn } from "@synsci/util/fn"
 import { SessionProcessor } from "./processor"
 import { interruptionReceipt } from "./tool-outcome"
 import { normalizeTaskAttemptInput, TaskTool } from "@/tool/task"
+import { SkillTool } from "@/tool/skill"
+import { Skill } from "@/skill"
 import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
 import { SessionStatus } from "./status"
@@ -598,6 +600,141 @@ export namespace SessionPrompt {
       text: input.text,
     } satisfies MessageV2.TextPart)
     return message
+  }
+
+  /** Skills whose instructions a completed skill load already put into this
+   * epoch, by exact name. */
+  function loadedSkills(messages: MessageV2.WithParts[]) {
+    const names = new Set<string>()
+    for (const message of SessionLoopState.epochMessages(messages)) {
+      if (message.info.role !== "assistant") continue
+      for (const part of message.parts) {
+        if (part.type !== "tool" || part.tool !== SkillTool.id || part.state.status !== "completed") continue
+        const name = (part.state.metadata as { name?: unknown } | undefined)?.name
+        if (typeof name === "string" && name) names.add(name)
+      }
+    }
+    return names
+  }
+
+  /**
+   * An explicit `/skill` in the request is the load, not a request the model
+   * may or may not honour before it starts working. The loop performs it:
+   * one assistant wrapper carrying the completed skill tool call, written
+   * before the first step, so the instructions and the tools the skill
+   * unlocks are in place when the model reads the request. Returns whether a
+   * skill was loaded, in which case the caller re-reads the transcript.
+   */
+  async function preloadInvokedSkills(input: {
+    sessionID: string
+    user: MessageV2.User
+    agent: Agent.Info
+    model: Provider.Model
+    step: number
+    messages: MessageV2.WithParts[]
+    request: string
+    workspace: string
+    abort: AbortSignal
+  }) {
+    if (PermissionNext.disabled([SkillTool.id], input.agent.permission).has(SkillTool.id)) return false
+    if (!SystemPrompt.slashInvocation(input.request)) return false
+    const catalog = (await Skill.catalog(input.agent.permission)).allowed
+    const loaded = loadedSkills(input.messages)
+    const pending = SystemPrompt.invokedSkills(input.request, catalog).filter((name) => !loaded.has(name))
+    if (!pending.length) return false
+    const tool = await SkillTool.init({ agent: input.agent })
+    const wrapper = (await Session.updateMessage({
+      id: await MessageV2.nextMessageID(input.sessionID),
+      role: "assistant",
+      parentID: input.user.id,
+      sessionID: input.sessionID,
+      mode: input.agent.name,
+      agent: input.agent.name,
+      path: { cwd: input.workspace, root: Instance.worktree },
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: input.model.id,
+      providerID: input.model.providerID,
+      internal: { step: input.step },
+      time: { created: Date.now() },
+    })) as MessageV2.Assistant
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: wrapper.id,
+      sessionID: input.sessionID,
+      type: "step-start",
+    })
+    for (const name of pending) {
+      const started = Date.now()
+      const part = (await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: wrapper.id,
+        sessionID: input.sessionID,
+        type: "tool",
+        callID: `call_${Identifier.ascending("part").slice(4)}`,
+        tool: SkillTool.id,
+        state: { status: "running", input: { name }, time: { start: started } },
+      })) as MessageV2.ToolPart
+      const ctx: Tool.Context = {
+        agent: input.agent.name,
+        messageID: wrapper.id,
+        sessionID: input.sessionID,
+        abort: input.abort,
+        callID: part.callID,
+        extra: {},
+        messages: input.messages,
+        async metadata(update) {
+          await Session.updatePart({
+            ...part,
+            type: "tool",
+            state: { ...part.state, ...update },
+          } satisfies MessageV2.ToolPart)
+        },
+        async ask(req) {
+          await PermissionNext.ask(
+            {
+              ...req,
+              sessionID: input.sessionID,
+              mode: (await ProjectAccess.status(Instance.project)).mode,
+              ruleset: input.agent.permission,
+            },
+            input.abort,
+          )
+        },
+      }
+      const result = await tool.execute({ name }, ctx).catch((error) => {
+        log.warn("invoked skill did not load", { sessionID: input.sessionID, name, error })
+        return error instanceof Error ? error : new Error(String(error))
+      })
+      await Session.updatePart({
+        ...part,
+        // `invoked` in the receipt says the loop performed this load for a
+        // /skill the person typed; the part's own metadata slot is provider
+        // metadata and must stay empty.
+        state:
+          result instanceof Error
+            ? {
+                status: "error",
+                input: { name },
+                error: result.message,
+                metadata: { invoked: true },
+                time: { start: started, end: Date.now() },
+              }
+            : {
+                status: "completed",
+                input: { name },
+                title: result.title,
+                metadata: { ...result.metadata, invoked: true },
+                output: result.output,
+                attachments: result.attachments,
+                time: { start: started, end: Date.now() },
+              },
+      } satisfies MessageV2.ToolPart)
+    }
+    wrapper.finish = "tool-calls"
+    wrapper.time.completed = Date.now()
+    await Session.updateMessage(wrapper)
+    return true
   }
 
   function taskWrapper(messages: MessageV2.WithParts[], source: { messageID: string; partID: string }) {
@@ -1505,6 +1642,24 @@ export namespace SessionPrompt {
 
       // Check if user explicitly invoked an agent via @ in this turn
       const route = request(msgs)
+      // A /skill the person named is loaded here, before the step that reads
+      // it, so its tools are on offer for that step.
+      if (
+        await preloadInvokedSkills({
+          sessionID,
+          user: lastUser,
+          agent,
+          model,
+          step: nextStep,
+          messages: msgs,
+          request: route.text ?? "",
+          workspace,
+          abort,
+        })
+      ) {
+        step = nextStep
+        continue
+      }
       const lastUserMsg = route.user
       const bypassAgentCheck = lastUserMsg?.parts.some((p) => p.type === "agent") ?? false
       const delegationSettings = MessageV2.resolveDelegationSettings(lastUser.delegationSettings, {

@@ -1,6 +1,6 @@
 import type { Part, ToolPart } from "@synsci/sdk/v2/client"
 import type { ResearchTraceEntry } from "./research-trace"
-import { collapsibleTracePart, traceFamily } from "./research-trace"
+import { collapsibleTracePart, settledCollapsible, traceFamily } from "./research-trace"
 import { toolChanges, writtenFiles, reasoningDisplayText } from "./tool-display"
 
 /**
@@ -164,6 +164,38 @@ export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
     rows.push({ kind: "tool", entry })
   })
   return rows
+}
+
+/**
+ * The rows a collapsed turn shows: the answer, plus anything that still
+ * needs the reader (a pending request, a saved Result). A failure is the
+ * agent's to deal with while it works and part of the story once it has
+ * answered, so neither state shows a failure folded; only a turn that
+ * stopped without an answer shows the failures of its final step, which are
+ * what stopped it. Harness notes fold once the turn has answered.
+ */
+export function collapsedTraceRows(
+  rows: TraceRow[],
+  state: {
+    working: boolean
+    settled: boolean
+    /** The id of the turn's last assistant message: the step a stop happened in. */
+    final?: string
+    pendingRequestCallID?: string
+    pendingChildRequest?: (sessionID: string) => boolean
+  },
+): TraceRow[] {
+  const stopped = !state.working && !state.settled
+  return rows.filter((row) => {
+    if (row.kind === "text") return !row.narration
+    if (row.kind === "note") return !state.settled
+    if (row.kind === "tool" || row.kind === "agent") {
+      if (stopped && row.entry.message.id === state.final)
+        return !collapsibleTracePart(row.entry.part, state.pendingRequestCallID, state.pendingChildRequest)
+      return !settledCollapsible(row.entry.part, state.pendingRequestCallID, state.pendingChildRequest)
+    }
+    return false
+  })
 }
 
 function plural(count: number, one: string, many: string) {

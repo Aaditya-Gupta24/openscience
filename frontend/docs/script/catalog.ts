@@ -50,7 +50,8 @@ const descriptions: Record<string, string> = {
     "Serve language models with vLLM and investigate memory, throughput, and inference configuration.",
   "groq-inference": "Use your Groq account for supported inference and audio workflows.",
   whisper: "Transcribe speech, identify language, or translate speech to English with available Whisper models.",
-  "generate-image": "Generate or edit illustrations and other images with configured image access.",
+  "generate-image":
+    "Generate illustrations, graphical abstracts and image edits with generate_image through Ace or a Gemini or OpenAI key.",
   clip: "Work on image-text matching, image classification, and related vision-language tasks.",
   langchain: "Build language-model applications with retrieval, tools, and connected services.",
   infographics: "Create and review explanatory infographics; this procedure is experimental.",

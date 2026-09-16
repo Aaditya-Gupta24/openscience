@@ -465,6 +465,132 @@ form.workspace-composer [data-component="prompt-input"] [data-type="conversation
   height: 1px;
 }
 
+/* @ picker
+   --------
+   Name first, folder dimmed beside it, one line per row; the active row's
+   place in the tree is drawn in a pane beside the list when there is room. */
+
+.workspace-composer__at {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.workspace-composer__at-list {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-composer__at-row {
+  width: 100%;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-composer__at-row.is-active,
+.workspace-composer__at-row:hover {
+  background: var(--color-bg-subtle, var(--color-surface-raised-hover));
+}
+
+.workspace-composer__at-row:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.workspace-composer__at-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-faint);
+}
+
+.workspace-composer__at-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-medium);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-composer__at-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-composer__at-preview {
+  display: none;
+}
+
+@container (min-width: 560px) {
+  .workspace-composer__at[data-preview] {
+    grid-template-columns: minmax(0, 1fr) 232px;
+  }
+
+  /* The pane keeps its place while a long list scrolls beneath it. */
+  .workspace-composer__at[data-preview] .workspace-composer__at-preview {
+    position: sticky;
+    top: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-left: 4px;
+    padding: 8px 10px;
+    border-left: 1px solid var(--color-border-weak, var(--color-border));
+    color: var(--color-text-muted);
+    font-size: var(--font-size-small);
+    line-height: 18px;
+  }
+}
+
+.workspace-composer__at-crumb {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: calc(var(--depth, 0) * 12px);
+  white-space: nowrap;
+}
+
+.workspace-composer__at-crumb > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-composer__at-crumb[data-last] {
+  color: var(--color-text);
+}
+
+.workspace-composer__at-crumb[data-last] > span {
+  padding: 0 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-xs);
+  background: var(--color-bg-subtle, var(--color-surface-raised-hover));
+}
+
 @media (max-width: 639px) {
   .workspace-composer__suggestions {
     max-height: min(340px, 48vh);

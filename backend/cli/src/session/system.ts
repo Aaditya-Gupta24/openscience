@@ -85,6 +85,18 @@ export namespace SystemPrompt {
     return /(?:^|[\s([{'"])\/([a-z0-9][a-z0-9_-]*)(?=$|[^a-z0-9_/-])/i.test(message ?? "")
   }
 
+  /** The skills a request names with a slash, as their exact catalog names,
+   * in the order written and without repeats. A token that names no skill
+   * (a command such as /compact, a path fragment) is not one. */
+  export function invokedSkills(message: string | undefined, skills: readonly Pick<Skill.Info, "name">[]) {
+    const names = new Map(skills.map((skill) => [skill.name.toLowerCase(), skill.name]))
+    return [...(message ?? "").matchAll(/(?:^|[\s([{'\"])\/([a-z0-9][a-z0-9_-]*)(?=$|[^a-z0-9_/-])/gi)]
+      .map((match) => match[1].toLowerCase())
+      .map((name) => names.get(name) ?? names.get(SkillCatalog.resolve(name).toLowerCase()))
+      .filter((name): name is string => !!name)
+      .filter((name, index, all) => all.indexOf(name) === index)
+  }
+
   function sentence(text: string) {
     const first = text.split(/(?<=[.!?])\s+/)[0] ?? text
     return first.length > 140 ? `${first.slice(0, 137)}...` : first
@@ -166,16 +178,14 @@ export namespace SystemPrompt {
           ),
         ]
       : []
-    const names = new Map(skills.map((skill) => [skill.name.toLowerCase(), skill.name]))
-    const invoked = [...(message ?? "").matchAll(/(?:^|[\s([{'\"])\/([a-z0-9][a-z0-9_-]*)(?=$|[^a-z0-9_/-])/gi)]
-      .map((match) => match[1].toLowerCase())
-      .map((name) => names.get(name) ?? names.get(SkillCatalog.resolve(name).toLowerCase()))
-      .filter((name): name is string => !!name)
-      .filter((name, index, all) => all.indexOf(name) === index)
+    const invoked = invokedSkills(message, skills)
+    // The loop loads an invoked skill before the first step, so by the time
+    // the model reads this the instructions are already in the transcript;
+    // the block binds the work to them.
     const invoke = invoked.length
       ? [
           "<slash-skill-invocation>",
-          `The user explicitly invoked ${invoked.map((name) => `/${name}`).join(", ")}. Before substantive work, load ${invoked.map((name) => `skill({name:"${name}"})`).join(" and ")} with no preceding text. Treat these explicit skills as the complete requested workflow scope; do not add likely matches or routing-table skills unless a loaded skill names a required dependency. Then answer the surrounding request.`,
+          `The user explicitly invoked ${invoked.map((name) => `/${name}`).join(", ")}. ${invoked.length === 1 ? "Its instructions have been loaded into this conversation" : "Their instructions have been loaded into this conversation"}: follow ${invoked.length === 1 ? "that skill's" : "those skills'"} workflow for the surrounding request, load ${invoked.map((name) => `skill({name:"${name}"})`).join(" and ")} yourself only if no loaded skill result for it is present, and treat these explicit skills as the complete requested workflow scope: do not add likely matches or routing-table skills unless a loaded skill names a required dependency.`,
           "</slash-skill-invocation>",
         ]
       : []
@@ -208,7 +218,9 @@ export namespace SystemPrompt {
     "execution-hygiene",
     "delegation",
     "figures",
+    "scientific-visualization",
     "schematics",
+    "generate-image",
     "paper-writing",
     "ml-paper-writing",
     "citations",
@@ -259,7 +271,7 @@ export namespace SystemPrompt {
     })
     return [
       "<core-skills>",
-      "Core skills, loaded with skill({name}) when the request matches. Load the skill for each phase as that phase begins (figures before the first plot, schematics before a diagram, a writing skill before drafting a report or paper), one at a time rather than all up front; do not load a skill on keywords alone, and do not narrate the load.",
+      "Core skills, loaded with skill({name}) when the request matches. Load the skill for each phase as that phase begins (figures before the first plot, schematics before a diagram, generate-image before an illustration, a writing skill before drafting a report or paper), one at a time rather than all up front; do not load a skill on keywords alone, and do not narrate the load. Diagrams, schematics and illustrations are rendered with generate_image, never drawn as TikZ or SVG.",
       ...core.map((skill) => `- ${skill.name}: ${skill.summary ?? sentence(skill.description)}`),
       ...(pointers.length ? ["Library skills by exact name for provider and database work:", ...pointers] : []),
       `Anything else in the ${catalog.length}-skill library: skill({query:"<focused task>"}) and load an exact returned name.`,

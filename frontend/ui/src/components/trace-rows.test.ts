@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { AssistantMessage, Part, ToolPart } from "@synsci/sdk/v2/client"
 import {
   buildTraceRows,
+  collapsedTraceRows,
   COMPACTED_NOTE,
   editedChanges,
   editedLabel,
@@ -38,6 +39,56 @@ function reasoning(id: string, start: number, end?: number): Part {
 }
 
 const entries = (parts: Part[]) => parts.map((part) => ({ message, part }))
+
+describe("collapsed trace rows", () => {
+  const earlier = { ...message, id: "msg_earlier" } as AssistantMessage
+  const final = { ...message, id: "msg_final" } as AssistantMessage
+  const failed = (id: string, owner: AssistantMessage) => ({
+    message: owner,
+    part: { ...tool(id, "bash", { status: "error", error: "exit 1" } as never), messageID: owner.id },
+  })
+  const saved = { message: final, part: tool("save", "artifact", { metadata: { artifact: { id: "art_1" } } }) }
+  const rows = () =>
+    buildTraceRows([
+      failed("f1", earlier),
+      { message: earlier, part: text("n", "Retrying with the other compiler.") },
+      failed("f2", final),
+      saved,
+      { message: final, part: text("a", "Done.") },
+    ])
+  const kinds = (visible: ReturnType<typeof collapsedTraceRows>) =>
+    visible.map((row) => ("entry" in row ? row.entry.part.id : row.kind))
+
+  test("while the turn works, failures fold: they are the agent's to deal with", () => {
+    expect(kinds(collapsedTraceRows(rows(), { working: true, settled: false, final: final.id }))).toEqual(["save", "a"])
+  })
+
+  test("once the turn has answered, recovered failures stay folded", () => {
+    expect(kinds(collapsedTraceRows(rows(), { working: false, settled: true, final: final.id }))).toEqual(["save", "a"])
+  })
+
+  test("a turn that stopped without an answer shows the failures of its final step only", () => {
+    expect(kinds(collapsedTraceRows(rows(), { working: false, settled: false, final: final.id }))).toEqual([
+      "f2",
+      "save",
+      "a",
+    ])
+  })
+
+  test("a pending request stays visible in every state", () => {
+    const pending = { message: final, part: tool("ask", "question", { status: "running" } as never) }
+    const withRequest = buildTraceRows([failed("f1", earlier), pending])
+    for (const state of [
+      { working: true, settled: false },
+      { working: false, settled: true },
+      { working: false, settled: false },
+    ]) {
+      expect(
+        kinds(collapsedTraceRows(withRequest, { ...state, final: final.id, pendingRequestCallID: "call_ask" })),
+      ).toContain("ask")
+    }
+  })
+})
 
 describe("trace rows", () => {
   test("a mid-turn compaction is one grey note between the work before and after it", () => {

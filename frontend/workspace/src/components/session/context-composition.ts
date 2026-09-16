@@ -67,15 +67,47 @@ export type ContextCompositionEstimate = {
   }
 }
 
+export type ContextBucket =
+  "system" | "text" | "reasoning" | "tool" | "skills" | "image" | "document" | "instructions" | "user" | "assistant"
+
 /** These are server estimates of separate content buckets, not billed token allocations. */
 export function recordedContextComposition(value: ContextCompositionEstimate) {
   return [
-    { label: "System instructions", tokens: value.tokens.system },
-    { label: "Conversation text", tokens: value.tokens.text },
-    { label: "Reasoning", tokens: value.tokens.reasoning },
-    { label: "Tool calls and results", tokens: value.tokens.tool },
-    { label: "Skills", tokens: value.tokens.skills },
-    { label: "Images", tokens: value.tokens.image },
-    { label: "Documents", tokens: value.tokens.document },
+    { key: "system" as const, label: "System instructions", tokens: value.tokens.system },
+    { key: "text" as const, label: "Conversation text", tokens: value.tokens.text },
+    { key: "reasoning" as const, label: "Reasoning", tokens: value.tokens.reasoning },
+    { key: "tool" as const, label: "Tool calls and results", tokens: value.tokens.tool },
+    { key: "skills" as const, label: "Skills", tokens: value.tokens.skills },
+    { key: "image" as const, label: "Images", tokens: value.tokens.image },
+    { key: "document" as const, label: "Documents", tokens: value.tokens.document },
   ]
+}
+
+export type ContextSegment = { key: ContextBucket; label: string; tokens?: number; share: number }
+
+/** Each bucket as a share of what the buckets add up to, so the filled part of
+ * a usage bar can be divided between them. A bucket the server did not report
+ * keeps its place in the legend and no width in the bar. */
+export function contextSegments(
+  entries: Array<{ key: ContextBucket; label: string; tokens?: number }>,
+): ContextSegment[] {
+  const total = entries.reduce((sum, entry) => sum + (entry.tokens ?? 0), 0)
+  return entries.map((entry) => ({
+    ...entry,
+    share: total > 0 && entry.tokens ? entry.tokens / total : 0,
+  }))
+}
+
+/** One colour per bucket, from the syntax palette so every theme has them. */
+export const CONTEXT_BUCKET_COLORS: Record<ContextBucket, string> = {
+  system: "var(--syntax-info)",
+  instructions: "var(--syntax-info)",
+  text: "var(--syntax-success)",
+  user: "var(--syntax-success)",
+  assistant: "var(--syntax-property)",
+  reasoning: "var(--syntax-keyword)",
+  tool: "var(--syntax-warning)",
+  skills: "var(--syntax-property)",
+  image: "var(--syntax-string)",
+  document: "var(--syntax-type)",
 }

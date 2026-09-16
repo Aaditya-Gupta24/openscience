@@ -79,7 +79,8 @@ at a time and answer "which part matters". Analysis explains a surprising result
 plot, not a paragraph of speculation.
 
 **Figures and tables.** The figures skill for plots (learning curves, scaling, comparisons,
-Pareto, matrices), the schematics skill for the method overview. Every figure has a claim
+Pareto, matrices), the schematics skill for the method overview, rendered with
+`generate_image` and never hand-drawn as TikZ or SVG. Every figure has a claim
 in its caption; every table is referenced before it appears; units and uncertainty on
 everything.
 

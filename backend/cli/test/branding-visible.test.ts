@@ -16,7 +16,7 @@ const publicSources = [
   "src/agent/prompt/default.txt",
   "src/agent/prompt/specialist.txt",
   "src/skill/system/goal.txt",
-  "skills/llm-tools/generate-image/scripts/generate_image.py",
+  "skills/core/generate-image/scripts/generate_image.py",
   "skills/writing/scientific-slides/scripts/generate_slide_image.py",
   "skills/writing/scientific-slides/scripts/generate_slide_image_ai.py",
   "skills/visualization/infographics/scripts/generate_infographic_ai.py",

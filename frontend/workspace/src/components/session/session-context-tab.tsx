@@ -1,5 +1,4 @@
 import { createMemo, createEffect, on, onCleanup, For, Show } from "solid-js"
-import type { JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
@@ -14,10 +13,22 @@ import { Code } from "@synsci/ui/code"
 import { Markdown } from "@synsci/ui/markdown"
 import type { AssistantMessage, Message, Part, UserMessage } from "@synsci/sdk/v2/client"
 import { useLanguage } from "@/context/language"
-import { contextComposition, recordedContextComposition, type ContextCompositionEstimate } from "./context-composition"
+import { contextWindow } from "@/pages/session-context"
+import {
+  CONTEXT_BUCKET_COLORS,
+  contextComposition,
+  contextSegments,
+  recordedContextComposition,
+  type ContextCompositionEstimate,
+} from "./context-composition"
+import "./session-context-tab.css"
 
 interface SessionContextTabProps {
   composition?: ContextCompositionEstimate
+  /** The size the header pill shows: the live pre-call estimate while a turn
+   * is in flight, else the newest reported usage. */
+  total?: number
+  estimate?: boolean
   messages: () => Message[]
   visibleUserMessages: () => UserMessage[]
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
@@ -46,26 +57,24 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
     const provider = sync.data.provider.all.find((x) => x.id === last.providerID)
     const model = provider?.models[last.modelID]
-    const limit = model?.limit.context
-
-    const input = last.tokens.input
-    const output = last.tokens.output
-    const reasoning = last.tokens.reasoning
-    const cacheRead = last.tokens.cache.read
-    const cacheWrite = last.tokens.cache.write
-    const total = TokenUsage.total(last.tokens)
-    const usage = limit ? Math.round((total / limit) * 100) : null
+    const window = contextWindow(props.messages(), model)
+    const reported = TokenUsage.total(last.tokens)
+    const total = props.total ?? reported
+    const usage = window.window ? Math.round((total / window.window) * 100) : null
 
     return {
       message: last,
       provider,
       model,
-      limit,
-      input,
-      output,
-      reasoning,
-      cacheRead,
-      cacheWrite,
+      window: window.window,
+      full: window.full,
+      capped: window.capped,
+      input: last.tokens.input,
+      output: last.tokens.output,
+      reasoning: last.tokens.reasoning,
+      cacheRead: last.tokens.cache.read,
+      cacheWrite: last.tokens.cache.write,
+      reported,
       total,
       usage,
     }
@@ -102,11 +111,11 @@ export function SessionContextTab(props: SessionContextTabProps) {
     return value.toLocaleString(language.locale())
   }
 
-  const percent = (value: number | null | undefined) => {
-    if (value === undefined) return "—"
-    if (value === null) return "—"
-    return value.toLocaleString(language.locale()) + "%"
-  }
+  // Two decimals keep 1.05M distinct from a rounded 1.1M; short counts are unaffected.
+  const compact = (value: number | undefined) =>
+    value === undefined
+      ? "—"
+      : new Intl.NumberFormat(language.locale(), { notation: "compact", maximumFractionDigits: 2 }).format(value)
 
   const time = (value: number | undefined) => {
     if (!value) return "—"
@@ -126,7 +135,11 @@ export function SessionContextTab(props: SessionContextTabProps) {
     return c.message.modelID
   })
 
-  const breakdown = createMemo(() => {
+  // What fills the window: the server's recorded buckets when a turn reported
+  // them, else the transcript's own estimate of the text it holds.
+  const segments = createMemo(() => {
+    const recorded = props.composition
+    if (recorded) return contextSegments(recordedContextComposition(recorded))
     const call = ctx()?.message
     if (!call) return []
     const labels = {
@@ -135,51 +148,20 @@ export function SessionContextTab(props: SessionContextTabProps) {
       assistant: language.t("context.breakdown.assistant"),
       tool: language.t("context.breakdown.tool"),
     }
-    const colors = { instructions: "info", user: "success", assistant: "property", tool: "warning" }
-    return contextComposition(props.messages(), sync.data.part, call).map((entry) => ({
-      label: labels[entry.key],
-      width: entry.share * 100,
-      percent: `~${Math.round(entry.share * 100)}%`,
-      color: `var(--syntax-${colors[entry.key]})`,
-    }))
+    return contextSegments(
+      contextComposition(props.messages(), sync.data.part, call).map((entry) => ({
+        key: entry.key,
+        label: labels[entry.key],
+        tokens: entry.tokens,
+      })),
+    )
   })
 
-  function Stat(statProps: { label: string; value: JSX.Element }) {
-    return (
-      <div class="flex flex-col gap-1">
-        <div class="text-12-regular text-text-weak">{statProps.label}</div>
-        <div class="text-12-medium text-text-strong">{statProps.value}</div>
-      </div>
-    )
-  }
-
-  const stats = createMemo(() => {
-    const c = ctx()
-    const count = counts()
-    return [
-      { label: language.t("context.stats.session"), value: props.info()?.title ?? params.id ?? "—" },
-      { label: language.t("context.stats.messages"), value: count.all.toLocaleString(language.locale()) },
-      { label: language.t("context.stats.provider"), value: providerLabel() },
-      { label: language.t("context.stats.model"), value: modelLabel() },
-      { label: language.t("context.stats.limit"), value: number(c?.limit) },
-      { label: language.t("context.stats.totalTokens"), value: number(c?.total) },
-      { label: language.t("context.stats.usage"), value: percent(c?.usage) },
-      { label: language.t("context.stats.inputTokens"), value: number(c?.input) },
-      { label: language.t("context.stats.outputTokens"), value: number(c?.output) },
-      { label: language.t("context.stats.reasoningTokens"), value: number(c?.reasoning) },
-      {
-        label: language.t("context.stats.cacheTokens"),
-        value: `${number(c?.cacheRead)} / ${number(c?.cacheWrite)}`,
-      },
-      { label: language.t("context.stats.userMessages"), value: count.user.toLocaleString(language.locale()) },
-      {
-        label: language.t("context.stats.assistantMessages"),
-        value: count.assistant.toLocaleString(language.locale()),
-      },
-      { label: language.t("context.stats.totalCost"), value: cost() },
-      { label: language.t("context.stats.sessionCreated"), value: time(props.info()?.time.created) },
-      { label: language.t("context.stats.lastActivity"), value: time(c?.message.time.created) },
-    ] satisfies { label: string; value: JSX.Element }[]
+  const level = createMemo(() => {
+    const usage = ctx()?.usage ?? 0
+    if (usage >= 100) return "full"
+    if (usage >= 85) return "high"
+    return undefined
   })
 
   function RawMessageContent(msgProps: { message: Message }) {
@@ -273,90 +255,150 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
   return (
     <div
-      class="@container h-full overflow-y-auto no-scrollbar pb-10"
+      class="context-panel"
       ref={(el) => {
         scroll = el
         restoreScroll()
       }}
       onScroll={handleScroll}
     >
-      <div class="px-6 pt-4 flex flex-col gap-10">
-        <div class="grid grid-cols-1 @[32rem]:grid-cols-2 gap-4">
-          <For each={stats()}>{(stat) => <Stat label={stat.label} value={stat.value} />}</For>
+      <header class="context-panel__headline">
+        <div class="context-panel__tokens">
+          <strong>{compact(ctx()?.total)}</strong>
+          <span>
+            {ctx()?.window
+              ? language.t("context.headline.of", { window: compact(ctx()?.window) })
+              : language.t("context.headline.tokens")}
+          </span>
+          <Show when={ctx()?.usage !== null && ctx()?.usage !== undefined}>
+            <span class="context-panel__percent" data-level={level()}>
+              {ctx()?.usage}%
+            </span>
+          </Show>
         </div>
+        <div
+          class="context-panel__bar"
+          role="img"
+          aria-label={`${number(ctx()?.total)} ${language.t("context.headline.tokens")}, ${ctx()?.usage ?? 0}%`}
+        >
+          <For each={segments().filter((segment) => segment.share > 0)}>
+            {(segment) => (
+              <span
+                style={{
+                  width: `${Math.max(0, Math.min(100, (ctx()?.usage ?? 0) * segment.share))}%`,
+                  background: CONTEXT_BUCKET_COLORS[segment.key],
+                }}
+              />
+            )}
+          </For>
+        </div>
+        <div class="context-panel__subline">
+          <span>{modelLabel()}</span>
+          <span>{providerLabel()}</span>
+          <Show when={ctx()?.capped && ctx()?.full}>
+            <span>{language.t("context.headline.cap", { full: compact(ctx()?.full) })}</span>
+          </Show>
+          <span>{props.estimate ? language.t("context.usage.estimate") : language.t("context.headline.reported")}</span>
+        </div>
+      </header>
 
-        <Show when={props.composition}>
-          {(composition) => (
-            <section class="flex flex-col gap-2" aria-label="Recorded context composition estimate">
-              <div class="text-12-regular text-text-weak">Recorded context composition (estimate)</div>
-              <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-12-regular">
-                <For each={recordedContextComposition(composition())}>
-                  {(entry) => (
-                    <>
-                      <dt>{entry.label}</dt>
-                      <dd class="text-right">
-                        {entry.tokens === undefined ? "Not reported" : `~${number(entry.tokens)} tokens`}
-                      </dd>
-                    </>
-                  )}
-                </For>
-              </dl>
-              <div class="text-11-regular text-text-weaker">
-                Estimates from the last observed pre-call context. Documents and images are separate from text. Excludes
-                tool definitions and provider-specific wrappers; these are not billed token counts.
-              </div>
-            </section>
-          )}
-        </Show>
-        <Show when={!props.composition && breakdown().length > 0}>
-          <div class="flex flex-col gap-2">
-            <div class="text-12-regular text-text-weak">{language.t("context.composition.title")}</div>
-            <div class="h-2 w-full rounded-full bg-surface-base overflow-hidden flex">
-              <For each={breakdown()}>
-                {(segment) => (
-                  <div
-                    class="h-full"
-                    style={{
-                      width: `${segment.width}%`,
-                      "background-color": segment.color,
-                    }}
-                  />
-                )}
-              </For>
-            </div>
-            <div class="flex flex-wrap gap-x-3 gap-y-1">
-              <For each={breakdown()}>
-                {(segment) => (
-                  <div class="flex items-center gap-1 text-11-regular text-text-weak">
-                    <div class="size-2 rounded-sm" style={{ "background-color": segment.color }} />
-                    <div>{segment.label}</div>
-                    <div class="text-text-weaker">{segment.percent}</div>
-                  </div>
-                )}
-              </For>
-            </div>
-            <div class="text-11-regular text-text-weaker">{language.t("context.composition.note")}</div>
-          </div>
-        </Show>
+      <Show when={segments().length > 0}>
+        <section class="context-panel__section" aria-label={language.t("context.section.composition")}>
+          <h3 class="context-panel__title">{language.t("context.section.composition")}</h3>
+          <ul class="context-panel__legend">
+            <For each={segments()}>
+              {(segment) => (
+                <li data-empty={segment.tokens ? undefined : "true"}>
+                  <i style={{ background: CONTEXT_BUCKET_COLORS[segment.key] }} />
+                  <span class="label">{segment.label}</span>
+                  <span class="value">
+                    {segment.tokens === undefined
+                      ? language.t("context.composition.notReported")
+                      : `~${number(segment.tokens)}`}
+                  </span>
+                  <span class="share">{segment.share > 0 ? `${Math.round(segment.share * 100)}%` : ""}</span>
+                </li>
+              )}
+            </For>
+          </ul>
+          <p class="context-panel__note">
+            {props.composition
+              ? language.t("context.composition.recordedNote")
+              : language.t("context.composition.note")}
+          </p>
+        </section>
+      </Show>
 
-        <Show when={systemPrompt()}>
-          {(prompt) => (
-            <div class="flex flex-col gap-2">
-              <div class="text-12-regular text-text-weak">{language.t("context.composition.instructions")}</div>
-              <div class="border border-border-base rounded-md bg-surface-base px-3 py-2">
+      <div class="context-panel__cards">
+        <section class="context-panel__card" aria-label={language.t("context.section.lastRequest")}>
+          <h3 class="context-panel__title">{language.t("context.section.lastRequest")}</h3>
+          <dl>
+            <dt>{language.t("context.stats.inputTokens")}</dt>
+            <dd>{number(ctx()?.input)}</dd>
+            <dt>{language.t("context.stats.cacheRead")}</dt>
+            <dd>{number(ctx()?.cacheRead)}</dd>
+            <dt>{language.t("context.stats.cacheWrite")}</dt>
+            <dd>{number(ctx()?.cacheWrite)}</dd>
+            <dt>{language.t("context.stats.outputTokens")}</dt>
+            <dd>{number(ctx()?.output)}</dd>
+            <dt>{language.t("context.stats.reasoningTokens")}</dt>
+            <dd>{number(ctx()?.reasoning)}</dd>
+            <dt>{language.t("context.stats.limit")}</dt>
+            <dd>
+              {number(ctx()?.window)}
+              <Show when={ctx()?.capped && ctx()?.full}>
+                <small>/ {number(ctx()?.full)}</small>
+              </Show>
+            </dd>
+          </dl>
+        </section>
+        <section class="context-panel__card" aria-label={language.t("context.section.session")}>
+          <h3 class="context-panel__title">{language.t("context.section.session")}</h3>
+          <dl>
+            <dt>{language.t("context.stats.messages")}</dt>
+            <dd>
+              {number(counts().all)}
+              <small>
+                {language.t("context.stats.messagesDetail", {
+                  user: number(counts().user),
+                  assistant: number(counts().assistant),
+                })}
+              </small>
+            </dd>
+            <dt>{language.t("context.stats.totalCost")}</dt>
+            <dd>{cost()}</dd>
+            <dt>{language.t("context.stats.sessionCreated")}</dt>
+            <dd>{time(props.info()?.time.created)}</dd>
+            <dt>{language.t("context.stats.lastActivity")}</dt>
+            <dd>{time(ctx()?.message.time.created)}</dd>
+          </dl>
+        </section>
+      </div>
+
+      <Show when={systemPrompt()}>
+        {(prompt) => (
+          <details class="context-panel__details">
+            <summary>{language.t("context.composition.instructions")}</summary>
+            <div>
+              <div class="context-panel__instructions">
                 <Markdown text={prompt()} class="text-12-regular" />
               </div>
             </div>
-          )}
-        </Show>
+          </details>
+        )}
+      </Show>
 
-        <div class="flex flex-col gap-2">
-          <div class="text-12-regular text-text-weak">{language.t("context.rawMessages.title")}</div>
+      <details class="context-panel__details">
+        <summary>
+          {language.t("context.rawMessages.title")}
+          <small>{number(counts().all)}</small>
+        </summary>
+        <div>
           <Accordion multiple>
             <For each={props.messages()}>{(message) => <RawMessage message={message} />}</For>
           </Accordion>
         </div>
-      </div>
+      </details>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 ---
 name: figures
-description: Makes publication-quality plots from data with matplotlib or TikZ, learning curves, scaling laws, benchmark and ablation comparisons, Pareto trade-offs, heatmaps and confusion matrices, sized for the page, vector, with uncertainty shown. Use whenever results are plotted, charted or visualized for a paper, report or answer, or an existing plot looks unpolished. Not for conceptual diagrams or schematics (use schematics) and never for drawing numbers that did not come from a run.
+description: Makes publication-quality plots from data with matplotlib, learning curves, scaling laws, benchmark and ablation comparisons, Pareto trade-offs, heatmaps and confusion matrices, sized for the page, vector, with uncertainty shown. Use whenever results are plotted, charted or visualized for a paper, report or answer, or an existing plot looks unpolished. Not for conceptual diagrams or schematics (use schematics) and never for drawing numbers that did not come from a run.
 summary: "Publication plots from real data: sized for the page, vector, uncertainty shown."
 category: core
 role: workflow
@@ -121,9 +121,8 @@ Pick by the question the figure answers, not by the shape in mind.
 | What is traded off against what: reward vs KL, quality vs cost or latency? | `references/pareto.md` |
 | What does this 2D grid, confusion matrix or sweep look like? | `references/matrix.md` |
 
-For a method, architecture or pipeline diagram, load the schematics skill instead; a TikZ
-scaffold that matches this palette is in `assets/tikz-preamble.tex` for the cases where an
-editable vector diagram is the right medium.
+For a method, architecture or pipeline diagram, load the schematics skill instead: those
+are rendered with `generate_image`, never hand-drawn as TikZ or SVG.
 
 ## Before you hand it over
 

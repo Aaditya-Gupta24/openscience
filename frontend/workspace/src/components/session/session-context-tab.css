@@ -1,0 +1,264 @@
+/* Context panel
+   -------------
+   One headline says how full the window is and what fills it; two cards
+   carry the exact counts; the long material (instructions, raw messages)
+   folds away beneath them. */
+
+.context-panel {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 4px 24px 40px;
+  font-family: var(--font-family-sans);
+}
+
+.context-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.context-panel__headline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 20px;
+}
+
+.context-panel__tokens {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-medium);
+  line-height: 20px;
+}
+
+.context-panel__tokens strong {
+  color: var(--color-text);
+  font-size: 24px;
+  font-weight: var(--font-weight-medium);
+  line-height: 28px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-panel__percent {
+  margin-left: auto;
+  color: var(--color-text);
+  font-size: var(--font-size-medium);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-panel__percent[data-level="high"] {
+  color: var(--syntax-warning);
+}
+
+.context-panel__percent[data-level="full"] {
+  color: var(--syntax-critical);
+}
+
+.context-panel__bar {
+  height: 6px;
+  display: flex;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-bg-subtle, var(--color-surface-raised-hover));
+}
+
+.context-panel__bar > span {
+  flex: none;
+  height: 100%;
+  min-width: 0;
+}
+
+.context-panel__bar > span + span {
+  margin-left: 1px;
+}
+
+.context-panel__subline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-small);
+  line-height: 16px;
+}
+
+.context-panel__subline > span + span::before {
+  content: "·";
+  margin: 0 6px;
+}
+
+.context-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-border-weak, var(--color-border));
+}
+
+.context-panel__title {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  line-height: 16px;
+}
+
+.context-panel__legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 24px;
+}
+
+.context-panel__legend li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+}
+
+.context-panel__legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.context-panel__legend li[data-empty] {
+  color: var(--color-text-faint);
+}
+
+.context-panel__legend li[data-empty] i {
+  background: var(--color-bg-subtle, var(--color-surface-raised-hover)) !important;
+}
+
+.context-panel__legend .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-panel__legend .value {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-panel__legend .share {
+  min-width: 34px;
+  color: var(--color-text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-panel__note {
+  margin: 2px 0 0;
+  color: var(--color-text-faint);
+  font-size: var(--font-size-x-small, 11px);
+  line-height: 15px;
+}
+
+.context-panel__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-border-weak, var(--color-border));
+}
+
+.context-panel__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-weak, var(--color-border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-text) 2.5%, transparent);
+}
+
+.context-panel__card dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  font-size: var(--font-size-small);
+  line-height: 18px;
+}
+
+.context-panel__card dt {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-panel__card dd {
+  margin: 0;
+  color: var(--color-text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.context-panel__card dd small {
+  margin-left: 6px;
+  color: var(--color-text-faint);
+  font-size: inherit;
+}
+
+.context-panel__details {
+  border-top: 1px solid var(--color-border-weak, var(--color-border));
+}
+
+.context-panel__details summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-medium);
+  line-height: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.context-panel__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.context-panel__details summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin: 0 3px;
+  border-right: 1.5px solid var(--color-text-faint);
+  border-bottom: 1.5px solid var(--color-text-faint);
+  transform: rotate(-45deg);
+  transition: transform 140ms var(--ease-standard);
+}
+
+.context-panel__details[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.context-panel__details summary small {
+  color: var(--color-text-faint);
+  font-size: var(--font-size-small);
+}
+
+.context-panel__details > :not(summary) {
+  padding-bottom: 16px;
+}
+
+.context-panel__instructions {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-weak, var(--color-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-text) 2.5%, transparent);
+}

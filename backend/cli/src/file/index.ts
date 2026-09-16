@@ -1083,6 +1083,22 @@ export namespace File {
     })
   }
 
+  /** Generated caches and vendored trees never help a person find their own
+   * file, and an isolated project folder has no .gitignore to keep them out
+   * of the scan. A query that names one of them still reaches it. */
+  const SEARCH_NOISE = new Set([
+    "__pycache__",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ipynb_checkpoints",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".DS_Store",
+    ".openscience",
+  ])
+
   export async function search(input: { query: string; limit?: number; dirs?: boolean; type?: "file" | "directory" }) {
     const query = input.query.trim()
     const limit = input.limit ?? 100
@@ -1091,10 +1107,8 @@ export namespace File {
 
     const result = await state().then((x) => x.files())
 
-    const hidden = (item: string) => {
-      const normalized = item.replaceAll("\\", "/").replace(/\/+$/, "")
-      return normalized.split("/").some((p) => p.startsWith(".") && p.length > 1)
-    }
+    const segments = (item: string) => item.replaceAll("\\", "/").split("/").filter(Boolean)
+    const hidden = (item: string) => segments(item).some((p) => p.startsWith(".") && p.length > 1)
     const preferHidden = query.startsWith(".") || query.includes("/.")
     const sortHiddenLast = (items: string[]) => {
       if (preferHidden) return items
@@ -1107,13 +1121,27 @@ export namespace File {
       }
       return [...visible, ...hiddenItems]
     }
+    const lower = query.toLowerCase()
+    const wanted =
+      lower.length >= 3 &&
+      [...SEARCH_NOISE].some((name) => lower.includes(name.toLowerCase()) || name.toLowerCase().includes(lower))
+    const quiet = (items: string[]) =>
+      wanted ? items : items.filter((item) => !segments(item).some((p) => SEARCH_NOISE.has(p)))
     if (!query) {
-      if (kind === "file") return result.files.slice(0, limit)
-      return sortHiddenLast(result.dirs.toSorted()).slice(0, limit)
+      if (kind === "file") return quiet(result.files).slice(0, limit)
+      if (kind === "directory") return sortHiddenLast(quiet(result.dirs).toSorted()).slice(0, limit)
+      // Nothing typed yet: the project's top level, folders before files at
+      // each depth, is what a person browsing for a file expects, not a list
+      // of its deepest directories.
+      const depth = (item: string) => segments(item).length
+      const folder = (item: string) => (item.endsWith("/") ? 0 : 1)
+      const shallow = (a: string, b: string) => depth(a) - depth(b) || folder(a) - folder(b) || a.localeCompare(b)
+      return sortHiddenLast([...quiet(result.dirs), ...quiet(result.files)].toSorted(shallow)).slice(0, limit)
     }
 
-    const items =
-      kind === "file" ? result.files : kind === "directory" ? result.dirs : [...result.files, ...result.dirs]
+    const items = quiet(
+      kind === "file" ? result.files : kind === "directory" ? result.dirs : [...result.files, ...result.dirs],
+    )
 
     const searchLimit = kind === "directory" && !preferHidden ? limit * 20 : limit
     const sorted = fuzzysort.go(query, items, { limit: searchLimit }).map((r) => r.target)
