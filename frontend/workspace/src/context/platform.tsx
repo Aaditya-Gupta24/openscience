@@ -57,7 +57,7 @@ export type Platform = {
    *  explicit restart so active research and unsent drafts are never cut off. */
   updateState?(): Promise<DesktopUpdateState>
   stageUpdate?(): Promise<DesktopUpdateState>
-  applyUpdate?(): Promise<DesktopUpdateState>
+  applyUpdate?(options?: { mode?: "now" }): Promise<DesktopUpdateState>
   cancelUpdate?(): Promise<DesktopUpdateState>
 
   /** Load recent OpenScience release notes on demand in Settings */

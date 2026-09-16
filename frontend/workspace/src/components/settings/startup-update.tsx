@@ -3,6 +3,8 @@ import { Button } from "@synsci/ui/button"
 import { Icon } from "@synsci/ui/icon"
 import { useDialog } from "@synsci/ui/context/dialog"
 import { showToast } from "@synsci/ui/toast"
+import { confirmDialog } from "@/atlas/dialogs"
+import { UpdateRefused } from "@/utils/update-error"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { DialogSettings } from "@/components/dialog-settings"
@@ -57,8 +59,33 @@ export const StartupUpdateCheck: Component = () => {
 
   const action = async () => {
     const restarting = updates.state.phase === "ready" || updates.state.phase === "restart_blocked"
-    const run = restarting ? updates.apply : updates.stage
-    await run().catch((error: unknown) => {
+    const run = restarting ? () => updates.apply() : () => updates.stage()
+    await run().catch(async (error: unknown) => {
+      // Running agent turns are the one blocker the person can wave through:
+      // the server pauses them with a named reason and continues them after
+      // the restart. Offer that instead of a toast that leads nowhere.
+      if (restarting && error instanceof UpdateRefused && error.pausable) {
+        const ok = await confirmDialog(dialog, {
+          title: "Pause running work and restart?",
+          message: (
+            <>
+              {error.blockers.join(", ")} still running. Restarting now pauses each turn; OpenScience continues them
+              where they stopped once it is back. Compute jobs already on Modal keep running.
+            </>
+          ),
+          confirmLabel: "Pause and restart",
+          cancelLabel: "Not yet",
+        })
+        if (!ok) return
+        await updates.apply({ mode: "now" }).catch((again: unknown) => {
+          showToast({
+            variant: "error",
+            title: "OpenScience could not restart",
+            description: again instanceof Error ? again.message : String(again),
+          })
+        })
+        return
+      }
       showToast({
         variant: "error",
         title: restarting ? "OpenScience is still running" : "Update failed",

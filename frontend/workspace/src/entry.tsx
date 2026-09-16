@@ -16,7 +16,7 @@ import {
 } from "@/config/server-url"
 import pkg from "../package.json"
 import { waitForUpdatedServer, type UpdateHealth } from "@/utils/update-restart"
-import { updateError } from "@/utils/update-error"
+import { updateError, UpdateRefused } from "@/utils/update-error"
 
 const DEFAULT_SERVER_URL_KEY = "openscience.settings.dat:defaultServerUrl"
 const desktopUrl = resolveDesktopServerUrl(location.search, window.location.origin)
@@ -53,11 +53,15 @@ const server = () =>
     dev: import.meta.env.DEV,
   })
 
-async function desktopUpdateRequest(pathname: string, method: "GET" | "POST" | "DELETE") {
+async function desktopUpdateRequest(pathname: string, method: "GET" | "POST" | "DELETE", json?: unknown) {
   const url = resolveServerRoute(pathname, server(), window.location.origin)
-  const response = await openscienceFetch(url, { method, headers: { Accept: "application/json" } })
+  const response = await openscienceFetch(url, {
+    method,
+    headers: { Accept: "application/json", ...(json === undefined ? {} : { "content-type": "application/json" }) },
+    ...(json === undefined ? {} : { body: JSON.stringify(json) }),
+  })
   const body = await response.json().catch(() => undefined)
-  if (!response.ok) throw new Error(updateError(body, response.status))
+  if (!response.ok) throw new UpdateRefused(updateError(body, response.status), body)
   return body as DesktopUpdateState
 }
 
@@ -126,7 +130,10 @@ const platform: Platform = {
   },
   updateState: desktopUpdateAvailable ? () => desktopUpdateRequest("/settings/updates/state", "GET") : undefined,
   stageUpdate: desktopUpdateAvailable ? () => desktopUpdateRequest("/settings/updates/stage", "POST") : undefined,
-  applyUpdate: desktopUpdateAvailable ? () => desktopUpdateRequest("/settings/updates/apply", "POST") : undefined,
+  applyUpdate: desktopUpdateAvailable
+    ? (options?: { mode?: "now" }) =>
+        desktopUpdateRequest("/settings/updates/apply", "POST", options?.mode ? { mode: options.mode } : undefined)
+    : undefined,
   cancelUpdate: desktopUpdateAvailable ? () => desktopUpdateRequest("/settings/updates/stage", "DELETE") : undefined,
   update: async () => {
     const healthUrl = resolveServerRoute("/global/health", server(), window.location.origin)

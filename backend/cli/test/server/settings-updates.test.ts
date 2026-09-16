@@ -52,9 +52,12 @@ describe("automatic update support", () => {
     try {
       const response = await UpdatesSettingsRoutes().request("http://openscience.internal/apply", { method: "POST" })
       expect(response.status).toBe(409)
+      // Runtimes hold state no resume can rebuild, so they are not pausable.
       expect(await response.json()).toEqual({
         error:
           "Finish active work before restarting OpenScience: 1 interactive terminal, 1 kernel execution, 1 MCP request.",
+        blockers: ["1 interactive terminal", "1 kernel execution", "1 MCP request"],
+        pausable: false,
       })
     } finally {
       for (const done of release) done()

@@ -39,7 +39,17 @@ const InstallResult = Result.extend({
   restartScheduled: z.boolean().default(false),
 })
 
-const Failure = z.object({ error: z.string() })
+const Failure = z.object({
+  error: z.string(),
+  /** What is running, so the client can offer to pause it and restart anyway. */
+  blockers: z.array(z.string()).optional(),
+  /** True when a restart with `mode: "now"` would pause the blockers and continue them after the restart. */
+  pausable: z.boolean().optional(),
+})
+const ApplyBody = z.object({
+  /** `now` pauses running agent turns (they continue after the restart) instead of refusing while they run. */
+  mode: z.enum(["now"]).optional(),
+})
 
 type UpdateResult = z.infer<typeof Result>
 type UpdateInstallResult = z.infer<typeof InstallResult>
@@ -246,18 +256,41 @@ export const UpdatesSettingsRoutes = lazy(() =>
         },
       }),
       async (c) => {
+        // The body is optional: a bare POST keeps the refusing behaviour.
+        const body = await c.req
+          .json()
+          .then((value) => ApplyBody.safeParse(value))
+          .catch(() => undefined)
+        const mode = body?.success ? body.data.mode : undefined
         const desktop = await Installation.desktopUpdateState().catch(() => undefined)
         if (desktop?.phase === "restart_blocked" && desktop.version) {
           return c.json(await Installation.applyDesktopUpdate(desktop.version), 202)
         }
         const outcome = await AuthoritySignal.exclusive(async () => {
-          const sessions = SessionPrompt.activeCount()
-          const compute = ComputeJobs.activeCount()
-          const runtime = UpdateQuiescence.inventory()
-          const blockers = desktopUpdateBlockers({ sessions, compute, ...runtime })
+          const blockersNow = () =>
+            desktopUpdateBlockers({
+              sessions: SessionPrompt.activeCount(),
+              compute: ComputeJobs.activeCount(),
+              ...UpdateQuiescence.inventory(),
+            })
+          let blockers = blockersNow()
+          // Agent turns are the one blocker the person can wave through: they
+          // pause with a named reason and continue after the restart. Compute
+          // jobs, terminals and kernels hold state no resume can rebuild, so
+          // they still have to finish first.
+          if (blockers.length && mode === "now" && SessionPrompt.activeCount()) {
+            SessionPrompt.pauseForRestart()
+            const settled = Date.now() + 5_000
+            while (SessionPrompt.activeCount() && Date.now() < settled) await Bun.sleep(100)
+            blockers = blockersNow()
+          }
           if (blockers.length) {
+            const pausable = SessionPrompt.activeCount() > 0 && blockers.length === 1 && blockers[0].endsWith("run")
             return {
               error: `Finish active work before restarting OpenScience: ${blockers.join(", ")}.`,
+              blockers,
+              pausable:
+                pausable || (SessionPrompt.activeCount() > 0 && blockers.every((item) => item.includes("agent run"))),
             }
           }
 
@@ -280,7 +313,7 @@ export const UpdatesSettingsRoutes = lazy(() =>
             release?.()
           }
         })
-        if ("error" in outcome) return c.json(Failure.parse({ error: outcome.error }), 409)
+        if ("error" in outcome) return c.json(Failure.parse(outcome), 409)
         return c.json(outcome.value, 202)
       },
     )

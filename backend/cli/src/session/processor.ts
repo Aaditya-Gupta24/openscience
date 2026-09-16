@@ -31,6 +31,7 @@ import { SessionLoopState } from "./loop-state"
 import type { Tool } from "@/tool/tool"
 import { InvalidCall } from "@/tool/invalid-call"
 import { CredentialRevocation } from "@/credentials/revocation"
+import { SessionRestart } from "./restart"
 import { abortedToolPart } from "./tool-outcome"
 import { outputWatchdog, watchOutput } from "./output-watchdog"
 import { defer } from "@/util/defer"
@@ -1432,7 +1433,8 @@ export namespace SessionProcessor {
           }
           await Session.flushPendingParts(input.sessionID)
           const p = await MessageV2.parts(input.assistantMessage.id)
-          const interruption = CredentialRevocation.interruption(input.abort.reason)
+          const interruption =
+            CredentialRevocation.interruption(input.abort.reason) ?? SessionRestart.interruption(input.abort.reason)
           for (const part of p) {
             // A terminated stream may omit text/reasoning end events. Preserve
             // the exact partial bytes, but stop every live duration clock.
@@ -1484,6 +1486,15 @@ export namespace SessionProcessor {
               // redirect the model instead of ending the turn.
               if (action === "stop") guardTrip = { kind: "tool_errors", tool: lastError.tool }
             }
+          }
+          // A turn paused for a restart is left unfinished on purpose: no error,
+          // no completion time. That is the shape of a turn the process died
+          // under, and the next process's resumeInterrupted continues it.
+          if (SessionRestart.interruption(input.abort.reason)) {
+            input.assistantMessage.error = undefined
+            await Session.updateMessage(input.assistantMessage)
+            progress("done")
+            return "stop"
           }
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)

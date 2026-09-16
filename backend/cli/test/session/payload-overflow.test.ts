@@ -101,10 +101,14 @@ describe("provider payload overflow recovery", () => {
               parts: [{ type: "text", text: question }],
             })
             const requests = local.requests.slice(before)
+            // A summarizer that overflows gets one more attempt at reduced
+            // fidelity (tool results capped, media stripped) before the turn
+            // fails as too large to compact.
             expect(requests.map((request) => [request.summary, request.rejected])).toEqual(
               mode === "summary-fails"
                 ? [
                     [false, true],
+                    [true, true],
                     [true, true],
                   ]
                 : [

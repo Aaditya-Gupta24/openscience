@@ -77,6 +77,7 @@ import { HarnessState } from "@/harness/state"
 import { Toolset } from "./toolset"
 import { SessionTraceStore } from "./trace-store"
 import { SessionLoopState } from "./loop-state"
+import { SessionRestart } from "./restart"
 import { FileLease } from "@/util/file-lease"
 import { Global } from "@/global"
 import { TaskAttempt } from "@/tool/task-attempt"
@@ -331,6 +332,16 @@ export namespace SessionPrompt {
       )
     }
     return resumed
+  }
+
+  /**
+   * Stop every running turn for a restart the person asked for. Each turn is
+   * left unfinished with its tool calls closed under the reason, so the next
+   * process picks it up through resumeInterrupted; workers are aborted with
+   * their leads and re-dispatched by them.
+   */
+  export function pauseForRestart(): number {
+    return interrupt(new SessionRestart.Interruption())
   }
 
   export function assertNotBusy(sessionID: string) {

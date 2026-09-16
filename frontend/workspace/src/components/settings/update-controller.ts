@@ -143,13 +143,15 @@ export function createUpdateController(
         }
       })
     },
-    apply() {
+    /** Restart into the staged update. `mode: "now"` pauses running agent
+     * turns, which continue after the restart, instead of being refused. */
+    apply(options?: { mode?: "now" }) {
       return mutate("apply", async () => {
         if (!platform.applyUpdate) throw new Error("In-app restart is unavailable for this installation")
         const previous = { phase: state.phase, version: state.version }
         setState({ phase: "restarting", error: undefined, dismissed: false })
         try {
-          merge(await platform.applyUpdate())
+          merge(await platform.applyUpdate(options))
         } catch (error) {
           setState({ ...previous, error: message(error) })
           throw error

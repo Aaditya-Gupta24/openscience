@@ -515,15 +515,21 @@ async function updateRequest(request, response) {
   }
   if (input.action !== "apply") throw new Error("The desktop update action is invalid")
   if (state.update?.phase === "restart_blocked" && state.update.version === input.version) {
-    if (!state.updateRestart || !state.updateInstall || state.updateHelperLaunched) {
+    if (state.updateHelperLaunched) {
       respond(response, 409, { error: "The prepared update restart can no longer be retried safely" })
       return
     }
-    state.update = { ...state.update, phase: "restarting", error: undefined }
-    respond(response, 202, updateView())
-    const timer = setTimeout(() => void stop(), 0)
-    timer.unref?.()
-    return
+    if (state.updateRestart && state.updateInstall) {
+      // The handoff is still armed: only the drain failed. Try the drain again.
+      state.update = { ...state.update, phase: "restarting", error: undefined }
+      respond(response, 202, updateView())
+      const timer = setTimeout(() => void stop(), 0)
+      timer.unref?.()
+      return
+    }
+    // The latch was released after a failed handoff; the staged bundle is
+    // still verified and ready, so prepare the restart again from scratch.
+    state.update = { ...state.update, phase: "ready", error: undefined }
   }
   if (state.update?.phase !== "ready" || state.update.version !== input.version) {
     respond(response, 409, { error: `OpenScience ${input.version} is not verified and ready to restart` })
@@ -556,7 +562,7 @@ async function updateRequest(request, response) {
 async function updates() {
   if (!app.isPackaged || process.platform !== "darwin") return
   state.updateCache = path.join(app.getPath("userData"), "updates")
-  state.updateTrusted = await verifyUpdate(currentUpdate(), app.getVersion(), { trusted: true })
+  state.updateTrusted = await verifyUpdate(currentUpdate(), app.getVersion(), { trusted: true, running: true })
     .then(() => true)
     .catch((error) => {
       console.warn(
@@ -802,11 +808,22 @@ function stop() {
   })().catch((error) => {
     state.exiting = false
     state.stopTask = undefined
-    if (state.updateRestart && !state.updateHelperLaunched && state.update?.phase === "restarting") {
-      state.update = {
-        ...state.update,
-        phase: "restart_blocked",
-        error: error instanceof Error ? error.message : String(error),
+    if (state.updateRestart && !state.updateHelperLaunched) {
+      // The handoff did not happen, so nothing is committed: release the
+      // latch. Otherwise every later action dead-ends on it: Retry and
+      // Discard answer 409 "already restarting", and Quit demands proof of a
+      // disposal that never happened. The staged update stays ready; the
+      // person can retry (apply() only prepares an in-memory payload),
+      // discard it, or quit normally.
+      state.updateRestart = false
+      state.updateInstall = undefined
+      state.updateRuntimeDisposed = false
+      if (state.update?.phase === "restarting") {
+        state.update = {
+          ...state.update,
+          phase: "restart_blocked",
+          error: error instanceof Error ? error.message : String(error),
+        }
       }
     }
     dialog.showErrorBox("OpenScience could not quit safely", error instanceof Error ? error.message : String(error))

@@ -148,6 +148,15 @@ export async function signature(bundle, options = {}) {
   return { team, designated }
 }
 
+/**
+ * Check a bundle's identity, seal and notarization. `options.running` is the
+ * app that is already executing: Gatekeeper assessed it at launch and its
+ * outer seal covers every nested binary's code hash, so the shallow verify
+ * answers "is this our notarized build" in well under a second, where
+ * `--deep` re-verifies each of the hundreds of nested binaries and costs
+ * several seconds on every start. A downloaded update is always verified deep
+ * before it is installed.
+ */
 export async function verify(bundle, version, options = {}) {
   const command = options.signal ? { signal: options.signal } : undefined
   const plist = path.join(bundle, "Contents", "Info.plist")
@@ -157,7 +166,7 @@ export async function verify(bundle, version, options = {}) {
   ])
   if (identifier.stdout.trim() !== id) throw new Error("The downloaded update has the wrong application identifier")
   if (current.stdout.trim() !== version) throw new Error("The downloaded update has the wrong application version")
-  await exec("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle], command)
+  await exec("/usr/bin/codesign", ["--verify", ...(options.running ? [] : ["--deep"]), "--strict", bundle], command)
   if (!options.trusted) return
   const assessment = await exec("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", bundle], command)
   if (!/source=Notarized Developer ID/m.test(output(assessment))) {
