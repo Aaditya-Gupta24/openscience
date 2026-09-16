@@ -96,9 +96,10 @@ separated from its figure is a defect to fix before the report ships.
 
 **Verification.** This is part of writing, done here, not handed to a worker. Compile
 (`latexmk -pdf` or `pdflatex` twice with `bibtex`), fix every error, then look at every
-page: `pdftoppm -r 50 -png paper.pdf pages/p` renders thumbnails cheap enough to `read`
-several at once; check them for figure sizes, page balance, blank regions, overfull lines,
-orphaned headings and broken refs (`??`). `scripts/validate_format.py --file paper.pdf --venue "<venue>" --check-all` checks
+page: `pdftoppm -r 50 -png paper.pdf "$TMPDIR/pages/p"` renders thumbnails cheap enough to
+`read` several at once (into scratch, not the project: page images are not deliverables);
+check them for figure sizes, page balance, blank regions, overfull lines, orphaned
+headings and broken refs (`??`). `scripts/validate_format.py --file paper.pdf --venue "<venue>" --check-all` checks
 page count, margins and font size against the venue's rules where it knows them. Run the
 citations skill's `validate_bib.py` on the `.bib`. Re-read the abstract against the
 results table.

@@ -8,6 +8,29 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Changed
+
+- **A failed turn says what kind of failure it was.** The card carries a
+  heading from the failure class (the model service did not answer, rate
+  limited, credentials rejected, request too large, the request was rejected),
+  the sentence to act on, and the HTTP status, gateway router code or edge
+  request id set apart in mono type for a support report instead of inside the
+  copy; `ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8 sin1::…` no longer reads
+  as the message.
+- **A delegated worker is one row that opens its session.** The Task card no
+  longer folds the worker's handoff behind a chevron: the row shows the job's
+  title, the agent, its state and duration, and clicking it opens the worker's
+  session where the transcript and handoff live. A worker waiting on a
+  permission or question still surfaces the request under the row; files it
+  saved appear as chips. The Task tool's `description` is now a one- to
+  three-word title and names the child session as is.
+- **Reports are checked page by page.** `paper-writing` and `ml-paper-writing`
+  say how to place floats (`[t]`/`[tbp]`, sized to the width they need, no two
+  floats stacked on a page with a sliver of text between them) and to render
+  page thumbnails with `pdftoppm` into scratch and read them before shipping.
+- `generate_image` receipts name the file relative to the project (or the
+  session directory), never as a climb out of the session scratch.
+
 ### Added
 
 - **Image generation is a core capability with three routes.** `generate_image`

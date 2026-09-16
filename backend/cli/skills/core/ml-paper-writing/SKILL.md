@@ -83,8 +83,8 @@ Pareto, matrices), the schematics skill for the method overview, rendered with
 `generate_image` and never hand-drawn as TikZ or SVG. Every figure has a claim
 in its caption; every table is referenced before it appears; units and uncertainty on
 everything. Place floats with `[t]` or `[tbp]`, size them to the width they need, and
-after compiling render thumbnails (`pdftoppm -r 50 -png paper.pdf pages/p`) and `read`
-them: two floats stacked on one page with a sliver of text, a mostly blank page, or an
+after compiling render thumbnails into scratch (`pdftoppm -r 50 -png paper.pdf "$TMPDIR/pages/p"`)
+and `read` them: two floats stacked on one page with a sliver of text, a mostly blank page, or an
 orphaned heading is fixed by moving or combining a figure before the paper ships.
 
 **Camera-ready and rebuttals.** For camera-ready: de-anonymize, add acknowledgements and

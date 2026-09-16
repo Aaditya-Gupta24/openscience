@@ -659,8 +659,14 @@ export const GenerateImageTool = Tool.define("generate_image", {
       sessionID: ctx.sessionID,
       messageID: ctx.messageID,
     })
+    // The receipt names the file where the reader will look for it: relative
+    // to the project when it was written there, to the session directory
+    // otherwise, never as a climb out of the session scratch.
+    const shown = [Instance.worktree, directory]
+      .map((root) => path.relative(root, output))
+      .find((rel) => rel && !rel.startsWith(".."))
     return {
-      title: path.relative(directory, output),
+      title: shown ?? path.basename(output),
       output: `Generated ${path.basename(output)} with ${route.model} via ${route.label}.`,
       metadata: {
         filepath: output,
