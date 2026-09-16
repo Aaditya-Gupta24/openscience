@@ -71,6 +71,11 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   demanded proof of a disposal that never happened; the latch is now released,
   so the staged update can be retried, discarded, or the app quit normally.
 
+- **A study's hour budget counts compute time.** `maxHours` and the
+  `elapsed_hours` the `study` tool reports now run from the first run's start,
+  not from the study's creation; the minutes spent writing the harness and
+  waiting for the Modal approval no longer eat into the two hours the person
+  agreed to.
 - **The desktop starts several seconds sooner.** The running app's own
   signature was verified with `codesign --deep` on every launch before the
   splash could appear, re-checking hundreds of nested binaries; the running

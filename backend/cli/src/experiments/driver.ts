@@ -390,7 +390,7 @@ export namespace StudyDriver {
     const done = runs.filter((run) => run.status !== "running" && Experiments.budgeted(run))
     if (budget.maxRuns !== undefined && done.length >= budget.maxRuns)
       return `${done.length} runs completed (limit ${budget.maxRuns})`
-    if (budget.maxHours !== undefined && now - study.createdAt >= budget.maxHours * 3_600_000) {
+    if (budget.maxHours !== undefined && Experiments.elapsedMs(runs, now) >= budget.maxHours * 3_600_000) {
       return `${budget.maxHours} hour${budget.maxHours === 1 ? "" : "s"} elapsed`
     }
     if (budget.maxCostUSD !== undefined && study.costUSD >= budget.maxCostUSD) {

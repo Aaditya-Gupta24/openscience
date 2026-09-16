@@ -120,3 +120,15 @@ describe("studies", () => {
     expect(overview?.best?.id).toBe(improved.id)
   })
 })
+
+test("a study's hour budget counts from its first run, not from its creation", () => {
+  const run = (startedAt: number | null) =>
+    ({ startedAt, status: "completed", headline: 0.8, points: 3 }) as unknown as Experiments.Run
+  // Nothing has run: the harness is still being written or the dispatch
+  // approval is pending, and none of that is compute time.
+  expect(Experiments.clockStart([])).toBeUndefined()
+  expect(Experiments.elapsedMs([run(null)], 10_000)).toBe(0)
+  // The earliest start is the clock's origin, whatever order runs are listed in.
+  expect(Experiments.clockStart([run(5_000), run(2_000), run(null)])).toBe(2_000)
+  expect(Experiments.elapsedMs([run(5_000), run(2_000)], 62_000)).toBe(60_000)
+})

@@ -710,6 +710,19 @@ export namespace Experiments {
     return !(run.status === "failed" && run.headline === null && run.points === 0)
   }
 
+  /** When a study's hour budget starts counting: at its first run, not at
+   * creation. The hours the person agreed to are compute hours; writing the
+   * harness and waiting for the dispatch approval are not among them. */
+  export function clockStart(runs: readonly Run[]): number | undefined {
+    const starts = runs.flatMap((run) => (run.startedAt ? [run.startedAt] : []))
+    return starts.length ? Math.min(...starts) : undefined
+  }
+
+  export function elapsedMs(runs: readonly Run[], now = Date.now()): number {
+    const start = clockStart(runs)
+    return start === undefined ? 0 : Math.max(0, now - start)
+  }
+
   export type Series = { runID: string; key: string; points: Array<{ step: number; value: number }> }
 
   /** Downsampled series for charts: at most `max` points per run and key,
