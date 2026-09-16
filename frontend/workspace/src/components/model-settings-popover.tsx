@@ -27,7 +27,7 @@ import {
 import { DialogSettings } from "./dialog-settings"
 import { modelGroup, modelGroupLabel, modelGroupLabelRank } from "./model-groups"
 import { exactRouteFastMode, type FastMode } from "./model-fast"
-import { rateCaption, routeRates, tokenRate, type RouteRates } from "@/context/model-pricing"
+import { rateBasis, rateLine, routeRates, type RouteRates } from "@/context/model-pricing"
 import { modelControl } from "./model-presentation"
 import { curateQuickModelRows, curateQuickModels } from "./model-quick"
 import "./model-settings-popover.css"
@@ -344,9 +344,25 @@ export const ModelEffortPanel: Component<ModelEffortPanelProps> = (props) => (
               <span class="model-settings-fast-label">Fast mode</span>
             </Switch>
           </div>
+          <Show when={fast().offered && props.rates?.fast ? props.rates : undefined}>
+            {(rates) => (
+              <p class="model-settings-consequence" data-model-fast-rate>
+                {rates().multiple ? `${rates().multiple}× the standard rate` : "Priority processing"}
+                <Show when={!fast().active && rates().fast}>
+                  {(cost) => (
+                    <>
+                      {" · "}
+                      {rateLine(cost())}
+                      <span class="model-settings-unit"> /1M</span>
+                    </>
+                  )}
+                </Show>
+              </p>
+            )}
+          </Show>
           <Show when={fast().note}>
             {(note) => (
-              <p class="model-settings-fast-note" data-model-fast-note>
+              <p class="model-settings-consequence" data-model-fast-note>
                 {note()}
               </p>
             )}
@@ -355,77 +371,65 @@ export const ModelEffortPanel: Component<ModelEffortPanelProps> = (props) => (
       )}
     </Show>
     <Show when={props.context && props.context.options.length > 1 ? props.context : undefined}>
-      {(context) => (
-        <section class="model-settings-option-section" aria-label="Context window">
-          <div class="model-settings-heading">Context window</div>
-          <ModelOptionList
-            id="model-context-options"
-            kind="context"
-            title="Context window"
-            current={context().current}
-            options={context().options}
-            compact
-            onSelect={(id) => props.onContextSelect?.(id)}
-          />
-        </section>
-      )}
+      {(context) => {
+        const cap = () => {
+          const value = Number(context().current)
+          return Number.isFinite(value) && value > 0 ? value : undefined
+        }
+        // The first pricing tier is the step a long prompt pays; a cap at or
+        // below it means the step is never reached.
+        const tier = () => props.rates?.tiers[0]
+        const stepped = () => {
+          const step = tier()
+          const limit = cap()
+          if (!step) return
+          if (limit !== undefined && limit <= step.threshold) return { step, reached: false as const }
+          return { step, reached: true as const }
+        }
+        return (
+          <section class="model-settings-option-section" aria-label="Context window">
+            <div class="model-settings-heading">Context window</div>
+            <ModelOptionList
+              id="model-context-options"
+              kind="context"
+              title="Context window"
+              current={context().current}
+              options={context().options}
+              compact
+              onSelect={(id) => props.onContextSelect?.(id)}
+            />
+            <Show when={stepped()}>
+              {(state) => (
+                <p class="model-settings-consequence" data-model-context-rate>
+                  <Show
+                    when={state().reached}
+                    fallback={`Standard rate throughout · no ${modelContext(state().step.threshold)} step`}
+                  >
+                    Past {modelContext(state().step.threshold)} input ·{" "}
+                    {rateLine(props.fast?.active && state().step.fast ? state().step.fast! : state().step.standard)}
+                    <span class="model-settings-unit"> /1M</span>
+                  </Show>
+                </p>
+              )}
+            </Show>
+          </section>
+        )
+      }}
     </Show>
     <Show when={props.rates}>
       {(rates) => {
-        const cap = () => {
-          const value = Number(props.context?.current)
-          return Number.isFinite(value) && value > 0 ? value : undefined
-        }
-        const fastActive = () => !!props.fast?.active && !!rates().fast
-        // The tier row is the rate a request past the threshold pays; under a
-        // cap at or below the threshold it cannot apply, and reads muted.
-        const tierReachable = () => cap() === undefined || rates().tiers.some((tier) => cap()! > tier.threshold)
+        const effective = () => (props.fast?.active && rates().fast ? rates().fast! : rates().standard)
         return (
-          <section class="model-settings-option-section model-settings-rates-section" aria-label="Rates">
-            <div class="model-settings-heading">
-              Rates <span class="model-settings-heading-unit">per 1M tokens</span>
+          <section class="model-settings-option-section model-settings-rate-section" aria-label="Rate">
+            <div class="model-settings-rate" data-model-rate title={rateBasis(rates())}>
+              <span class="model-settings-heading">{props.fast?.active && rates().fast ? "Fast rate" : "Rate"}</span>
+              <span class="model-settings-rate-value">
+                {rateLine(effective())}
+                <span class="model-settings-unit"> /1M tokens</span>
+              </span>
             </div>
-            <table class="model-settings-rates" data-model-rates>
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <span class="sr-only">Tier</span>
-                  </th>
-                  <th scope="col">Input</th>
-                  <th scope="col">Output</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr data-active={fastActive() ? undefined : "true"}>
-                  <th scope="row">Standard</th>
-                  <td>{tokenRate.format(rates().standard.input)}</td>
-                  <td>{tokenRate.format(rates().standard.output)}</td>
-                </tr>
-                <Show when={rates().fast}>
-                  {(fast) => (
-                    <tr data-active={fastActive() ? "true" : undefined}>
-                      <th scope="row">Fast{rates().multiple ? ` · ${rates().multiple}×` : ""}</th>
-                      <td>{tokenRate.format(fast().input)}</td>
-                      <td>{tokenRate.format(fast().output)}</td>
-                    </tr>
-                  )}
-                </Show>
-                <For each={rates().tiers}>
-                  {(tier) => {
-                    const column = () => (fastActive() && tier.fast ? tier.fast : tier.standard)
-                    return (
-                      <tr data-muted={tierReachable() ? undefined : "true"}>
-                        <th scope="row">Over {modelContext(tier.threshold)} input</th>
-                        <td>{tokenRate.format(column().input)}</td>
-                        <td>{tokenRate.format(column().output)}</td>
-                      </tr>
-                    )
-                  }}
-                </For>
-              </tbody>
-            </table>
-            <p class="model-settings-fast-note" data-model-rates-note>
-              {rateCaption(rates(), cap(), modelContext)}
+            <p class="model-settings-consequence" data-model-rate-basis>
+              {rateBasis(rates())}
             </p>
           </section>
         )

@@ -547,7 +547,7 @@
 
 [data-model-popover-kind="effort"] {
   width: min(304px, calc(100vw - 24px));
-  max-height: min(72dvh, 390px);
+  max-height: min(72dvh, 470px);
 }
 
 [data-model-popover-kind="effort"] .model-settings-popover__body {
@@ -632,13 +632,51 @@
   line-height: 20px;
 }
 
-.model-settings-fast-rate {
-  margin: 4px 0 0;
+/* Price consequences sit under the control that causes them, in the same
+   muted voice as the headings, so the popover stays a list of controls. */
+.model-settings-consequence {
+  margin: -2px 0 0;
+  padding: 0 4px;
   color: var(--model-control-muted);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-x-small);
   font-weight: var(--font-weight-regular);
   line-height: 16px;
   font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+
+.model-settings-unit {
+  color: var(--model-control-muted);
+  font-size: var(--font-size-2x-small);
+}
+
+[data-model-effort-panel] .model-settings-rate-section {
+  gap: 2px;
+}
+
+.model-settings-rate {
+  display: flex;
+  min-height: 24px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.model-settings-rate .model-settings-heading {
+  padding: 0;
+}
+
+.model-settings-rate-value {
+  color: var(--model-control-text);
+  font-size: var(--font-size-small);
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.model-settings-rate-section .model-settings-consequence {
+  margin: 0;
 }
 
 @media (min-width: 720px) {

@@ -152,22 +152,19 @@ test("the composer's Fast toggle shows its price consequence from the route's ca
   host.querySelector<HTMLButtonElement>("[data-model-effort-chip]")!.click()
   await settle()
   expect(document.querySelector("[data-model-fast-toggle]")).not.toBeNull()
-  // The Rates table carries the route's standard and Fast prices; the active
-  // tier's row is marked, so toggling Fast moves the mark.
-  const cells = (row: Element | null | undefined) =>
-    Array.from(row?.querySelectorAll("th, td") ?? []).map((cell) => cell.textContent?.trim())
-  const rows = () => Array.from(document.querySelectorAll<HTMLElement>("[data-model-rates] tbody tr"))
-  expect(rows().map(cells)).toEqual([
-    ["Standard", "$5.00", "$30.00"],
-    ["Fast · 2×", "$10.00", "$60.00"],
-  ])
-  expect(rows()[0]?.dataset.active).toBe("true")
-  expect(rows()[1]?.dataset.active).toBeUndefined()
+  // The toggle states the price consequence of Fast; the footer row states
+  // the rate in force, so toggling Fast moves the numbers there.
+  const text = (selector: string) => document.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim()
+  const rate = () =>
+    [text("[data-model-rate] .model-settings-heading"), text("[data-model-rate] .model-settings-rate-value")].join(" ")
+  expect(text("[data-model-fast-rate]")).toBe("2× the standard rate · $10.00 in · $60.00 out /1M")
+  expect(rate()).toBe("Rate $5.00 in · $30.00 out /1M tokens")
   document.querySelector<HTMLInputElement>("[data-model-fast-toggle] input")!.click()
   await settle()
   expect(fixture.state.tier["openrouter/openai/gpt-5.6-sol"]).toBe("fast")
-  expect(rows()[1]?.dataset.active).toBe("true")
-  expect(document.querySelector("[data-model-rates-note]")?.textContent).toContain("Wallet rates")
+  expect(text("[data-model-fast-rate]")).toBe("2× the standard rate")
+  expect(rate()).toBe("Fast rate $10.00 in · $60.00 out /1M tokens")
+  expect(text("[data-model-rate-basis]")).toContain("Wallet rate")
 })
 
 test("a provider metadata refresh restores options without replacing the chosen model", async () => {

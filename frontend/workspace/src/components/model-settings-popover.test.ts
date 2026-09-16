@@ -329,10 +329,12 @@ describe("reasoning effort and Fast mode", () => {
     expect(supported.textContent).not.toContain("Prefer faster responses")
     expect(supported.querySelector('[aria-label="Fast mode"]')).not.toBeNull()
     // No rate is claimed until the route's pricing has loaded.
-    expect(supported.querySelector("[data-model-rates]")).toBeNull()
+    expect(supported.querySelector("[data-model-rate]")).toBeNull()
+    expect(supported.querySelector("[data-model-fast-rate]")).toBeNull()
 
-    // With pricing, one Rates table carries Standard, Fast and the long-context
-    // tier; the selected cap decides whether the tier row can ever apply.
+    // With pricing, each control carries its own consequence and a footer row
+    // states the effective rate; the selected cap decides whether the
+    // long-context step can ever apply.
     const rates = {
       standard: { input: 2.11, output: 12.66 },
       fast: { input: 4.22, output: 25.32 },
@@ -348,35 +350,35 @@ describe("reasoning effort and Fast mode", () => {
         { id: "1050000", label: "Full · 1.05M" },
       ],
     }
+    const text = (host: Element, selector: string) =>
+      host.querySelector(selector)?.textContent?.replace(/\s+/g, " ").trim()
+    const rate = (host: Element) =>
+      [
+        host.querySelector("[data-model-rate] .model-settings-heading")?.textContent,
+        host.querySelector("[data-model-rate] .model-settings-rate-value")?.textContent?.replace(/\s+/g, " ").trim(),
+      ].join(" ")
     const capped = mount(() =>
       web.createComponent(subject.ModelEffortPanel, {
         current: "standard",
         options: [{ id: "standard", label: "Standard" }],
-        fast: { active: true, offered: true },
+        fast: { active: false, offered: true },
         context,
         rates,
         onEffortSelect: () => undefined,
         onTierSelect: () => undefined,
       }),
     )
-    const cells = (row: Element | undefined) =>
-      Array.from(row?.querySelectorAll("th, td") ?? []).map((cell) => cell.textContent?.trim())
-    const rows = Array.from(capped.querySelectorAll<HTMLElement>("[data-model-rates] tbody tr"))
-    expect(rows.map(cells)).toEqual([
-      ["Standard", "$2.11", "$12.66"],
-      ["Fast · 2×", "$4.22", "$25.32"],
-      ["Over 272K input", "$8.44", "$37.98"],
-    ])
-    expect(rows[1]?.dataset.active).toBe("true")
-    expect(rows[2]?.dataset.muted).toBe("true")
-    expect(capped.querySelector("[data-model-rates-note]")?.textContent).toContain("never reach the long-context rate")
-    expect(capped.querySelector("[data-model-rates-note]")?.textContent).toContain("5.5% funding fee")
+    expect(capped.querySelector("table")).toBeNull()
+    expect(text(capped, "[data-model-fast-rate]")).toBe("2× the standard rate · $4.22 in · $25.32 out /1M")
+    expect(text(capped, "[data-model-context-rate]")).toBe("Standard rate throughout · no 272K step")
+    expect(rate(capped)).toBe("Rate $2.11 in · $12.66 out /1M tokens")
+    expect(text(capped, "[data-model-rate-basis]")).toBe("Wallet rate · includes the 5.5% funding fee")
 
     const full = mount(() =>
       web.createComponent(subject.ModelEffortPanel, {
         current: "standard",
         options: [],
-        fast: { active: false, offered: true },
+        fast: { active: true, offered: true },
         context: { ...context, current: "1050000" },
         rates,
         onEffortSelect: () => undefined,
@@ -384,12 +386,25 @@ describe("reasoning effort and Fast mode", () => {
       }),
     )
     expect(full.querySelector('[data-model-option="effort"]')).toBeNull()
-    const fullRows = Array.from(full.querySelectorAll<HTMLElement>("[data-model-rates] tbody tr"))
-    expect(cells(fullRows[0])).toEqual(["Standard", "$2.11", "$12.66"])
-    expect(fullRows[0]?.dataset.active).toBe("true")
-    expect(cells(fullRows[2])).toEqual(["Over 272K input", "$4.22", "$18.99"])
-    expect(fullRows[2]?.dataset.muted).toBeUndefined()
-    expect(full.querySelector("[data-model-rates-note]")?.textContent).toContain("Prompts past 272K")
+    // Fast on: the toggle's line no longer repeats numbers the footer shows.
+    expect(text(full, "[data-model-fast-rate]")).toBe("2× the standard rate")
+    expect(text(full, "[data-model-context-rate]")).toBe("Past 272K input · $8.44 in · $37.98 out /1M")
+    expect(rate(full)).toBe("Fast rate $4.22 in · $25.32 out /1M tokens")
+
+    // A provider route reports a catalog estimate and no fee.
+    const byok = mount(() =>
+      web.createComponent(subject.ModelEffortPanel, {
+        current: "standard",
+        options: [],
+        fast: { active: false, offered: true },
+        rates: { standard: { input: 2, output: 12 }, tiers: [], basis: "provider" as const },
+        onEffortSelect: () => undefined,
+        onTierSelect: () => undefined,
+      }),
+    )
+    expect(byok.querySelector("[data-model-fast-rate]")).toBeNull()
+    expect(rate(byok)).toBe("Rate $2.00 in · $12.00 out /1M tokens")
+    expect(text(byok, "[data-model-rate-basis]")).toBe("Catalog estimate · billed by your provider")
 
     // A route without Fast keeps the section, disabled, and says where it exists.
     const elsewhere = mount(() =>

@@ -170,37 +170,29 @@ export function routeRates(input: {
   }
 }
 
-/** Currency for a rate table: whole cents, three decimals only when a rate
- * needs them ($0.211), so the columns line up. */
+/** Currency for a per-1M-token rate: whole cents, a third decimal only for
+ * rates under ten cents ($0.075), never a stray half-cent ($15.825). */
 export const tokenRate = {
   format(value: number) {
-    const digits = Math.round(value * 100) === value * 100 ? 2 : 3
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
       minimumFractionDigits: 2,
-      maximumFractionDigits: digits,
+      maximumFractionDigits: value < 0.1 ? 3 : 2,
     }).format(value)
   },
 }
 
-/** The sentence under the rate table that ties it to the chosen cap. */
-export function rateCaption(rates: RouteRates, contextCap: number | undefined, contextLabel: (n: number) => string) {
-  const parts: string[] = []
-  const tier = rates.tiers[0]
-  if (tier) {
-    parts.push(
-      contextCap !== undefined && contextCap <= tier.threshold
-        ? `With the ${contextLabel(tier.threshold)} cap, prompts never reach the long-context rate.`
-        : `Prompts past ${contextLabel(tier.threshold)} of input are billed at the long-context rate for the whole request.`,
-    )
-  }
-  parts.push(
-    rates.basis === "wallet"
-      ? `Wallet rates: provider price plus the ${rates.feePercent ?? fundingFeePercent(undefined)}% funding fee.`
-      : "Catalog estimate; billed by your provider.",
-  )
-  return parts.join(" ")
+/** `$2.11 in · $10.55 out`, the shape every rate in the popover takes. */
+export function rateLine(cost: { input: number; output: number }) {
+  return `${tokenRate.format(cost.input)} in · ${tokenRate.format(cost.output)} out`
+}
+
+/** Where the numbers come from, in a few words. */
+export function rateBasis(rates: RouteRates) {
+  return rates.basis === "wallet"
+    ? `Wallet rate · includes the ${rates.feePercent ?? fundingFeePercent(undefined)}% funding fee`
+    : "Catalog estimate · billed by your provider"
 }
 
 export function pricingUpstream(pricing: ModelPricing | undefined): string | undefined {

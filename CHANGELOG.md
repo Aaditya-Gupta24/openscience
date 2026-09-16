@@ -61,13 +61,15 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 - **Model options has one shape on every route.** The effort ladder sits on a
   six-track grid that centres a short last row instead of leaving one option
   hanging; Speed is a heading with the Fast toggle and, where a route does not
-  offer it, a note saying which route does; the Rates table shows standard,
-  Fast and long-context prices per 1M tokens for the route with the active
-  row marked, the tier row muted when the chosen context cap can never reach it,
-  and a caption stating whether the numbers are Wallet rates (with the funding
-  fee) or a catalog estimate. Context caps read `272K` and `1.05M`; Codex GPT-5.6
-  models offer the same cap choices as their OpenAI siblings and Astra offers
-  Fast on the direct OpenAI route as it does through Ace.
+  offer it, a note saying which route does. Each control carries its own price
+  consequence in the popover's quiet secondary voice: under Fast, `2× the
+standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
+  the long-context step is reached and what it costs; and a footer row states
+  the rate in force (`Rate` or `Fast rate`) with its basis (Wallet rate with
+  the funding fee, or a catalog estimate). Context caps read `272K` and
+  `1.05M`; Codex GPT-5.6 models offer the same cap choices as their OpenAI
+  siblings and Astra offers Fast on the direct OpenAI route as it does through
+  Ace.
 - **The Model access card is one header and two rows.** Ace's identity, status
   and one-line purpose on the left; the Wallet on the right as what is spendable
   now (`$700.50 available`, the held amount named only while turns hold funds)
