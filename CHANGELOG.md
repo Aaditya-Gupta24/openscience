@@ -148,6 +148,23 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
 
 ### Fixed
 
+- **Restart to update no longer dead-ends on a running agent.** When agent turns
+  are the only thing running, the update banner offers _Pause and restart_: each
+  turn is paused under a named reason ("Paused to install an update"), its
+  pending tool calls are closed with that reason, and the next process continues
+  the turn where it stopped through the same path that resumes work after a
+  crash. Terminals, kernels and MCP requests still have to finish first, and the
+  refusal now lists them. On the desktop, a restart whose runtime handoff failed
+  released nothing: Retry and Discard answered "already restarting" and Quit
+  demanded proof of a disposal that never happened; the latch is now released,
+  so the staged update can be retried, discarded, or the app quit normally.
+- **The desktop starts several seconds sooner.** The running app's own
+  signature was verified with `codesign --deep` on every launch before the
+  splash could appear, re-checking hundreds of nested binaries; the running
+  bundle is now verified shallow (its outer seal covers the nested code, and
+  Gatekeeper assessed it at launch), while downloaded updates are still verified
+  deep before installation.
+
 - **A few large figures no longer kill a turn on Ace.** `read` attaches an
   image's bytes in full, and the only per-request limit was a count (20 recent
   images), so three 2K schematics made a 14 MB request that the managed
