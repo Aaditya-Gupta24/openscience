@@ -8,6 +8,30 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Changed
+
+- **Slim Modal images get `libgomp1`.** LightGBM and several OpenMP-built wheels
+  import `libgomp.so.1`, which `python:3.12-slim` does not ship; two study runs
+  failed on it after their image built. When Python packages are installed onto
+  a `-slim` image, one apt layer adds the library first.
+- **Keys & subscriptions says what the Wallet still funds.** The Model access
+  card and the Ace docs now state that in this mode the Wallet funds what your
+  keys cannot: a model no key covers, web search without a Firecrawl key, and
+  image generation; each such call is marked `funding: wallet` in the trace.
+- **Figure loops in a worker.** The schematics skill says when to delegate: one
+  figure is faster inline, two or more (or one while you still have text to
+  write) are worth a background worker each, briefed with the component list,
+  the threshold and the output path. Measured: a delegated 2K schematic took
+  3.2 minutes while the lead wrote the caption in parallel.
+
+### Fixed
+
+- The study approval card's title and purpose ran together; it now uses the
+  same layout as the other compute cards.
+- The sidebar refetches its session list after the event stream reconnects and
+  retries a failed list load once, so a rename or a new session cannot stay
+  stale until reload.
+
 ### Added
 
 - **Agents as in OpenCode.** Type `@` in the composer to hand a job to a worker

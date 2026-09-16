@@ -12,6 +12,22 @@ describe("ModalAdapter image", () => {
     ])
   })
 
+  test("a slim Debian image gets libgomp before Python packages; a full image and an empty package list do not", () => {
+    const slim = ModalAdapter.layers(["lightgbm==4.6.0"], undefined, "python:3.12-slim")
+    expect(slim).toHaveLength(2)
+    expect(slim[0]).toContain("apt-get install -y -qq --no-install-recommends libgomp1")
+    expect(slim[1]).toContain("pip install")
+    expect(ModalAdapter.layers(["lightgbm==4.6.0"], undefined, "python:3.12")).toHaveLength(1)
+    expect(ModalAdapter.layers([], undefined, "python:3.12-slim")).toEqual([])
+    const locked = ModalAdapter.layers(
+      ["numpy==2.5.2"],
+      { digest: "b".repeat(64), requirements: "numpy==2.5.2 --hash=sha256:" + "a".repeat(64) + "\n" },
+      "python:3.12-slim",
+    )
+    expect(locked[0]).toContain("libgomp1")
+    expect(locked[1]).toContain("--require-hashes")
+  })
+
   test("quotes package requirements as data instead of Docker shell syntax", () => {
     expect(ModalAdapter.layers(["project; echo unsafe", "name's-extra"])[0]).toContain(
       `'project; echo unsafe' 'name'\"'\"'s-extra'`,

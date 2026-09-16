@@ -73,7 +73,7 @@ const MODES: { value: Mode; title: string; body: string }[] = [
   {
     value: "byok",
     title: "Keys & subscriptions",
-    body: "Your connected keys and eligible subscriptions. Ace covers only models they cannot.",
+    body: "Your connected keys and eligible subscriptions. The Wallet still funds what they cannot: models without a key, web search without a Firecrawl key, and image generation.",
   },
   {
     value: "managed",

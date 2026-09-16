@@ -238,15 +238,31 @@ export namespace ModalAdapter {
     ].join("; ")
   }
 
-  export function layers(packages: string[], packageLock?: { digest: string; requirements: string }) {
+  /** The slim Debian Python images ship without libgomp, which LightGBM,
+   * scikit-learn's OpenMP builds and several other wheels dlopen at import.
+   * A study run that failed on `libgomp.so.1: cannot open shared object`
+   * after a four-minute build is the kind of loss one apt layer prevents. */
+  function systemLayers(image: string, packages: string[]) {
+    if (!packages.length || !/-slim\b/.test(image)) return []
+    return [
+      "RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*",
+    ]
+  }
+
+  export function layers(packages: string[], packageLock?: { digest: string; requirements: string }, image = "") {
+    const system = systemLayers(image, packageLock ? [packageLock.digest] : packages)
     if (packageLock) {
       const encoded = Buffer.from(packageLock.requirements).toString("base64")
       return [
+        ...system,
         `RUN printf '%s' ${quote(encoded)} | base64 -d > /tmp/openscience-requirements.txt && python -m pip install --disable-pip-version-check --no-cache-dir --no-deps --only-binary=:all: --require-hashes -r /tmp/openscience-requirements.txt && rm -f /tmp/openscience-requirements.txt`,
       ]
     }
     if (!packages.length) return []
-    return [`RUN python -m pip install --disable-pip-version-check --no-cache-dir ${packages.map(quote).join(" ")}`]
+    return [
+      ...system,
+      `RUN python -m pip install --disable-pip-version-check --no-cache-dir ${packages.map(quote).join(" ")}`,
+    ]
   }
 
   export function reconcile(code: number, recovered: Result): Result {
@@ -500,7 +516,7 @@ export namespace ModalAdapter {
       const count = spec.gpus ?? 1
       const gpu = spec.gpu === "none" || count <= 1 ? spec.gpu : `${spec.gpu}:${count}`
       const base = modal.images.fromRegistry(spec.image)
-      const commands = layers(spec.packages, spec.packageLock)
+      const commands = layers(spec.packages, spec.packageLock, spec.image)
       const image = commands.length ? base.dockerfileCommands(commands) : base
       await hooks.log(
         commands.length

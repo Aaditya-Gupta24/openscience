@@ -1531,7 +1531,8 @@
 
   [data-slot="permission-summary"][data-kind="remote-compute"],
   [data-slot="permission-summary"][data-kind="hosted-scientific"],
-  [data-slot="permission-summary"][data-kind="environment-mutation"] {
+  [data-slot="permission-summary"][data-kind="environment-mutation"],
+  [data-slot="permission-summary"][data-kind="study"] {
     display: grid;
     gap: 5px;
     white-space: normal;
@@ -1584,7 +1585,8 @@
 
   &[data-kind="remote-compute"],
   &[data-kind="hosted-scientific"],
-  &[data-kind="environment-mutation"] {
+  &[data-kind="environment-mutation"],
+  &[data-kind="study"] {
     align-items: stretch;
     flex-direction: column;
     min-height: 0;

@@ -65,6 +65,13 @@ Copy this checklist and work through it.
 - [ ] 5. Otherwise re-render once from the critique; keep the better of the two.
 - [ ] 6. Render the accepted description at 2K, save, write the caption, report open issues.
 
+One figure is faster done here than delegated: a worker starts without your context and
+re-reads the source. Two or more figures, or one figure while you still have text to write,
+are worth a background worker each (`task` with `background: true`, `subagent_type: "data"`
+or `"general"`): give it steps 1–6 with the component list, the document type and its
+threshold, the output path, and ask for the score and what it changed. The worker sees the
+render the same way you do; you get the score, the file and your own time back.
+
 **Step 1. Read the source.** The method section, the caption slot, and any existing figure.
 Identify the claim the figure must make, every component the text names, the relationships
 and their direction, what is input, what is learned, what is frozen, what is compared. A
