@@ -106,6 +106,10 @@ Review sources, assumptions, code and outputs before relying on a scientific con
 
 A skill describes a procedure; it does not mean every tool or service it references is installed. Check availability in **Customize** before a substantial task.
 
+### NVIDIA BioNeMo
+
+OpenScience ships ten bring-your-own-key adapters for NVIDIA BioNeMo NIM endpoints: Boltz-2, DiffDock, Evo 2, GenMol, MolMIM, MSA Search, OpenFold2, OpenFold3, ProteinMPNN and RFdiffusion. Each has a strict request schema, one approval per dispatch, and hashed artifacts written into the session; they are marked experimental and need your own NVIDIA API key under NVIDIA's service terms. The `protein-binder-design` skill is adapted from the [NVIDIA BioNeMo Agent Toolkit](https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit) (CC-BY-4.0 skills, Apache-2.0 code), pinned at commit `0e67a61`. See [Scientific tools](https://openscience.sh/docs/#/openscience/tool-catalog) and [Service credentials](https://openscience.sh/docs/#/openscience/service-credentials).
+
 ## How it works
 
 ```text

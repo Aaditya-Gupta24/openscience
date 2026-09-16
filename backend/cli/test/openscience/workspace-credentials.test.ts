@@ -390,13 +390,24 @@ describe("workspace credential sync", () => {
     const { runAtlasLogin } = await import("../../src/cli/cmd/connect")
     const key = "osk_fixture_reconnected"
     expect(await runAtlasLogin({ key, browser: false })).toBe(true)
-    expect((await OpenScience.getSession())?.api_key).toBe(key)
+    const current = await OpenScience.getSession()
+    expect(current?.api_key).toBe(key)
+    // The pasted key is recorded as such; the browser-minted device key it
+    // replaced is retired on the server.
+    expect(current?.origin).toBe("key")
     expect(OpenScience.credentialSyncStatus().state).toBe("ready")
     expect(revokes).toEqual([`Bearer ${session.api_key}`])
     expect(OpenScience.getLoginWarning()).toBeUndefined()
+
+    // A pasted key belongs to the account, not to this device: replacing it
+    // with another key, or signing out, revokes nothing on the server.
+    expect(await runAtlasLogin({ key: "osk_fixture_second", browser: false })).toBe(true)
+    expect(revokes).toEqual([`Bearer ${session.api_key}`])
+    expect(await OpenScience.revokeCurrentDevice()).toBe(true)
+    expect(revokes).toEqual([`Bearer ${session.api_key}`])
   })
 
-  test("concurrent logins serialize replacement and revoke every nonfinal device", async () => {
+  test("concurrent logins serialize replacement and retire only the device key they replace", async () => {
     const keys = ["osk_fixture_concurrent_a", "osk_fixture_concurrent_b"]
     await Promise.all(keys.map((key) => OpenScience.loginWithKey(key)))
 
@@ -404,7 +415,10 @@ describe("workspace credential sync", () => {
     if (!final) throw new Error("Expected one concurrent login to remain active")
     expect(keys).toContain(final)
     const loser = keys.find((key) => key !== final)!
-    expect(new Set(revokes)).toEqual(new Set([`Bearer ${session.api_key}`, `Bearer ${loser}`]))
+    // The browser-minted device key is retired; neither pasted key is, since
+    // pasted keys belong to the account rather than to this device.
+    expect(revokes).toEqual([`Bearer ${session.api_key}`])
+    expect(revokes).not.toContain(`Bearer ${loser}`)
     expect(revokes).not.toContain(`Bearer ${final}`)
   })
 

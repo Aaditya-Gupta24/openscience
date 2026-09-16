@@ -1399,7 +1399,9 @@ describe("execution inspection", () => {
     expect(card.querySelector('[data-slot="delegation-title"]')?.textContent).toBe("Compare assays")
     expect(card.querySelector('[data-slot="delegation-agent"]')?.textContent).toContain("Research")
     expect(card.querySelector('[data-slot="delegation-subline"]')?.textContent).toContain("8s")
+    // Finished child calls are not replayed here; only the one in flight is named.
     expect(card.textContent).not.toContain("Read old paper")
+    expect(card.querySelector('[data-slot="delegation-activity"]')).toBeNull()
     row.click()
     expect(opened).toEqual(["ses_delegated"])
     setPart("state", {
@@ -1414,7 +1416,7 @@ describe("execution inspection", () => {
       },
     })
     await settle()
-    expect(card.textContent).not.toContain("Read new paper")
+    expect(card.querySelector('[data-slot="delegation-activity"]')?.textContent).toBe("Read new paper")
     setPart("state", {
       status: "completed",
       input: part.state.input,

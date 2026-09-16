@@ -41,10 +41,29 @@ export const ModalTool = Tool.define("modal", {
       .default([])
       .describe("Python package requirements installed into the approved image, preferably pinned."),
     image: z.string().trim().min(1).max(2_000).optional().describe("Optional container image override."),
-    gpu: z.string().trim().min(1).max(120).default("none").describe("Modal GPU type, or none for CPU-only work."),
-    cpus: z.number().int().min(1).max(1024).optional(),
-    gpus: z.number().int().min(0).max(128).optional(),
-    memory_gb: z.number().min(0.1).max(100_000).optional(),
+    gpu: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .default("none")
+      .describe(
+        "Modal GPU type (T4, L4, A10, L40S, A100, A100-40GB, A100-80GB, H100, H200, B200) or none for CPU-only work. Modal may upgrade A100 to 80 GB and H100 to H200; H100! opts out.",
+      ),
+    cpus: z
+      .number()
+      .int()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe("Physical cores; Modal rejects requests over its per-container maximum."),
+    gpus: z.number().int().min(0).max(8).optional().describe("GPUs per container: up to 8 (4 for A10)."),
+    memory_gb: z
+      .number()
+      .min(0.1)
+      .max(1_024)
+      .optional()
+      .describe("Memory in GB; Modal rejects requests over its per-container maximum."),
     timeout_minutes: z
       .number()
       .int()

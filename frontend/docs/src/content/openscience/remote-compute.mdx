@@ -27,6 +27,8 @@ Use [Compute jobs](/openscience/jobs) for the lifecycle after connection.
 
 Defaults can be changed for future work. A saved token alone is not the same as an enabled and tested connection. Begin with a small environment check and confirm that its output returns to the project.
 
+What Modal jobs can ask for: a GPU by Modal's type name (`T4`, `L4`, `A10`, `L40S`, `A100`, `A100-80GB`, `H100`, `H200`, `B200`; `H100:2` for two, up to eight per container, four for A10), up to 24 hours of wall time (the default is 60 minutes), and outbound network only when you enable it; it is off by default. Modal may serve an `A100` request on an 80 GB card and an `H100` request on an H200; `H100!` opts out of the upgrade. OpenScience talks to Modal through its JavaScript SDK and never runs `modal` CLI commands or Python apps of its own.
+
 ## Add an SSH host
 
 Supply the fields shown in **Remote hosts**:

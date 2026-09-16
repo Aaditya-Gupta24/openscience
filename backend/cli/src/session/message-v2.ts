@@ -742,6 +742,10 @@ export namespace MessageV2 {
        * past it become placeholders. Set from the route: the managed gateway
        * takes far less than a provider's own API. */
       imageBytes?: number
+      /** Longest tool result, in characters, that travels in full; the rest
+       * is cut with a marker. A summarizer that overflowed on the full
+       * transcript gets one more attempt at this reduced fidelity. */
+      toolOutputMaxChars?: number
       /** The full transcript `input` is a prefix of. The reasoning boundary
        * and the image budget are taken from it, so a compaction head rendered
        * on its own is byte-identical to the same span inside the conversation
@@ -1003,7 +1007,7 @@ export namespace MessageV2 {
                 : part.state.time.compacted
                   ? toolSummary(part.tool, part.state)
                   : part.state.output
-              const outputText = baseText + droppedNote
+              const outputText = capOutput(baseText, options?.toolOutputMaxChars) + droppedNote
               const output =
                 carried.length > 0
                   ? {
@@ -1226,6 +1230,14 @@ export namespace MessageV2 {
   // "unchanged" assertion, so the model reads it as "I already have this, it didn't change"
   // rather than "this read differs from my earlier one." Wording clarity is secondary to the
   // keep-older structure — but both matter (the model still parses this line).
+  /** Cut a tool result to `max` characters, keeping its head and tail. */
+  export function capOutput(text: string, max: number | undefined) {
+    if (max === undefined || text.length <= max) return text
+    const tail = Math.floor(max / 5)
+    const omitted = text.length - (max - tail)
+    return `${text.slice(0, max - tail).trimEnd()}\n[… ${omitted.toLocaleString("en-US")} characters of this result omitted for the handoff …]\n${text.slice(-tail).trimStart()}`
+  }
+
   export const DUPLICATE_OUTPUT =
     "[Duplicate read omitted — byte-for-byte identical to an earlier read of the same tool in this conversation; the content is UNCHANGED. Refer to that earlier copy.]"
 

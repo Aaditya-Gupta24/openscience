@@ -86,6 +86,14 @@ export function ProviderKeys(props: { onError?: (error: string | undefined) => v
   const save = async () => {
     const value = key().trim()
     if (!value || saving()) return
+    // An Ace key is a Wallet credential, not a provider key: say where it goes
+    // instead of letting the server's refusal explain it.
+    if (/^(?:osk_|thk_|thk-)/.test(value)) {
+      props.onError?.(
+        "That is an Ace API key. Add it under Model access → Use an API key; it selects the Wallet it is billed to.",
+      )
+      return
+    }
     setSaving(true)
     props.onError?.(undefined)
     try {

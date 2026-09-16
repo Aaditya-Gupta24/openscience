@@ -50,7 +50,11 @@ ledger, and wakes this session with a "Study update" whenever there is news.
 - The script imports `openscience_track` (or `wandb`, which is shimmed) and logs the study
   metric at every evaluation plus anything worth a curve:
   `track.log({"val_loss": v, "lr": lr}, step=step)`. It sets `track.summary["val_loss"]`
-  to the final value and calls `track.finish()`.
+  to the final value and calls `track.finish()`. `openscience_track` is OpenScience's own
+  tracking module, written into the study root under `.openscience/sdk/` and added to the
+  run's PYTHONPATH and uploads by `study start`; it is not on PyPI or GitHub, so do not
+  search for it or ask a worker to audit it. Its whole API is `init`, `log`, `summary`,
+  `config`, `finish`.
 - Start exactly one run per idea with `study start`, passing the command and the
   configuration the idea needs. Never start a second run for the same idea; propose a
   new idea if a variant is worth trying.

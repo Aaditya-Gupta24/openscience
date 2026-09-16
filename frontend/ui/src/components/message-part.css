@@ -827,6 +827,19 @@
     color: var(--text-weaker);
   }
 
+  [data-slot="delegation-activity"] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-weak);
+  }
+
+  [data-slot="delegation-activity"]::before {
+    content: "·";
+    margin-right: 8px;
+    color: var(--text-weaker);
+  }
+
   [data-slot="delegation-status"] {
     color: var(--delegation-status);
   }

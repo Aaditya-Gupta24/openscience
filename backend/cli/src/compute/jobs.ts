@@ -163,7 +163,7 @@ export namespace ComputeJobs {
 
   export const Resources = z.object({
     cpus: z.number().int().min(1).max(1024).optional(),
-    gpus: z.number().int().min(0).max(128).optional(),
+    gpus: z.number().int().min(0).max(8).optional(),
     memory_gb: z.number().min(0.1).max(100_000).optional(),
     time_minutes: z
       .number()

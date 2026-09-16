@@ -56,6 +56,8 @@ type Wallet = Omit<typeof funded, "balanceUsd"> & {
   refreshing?: boolean
   refreshedAt?: number | null
   error?: string
+  origin?: "browser" | "key"
+  workspace?: { organizationId: string; name: string; personal: boolean }
 }
 type Services = NonNullable<Parameters<typeof ManagedInference>[0]["services"]>
 
@@ -75,6 +77,7 @@ const mount = async (wallet: Wallet = funded) => {
     holdWrite: undefined as Promise<void> | undefined,
     holdCommit: undefined as Promise<void> | undefined,
     writes: [] as unknown[],
+    keys: [] as string[],
     links: [] as string[],
     errors: [] as Array<string | undefined>,
     // Subscribers to the server's `account.updated` announcement.
@@ -87,7 +90,7 @@ const mount = async (wallet: Wallet = funded) => {
       response.writeHead(status, {
         "content-type": "application/json",
         "access-control-allow-origin": "*",
-        "access-control-allow-methods": "GET, PUT, OPTIONS",
+        "access-control-allow-methods": "GET, PUT, POST, OPTIONS",
         "access-control-allow-headers": "content-type",
       })
       response.end(JSON.stringify(data))
@@ -120,6 +123,19 @@ const mount = async (wallet: Wallet = funded) => {
       const data = { llm: state.mode }
       await state.holdBillingRead
       return json(data)
+    }
+    if (path === "/account/login-key" && request.method === "POST") {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(chunk)
+      const body = JSON.parse(Buffer.concat(chunks).toString()) as { key: string }
+      state.keys.push(body.key)
+      if (!body.key.startsWith("osk_")) return json({ ok: false, error: "That key was rejected." })
+      state.wallet = {
+        ...funded,
+        origin: "key",
+        workspace: { organizationId: "org-lab", name: "Lab", personal: false },
+      }
+      return json({ ok: true })
     }
     return json({ message: `Unexpected request: ${request.method} ${path}` }, 500)
   })
@@ -255,8 +271,44 @@ describe("Ace account surface", () => {
     // Signed out, the header row plus one sentence is the whole story.
     expect(host.querySelector("details")).toBeNull()
     expect(host.querySelector("[data-model-reload]")).toBeNull()
-    expect(host.textContent).toContain("Sign in to use purchased Wallet funds or turn on Ace.")
+    expect(host.textContent).toContain("Sign in, or paste an Ace API key from any workspace you belong to.")
+    expect(button(host, "Use an API key")).toBeDefined()
     expect(state.writes).toEqual([])
+  })
+
+  test("a pasted Ace API key connects through /account/login-key, is labelled, and bills its own workspace", async () => {
+    const { host, state } = await mount({
+      ...funded,
+      signedIn: false,
+      balanceUsd: null,
+      aceEnabled: false,
+      managedUnlocked: false,
+    })
+    await ready(() => button(host, "Use an API key") !== undefined)
+    button(host, "Use an API key").click()
+    await settle()
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Ace API key"]')!
+    expect(input.type).toBe("password")
+    // A rejected key stays in the field with the server's reason; nothing is stored.
+    input.value = "thk_bad"
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await settle()
+    host.querySelector<HTMLFormElement>("[data-model-access-key-form]")!.requestSubmit()
+    await ready(() => state.keys.length === 1)
+    await ready(() => state.errors.some((item) => item?.includes("rejected")))
+    expect(host.querySelector('input[aria-label="Ace API key"]')).not.toBeNull()
+
+    input.value = "osk_lab_key"
+    input.dispatchEvent(new Event("input", { bubbles: true }))
+    await settle()
+    host.querySelector<HTMLFormElement>("[data-model-access-key-form]")!.requestSubmit()
+    await ready(() => state.keys.length === 2 && host.textContent?.includes("$778.16") === true)
+    expect(host.querySelector("[data-model-access-key-form]")).toBeNull()
+    expect(host.textContent).toContain("API key · Lab")
+    expect(button(host, "Use a different API key")).toBeDefined()
+    // Funds and auto reload belong to the key's workspace, not the browser account's Personal wallet.
+    button(host, "Manage Ace").click()
+    expect(state.links.at(-1)).toBe("https://app.syntheticsciences.ai/workspace/org-lab/billing")
   })
 
   test("shows the stored account summary at once and swaps in the background refresh when announced", async () => {

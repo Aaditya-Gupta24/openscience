@@ -213,16 +213,28 @@ describe("ModalVolume", () => {
     await expect(
       ModalVolume.command({ tokenId: "ak-test", tokenSecret: "as-test", env: { PATH: root } }),
     ).rejects.toThrow(
-      `OpenScience could not find uv or an isolated Python installation with Modal SDK ${ModalVolume.VERSION}`,
+      `OpenScience could not find uv or an isolated Python installation with Modal SDK ${ModalVolume.MINIMUM} or newer`,
     )
   })
 
-  test("accepts a system Python only when the pinned SDK is available in isolated mode", async () => {
+  test("uses a system Python in isolated mode when its Modal SDK meets the minimum, ignoring ambient modules", async () => {
     const python = Bun.which("python3") ?? Bun.which("python")
     if (!python) throw new Error("Python is required for the Modal Volume driver test")
     const root = await fs.mkdtemp(path.join(process.env.TMPDIR ?? "/tmp", "openscience-modal-poison-"))
     roots.push(root)
+    // An ambient modal.py on PYTHONPATH must never be what the probe imports.
     await Bun.write(path.join(root, "modal.py"), "raise RuntimeError('ambient modal module loaded')\n")
+    const installed = Bun.spawnSync([python, "-I", "-c", "import modal; print(modal.__version__)"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const version = installed.exitCode === 0 ? installed.stdout.toString().trim() : undefined
+    const atLeast = (a: string, b: string) => {
+      const pa = a.split(".").map(Number)
+      const pb = b.split(".").map(Number)
+      for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0)
+      return true
+    }
 
     const selected = await ModalVolume.command({
       tokenId: "ak-test",
@@ -232,6 +244,37 @@ describe("ModalVolume", () => {
       uv: "/test/uv",
     })
 
+    const uvFallback = [
+      "/test/uv",
+      "run",
+      "--no-project",
+      "--python",
+      "3.12",
+      "--with",
+      `modal==${ModalVolume.VERSION}`,
+      "python",
+      "-I",
+      await ModalVolume.driverPath(),
+    ]
+    if (version && atLeast(version, ModalVolume.MINIMUM)) {
+      expect(selected).toEqual([python, "-I", await ModalVolume.driverPath()])
+    } else {
+      expect(selected).toEqual(uvFallback)
+    }
+  })
+
+  test("falls back to the pinned uv runtime when the system SDK is missing or too old", async () => {
+    const python = Bun.which("python3") ?? Bun.which("python")
+    if (!python) throw new Error("Python is required for the Modal Volume driver test")
+    await using _testing = ModalVolume.testing({
+      probe: { argv: [python, "-I", "-c", "raise SystemExit(1)"], timeout: 5_000 },
+    })
+    const selected = await ModalVolume.command({
+      tokenId: "ak-test",
+      tokenSecret: "as-test",
+      python,
+      uv: "/test/uv",
+    })
     expect(selected).toEqual([
       "/test/uv",
       "run",

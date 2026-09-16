@@ -641,11 +641,19 @@
                             },
                             "legacy": {
                               "type": "boolean"
+                            },
+                            "origin": {
+                              "type": "string",
+                              "enum": [
+                                "browser",
+                                "key"
+                              ]
                             }
                           },
                           "required": [
                             "type",
-                            "legacy"
+                            "legacy",
+                            "origin"
                           ]
                         },
                         {
@@ -7311,7 +7319,7 @@
                           "gpus": {
                             "type": "integer",
                             "minimum": 0,
-                            "maximum": 128
+                            "maximum": 8
                           },
                           "memory_gb": {
                             "type": "number",
@@ -7574,7 +7582,7 @@
                               "gpus": {
                                 "type": "integer",
                                 "minimum": 0,
-                                "maximum": 128
+                                "maximum": 8
                               },
                               "memory_gb": {
                                 "type": "number",
@@ -9954,7 +9962,7 @@
                         "gpus": {
                           "type": "integer",
                           "minimum": 0,
-                          "maximum": 128
+                          "maximum": 8
                         },
                         "memory_gb": {
                           "type": "number",
@@ -10217,7 +10225,7 @@
                             "gpus": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 128
+                              "maximum": 8
                             },
                             "memory_gb": {
                               "type": "number",
@@ -12471,7 +12479,7 @@
                       "gpus": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 128
+                        "maximum": 8
                       },
                       "memory_gb": {
                         "type": "number",
@@ -12710,7 +12718,7 @@
                             "gpus": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 128
+                              "maximum": 8
                             },
                             "memory_gb": {
                               "type": "number",
@@ -13201,7 +13209,7 @@
                       "gpus": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 128
+                        "maximum": 8
                       },
                       "memory_gb": {
                         "type": "number",
@@ -13767,7 +13775,7 @@
                         "gpus": {
                           "type": "integer",
                           "minimum": 0,
-                          "maximum": 128
+                          "maximum": 8
                         },
                         "memory_gb": {
                           "type": "number",
@@ -14030,7 +14038,7 @@
                             "gpus": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 128
+                              "maximum": 8
                             },
                             "memory_gb": {
                               "type": "number",
@@ -16439,7 +16447,7 @@
                         "gpus": {
                           "type": "integer",
                           "minimum": 0,
-                          "maximum": 128
+                          "maximum": 8
                         },
                         "memory_gb": {
                           "type": "number",
@@ -16702,7 +16710,7 @@
                             "gpus": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 128
+                              "maximum": 8
                             },
                             "memory_gb": {
                               "type": "number",
@@ -19111,7 +19119,7 @@
                         "gpus": {
                           "type": "integer",
                           "minimum": 0,
-                          "maximum": 128
+                          "maximum": 8
                         },
                         "memory_gb": {
                           "type": "number",
@@ -19374,7 +19382,7 @@
                             "gpus": {
                               "type": "integer",
                               "minimum": 0,
-                              "maximum": 128
+                              "maximum": 8
                             },
                             "memory_gb": {
                               "type": "number",
@@ -24114,6 +24122,32 @@
                         ]
                       }
                     },
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "personal": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "organizationId",
+                        "name",
+                        "personal"
+                      ]
+                    },
+                    "origin": {
+                      "type": "string",
+                      "enum": [
+                        "browser",
+                        "key"
+                      ]
+                    },
                     "refreshing": {
                       "type": "boolean"
                     },
@@ -27699,7 +27733,7 @@
                               "gpus": {
                                 "type": "integer",
                                 "minimum": 0,
-                                "maximum": 128
+                                "maximum": 8
                               },
                               "memory_gb": {
                                 "type": "number",

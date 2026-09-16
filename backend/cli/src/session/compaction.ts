@@ -65,6 +65,11 @@ export namespace SessionCompaction {
    * a bare 502, and a retry of the same body fails the same way; a provider's
    * own API takes tens of megabytes. Text is budgeted separately, so the
    * managed figure is what leaves a long transcript room beside the images. */
+  /** Tool results are cut to this many characters on the reduced-fidelity
+   * summarization attempt, the same bound OpenCode applies to every
+   * summarizer input. */
+  export const REDUCED_TOOL_OUTPUT_CHARS = 2_000
+
   export const IMAGE_BYTES_MANAGED = 2 * 1024 * 1024
   export const IMAGE_BYTES_DIRECT = 12 * 1024 * 1024
 
@@ -818,126 +823,147 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     // model, or a process that has not sent a request yet, takes the
     // standalone path.
     const remembered = assemblies().get(input.sessionID)
-    const shared =
+    const sharedAssembly =
       remembered && remembered.model.providerID === model.providerID && remembered.model.id === model.id
         ? remembered
         : undefined
-    const msg = (await Session.updateMessage({
-      id: await MessageV2.nextMessageID(input.sessionID),
-      role: "assistant",
-      parentID: input.parentID,
-      sessionID: input.sessionID,
-      // The record names the agent whose header produced the handoff: on the
-      // shared path that is the conversation's own agent, not `compaction`.
-      mode: shared ? shared.agent.mode : "compaction",
-      agent: shared ? shared.agent.name : agent.name,
-      summary: true,
-      ...(tailStartId ? { tailStartId } : {}),
-      path: {
-        cwd: Instance.directory,
-        root: Instance.worktree,
-      },
-      cost: 0,
-      tokens: {
-        output: 0,
-        input: 0,
-        reasoning: 0,
-        cache: { read: 0, write: 0 },
-      },
-      modelID: model.id,
-      providerID: model.providerID,
-      internal: { step: input.step },
-      time: {
-        created: Date.now(),
-      },
-    })) as MessageV2.Assistant
-    const processor = SessionProcessor.create({
-      assistantMessage: msg,
-      sessionID: input.sessionID,
-      model,
-      abort: input.abort,
-      busyStatus: "compacting",
-    })
+    const config = await Config.get()
     // Allow plugins to inject context or replace compaction prompt
     const compacting = await Plugin.trigger(
       "experimental.session.compacting",
       { sessionID: input.sessionID },
       { context: [], prompt: undefined },
     )
-    // The summary IS a handoff: it becomes the ONLY context the resumed (or a fresh)
-    // agent has. It must be self-contained enough to CONTINUE from without re-reading
-    // files or re-deriving state — otherwise the agent burns its whole fresh window
-    // catching up and immediately overflows again. A concrete "Next Move" and inline
-    // verified results are what let it act instead of re-exploring. When this session has
-    // been compacted before, anchor on that prior handoff (update it) instead of
-    // regenerating from scratch every time (P3.1).
-    const promptText =
-      compacting.prompt ??
-      [
-        buildHandoffPrompt({
-          previousSummary: previousSummary(input.messages),
-          focus: input.focus,
-          requests: live.map((message) => requestText(message)),
-        }),
-        ...compacting.context,
-      ].join("\n\n")
-    const config = await Config.get()
-    const result = await processor.process({
-      // The standalone call is isolated: preserve the source system controls on
-      // the durable carrier for the resumed main turn, but do not replay them
-      // into the compaction agent where child/custom guidance can conflict with
-      // the handoff contract. The shared call keeps them, as its prefix must.
-      user: shared ? userMessage : { ...userMessage, system: undefined },
-      agent: shared ? shared.agent : agent,
-      abort: input.abort,
-      sessionID: input.sessionID,
-      tools: shared ? shared.tools : {},
-      ...(shared ? { toolChoice: "none" as const } : {}),
-      system: shared ? shared.system : [],
-      messages: [
-        // Summarize only the head (P3.2): the tail is kept verbatim in the
-        // transcript and re-spliced after the summary via tailStartId /
-        // filterCompacted. The head is rendered against the whole
-        // conversation, so its reasoning boundary and image budget are the
-        // ones the cached prefix was written with; rendered alone, the
-        // boundary would move to the head's newest request and every later
-        // message would replay its reasoning, missing the cache and paying
-        // for thinking the summarizer never needed. The standalone call
-        // strips media the summarizer never needs.
-        ...MessageV2.toModelMessages(
-          head,
-          model,
-          shared
-            ? {
-                keepRecentImages: recentImages(config),
-                imageBytes: imageBytes(await resolveAccessRoute(model.providerID, model.id)),
-                conversation: input.messages,
-              }
-            : { stripMedia: true, conversation: input.messages },
-        ),
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: shared ? [HANDOFF_PREAMBLE, promptText].join("\n\n") : promptText,
-            },
-          ],
+    const route = await resolveAccessRoute(model.providerID, model.id)
+    /** One summarization attempt. The full attempt rides the conversation's
+     * cached prefix when it can; the reduced attempt is standalone, strips
+     * media and caps every tool result, so a transcript whose head alone
+     * overflowed the window still yields a handoff instead of a dead turn. */
+    const summarize = async (reduced: boolean) => {
+      const shared = reduced ? undefined : sharedAssembly
+      const msg = (await Session.updateMessage({
+        id: await MessageV2.nextMessageID(input.sessionID),
+        role: "assistant",
+        parentID: input.parentID,
+        sessionID: input.sessionID,
+        // The record names the agent whose header produced the handoff: on the
+        // shared path that is the conversation's own agent, not `compaction`.
+        mode: shared ? shared.agent.mode : "compaction",
+        agent: shared ? shared.agent.name : agent.name,
+        summary: true,
+        ...(tailStartId ? { tailStartId } : {}),
+        path: {
+          cwd: Instance.directory,
+          root: Instance.worktree,
         },
-      ],
-      model,
-    })
+        cost: 0,
+        tokens: {
+          output: 0,
+          input: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+        modelID: model.id,
+        providerID: model.providerID,
+        internal: { step: input.step },
+        time: {
+          created: Date.now(),
+        },
+      })) as MessageV2.Assistant
+      const processor = SessionProcessor.create({
+        assistantMessage: msg,
+        sessionID: input.sessionID,
+        model,
+        abort: input.abort,
+        busyStatus: "compacting",
+      })
+      // The summary IS a handoff: it becomes the ONLY context the resumed (or a fresh)
+      // agent has. It must be self-contained enough to CONTINUE from without re-reading
+      // files or re-deriving state — otherwise the agent burns its whole fresh window
+      // catching up and immediately overflows again. A concrete "Next Move" and inline
+      // verified results are what let it act instead of re-exploring. When this session has
+      // been compacted before, anchor on that prior handoff (update it) instead of
+      // regenerating from scratch every time (P3.1).
+      const promptText =
+        compacting.prompt ??
+        [
+          buildHandoffPrompt({
+            previousSummary: previousSummary(input.messages),
+            focus: input.focus,
+            requests: live.map((message) => requestText(message)),
+          }),
+          ...compacting.context,
+        ].join("\n\n")
+      const result = await processor.process({
+        // The standalone call is isolated: preserve the source system controls on
+        // the durable carrier for the resumed main turn, but do not replay them
+        // into the compaction agent where child/custom guidance can conflict with
+        // the handoff contract. The shared call keeps them, as its prefix must.
+        user: shared ? userMessage : { ...userMessage, system: undefined },
+        agent: shared ? shared.agent : agent,
+        abort: input.abort,
+        sessionID: input.sessionID,
+        tools: shared ? shared.tools : {},
+        ...(shared ? { toolChoice: "none" as const } : {}),
+        system: shared ? shared.system : [],
+        messages: [
+          // Summarize only the head (P3.2): the tail is kept verbatim in the
+          // transcript and re-spliced after the summary via tailStartId /
+          // filterCompacted. The head is rendered against the whole
+          // conversation, so its reasoning boundary and image budget are the
+          // ones the cached prefix was written with; rendered alone, the
+          // boundary would move to the head's newest request and every later
+          // message would replay its reasoning, missing the cache and paying
+          // for thinking the summarizer never needed. The standalone call
+          // strips media the summarizer never needs.
+          ...MessageV2.toModelMessages(
+            head,
+            model,
+            shared
+              ? {
+                  keepRecentImages: recentImages(config),
+                  imageBytes: imageBytes(route),
+                  conversation: input.messages,
+                }
+              : {
+                  stripMedia: true,
+                  conversation: input.messages,
+                  ...(reduced ? { toolOutputMaxChars: REDUCED_TOOL_OUTPUT_CHARS } : {}),
+                },
+          ),
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: shared ? [HANDOFF_PREAMBLE, promptText].join("\n\n") : promptText,
+              },
+            ],
+          },
+        ],
+        model,
+      })
 
-    // The summarization request itself exceeded the context window — no summary
-    // was produced. Surface it so the caller fails the turn instead of
-    // re-attempting a compaction that can never succeed.
-    if (result === "overflow") return "overflow"
+      return { result, message: processor.message }
+    }
 
-    if (result === "continue") {
+    const full = await summarize(false)
+    // The summarization request itself exceeded the context window: no summary
+    // was produced. Try once more with every tool result capped and media
+    // stripped; only if that also overflows is the turn too large to compact.
+    const attempt =
+      full.result === "overflow"
+        ? await Session.removeMessage({ sessionID: input.sessionID, messageID: full.message.id })
+            .catch(() => undefined)
+            .then(() => summarize(true))
+        : full
+    if (attempt.result === "overflow") return "overflow"
+
+    if (attempt.result === "continue") {
       const pending = SessionLoopState.pendingCompaction(await Session.messages({ sessionID: input.sessionID }))
       if (pending && (await recover(pending)) === "stop") return "stop"
     }
-    if (processor.message.error) return "stop"
+    if (attempt.message.error) return "stop"
     Bus.publish(Event.Compacted, { sessionID: input.sessionID })
     return "continue"
   }

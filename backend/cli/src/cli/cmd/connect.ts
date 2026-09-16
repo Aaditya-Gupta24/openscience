@@ -134,9 +134,14 @@ export const LogoutCommand = cmd({
       return
     }
 
+    const pasted = session.origin === "key"
     const revoked = await OpenScience.revokeCurrentDevice()
     await OpenScience.clearSession()
-    prompts.log.success("Signed out of Synthetic Sciences")
+    prompts.log.success(
+      pasted
+        ? "Forgot the Ace API key on this device; the key itself stays valid."
+        : "Signed out of Synthetic Sciences",
+    )
     if (!revoked) {
       prompts.log.info("This device could not be revoked remotely. You can remove it from your account settings.")
     }

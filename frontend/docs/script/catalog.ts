@@ -181,7 +181,7 @@ const toolUse = (id: string, blocked: boolean) => {
   if (id in coreManifests)
     return "Check readiness in Tools, follow setup, and request a small validated calculation. [Setup guide](/openscience/scientific-tools)."
   if (id in bioNemoManifests)
-    return "Connect the required personal scientific-service account, check accepted inputs and cost, then try a small case. [Connection guide](/openscience/service-credentials)."
+    return "An NVIDIA BioNeMo NIM. Connect your NVIDIA API key, check accepted inputs and cost, then try a small case. [Connection guide](/openscience/service-credentials) · [BioNeMo Agent Toolkit](https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit)."
   return "Reference entry: this release does not install or execute it through Tools. Follow the linked source for your own setup and use compatible skills or scripts."
 }
 const catalog = [

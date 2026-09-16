@@ -48,14 +48,21 @@ const FundingContext = z.object({
   organizations: z.array(FundingOrganization),
 })
 
-const Credential = z.object({ type: z.enum(["personal", "organization"]), legacy: z.boolean() })
+const Credential = z.object({
+  type: z.enum(["personal", "organization"]),
+  legacy: z.boolean(),
+  /** browser: a device key this client minted at sign-in; key: an API key the
+   * user pasted, which signing out forgets locally without revoking. */
+  origin: z.enum(["browser", "key"]),
+})
 
-function credential(session: { api_key: string; organization_id?: string } | null) {
+function credential(session: { api_key: string; organization_id?: string; origin?: "browser" | "key" } | null) {
   if (!session) return null
   return {
     type:
       session.organization_id || isWorkspaceKey(session.api_key) ? ("organization" as const) : ("personal" as const),
     legacy: !isWorkspaceKey(session.api_key),
+    origin: session.origin ?? ("browser" as const),
   }
 }
 

@@ -14,7 +14,12 @@ import { TrustedExecutable } from "../../process/trusted-executable"
 import { Shell } from "../../shell/shell"
 
 export namespace ModalVolume {
-  export const VERSION = "1.1.4"
+  /** The Modal Python SDK the uv fallback installs. A system interpreter is
+   * accepted from `MINIMUM` up: the four Volume calls the bridge makes
+   * (`from_name`, `objects.list`, `listdir`, `read_file`) are unchanged since
+   * 1.1.2, so a newer install is not forced onto the download path. */
+  export const VERSION = "1.5.5"
+  export const MINIMUM = "1.1.2"
   export const DOWNLOAD_DISK_RESERVE_BYTES = 512 * 1024 * 1024 // preserve 512 MiB for the host
 
   export type Context = {
@@ -221,7 +226,7 @@ export namespace ModalVolume {
           python,
           "-I",
           "-c",
-          `import modal; assert modal.__version__ == '${VERSION}'; assert hasattr(modal.Volume, 'read_file')`,
+          `import modal; v = tuple(int(p) for p in modal.__version__.split('.')[:3] if p.isdigit()); assert v >= tuple(int(p) for p in '${MINIMUM}'.split('.')), modal.__version__; assert hasattr(modal.Volume, 'read_file') and hasattr(modal.Volume, 'objects')`,
         ],
         env,
         hooks.value?.probe?.timeout ?? PROBE_TIMEOUT,
@@ -244,7 +249,7 @@ export namespace ModalVolume {
       return [uv, "run", "--no-project", "--python", "3.12", "--with", `modal==${VERSION}`, "python", "-I", file]
     }
     throw new Error(
-      `OpenScience could not find uv or an isolated Python installation with Modal SDK ${VERSION}. ` +
+      `OpenScience could not find uv or an isolated Python installation with Modal SDK ${MINIMUM} or newer. ` +
         "Install uv, then retry Modal Volumes.",
     )
   }

@@ -219,6 +219,41 @@ describe("session.message-v2.toModelMessage — media budgeting", () => {
     expect(MessageV2.decodedBytes("https://example.com/x.png")).toBe(0)
   })
 
+  test("toolOutputMaxChars cuts long tool results head-and-tail for a reduced-fidelity handoff", () => {
+    const long = `${"A".repeat(2_500)}MIDDLE${"Z".repeat(2_500)}`
+    const input: MessageV2.WithParts[] = [
+      { info: userInfo("m-u"), parts: [{ ...basePart("m-u", "u1"), type: "text", text: "run" }] as MessageV2.Part[] },
+      {
+        info: assistantInfo("m-a", "m-u"),
+        parts: [
+          {
+            ...basePart("m-a", "a1"),
+            type: "tool",
+            callID: "call-long",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { command: "cat big.log" },
+              output: long,
+              title: "Bash",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+    const full = JSON.stringify(MessageV2.toModelMessages(input, model))
+    expect(full).toContain("MIDDLE")
+    const reduced = JSON.stringify(MessageV2.toModelMessages(input, model, { toolOutputMaxChars: 2_000 }))
+    expect(reduced).not.toContain("MIDDLE")
+    expect(reduced).toContain("characters of this result omitted for the handoff")
+    expect(reduced.length).toBeLessThan(full.length - 900)
+    expect(MessageV2.capOutput("short", 2_000)).toBe("short")
+    expect(MessageV2.capOutput("x".repeat(10), undefined)).toBe("x".repeat(10))
+    expect(SessionCompaction.REDUCED_TOOL_OUTPUT_CHARS).toBe(2_000)
+  })
+
   test("the image byte budget follows the route", () => {
     expect(SessionCompaction.imageBytes("managed")).toBe(2 * 1024 * 1024)
     expect(SessionCompaction.imageBytes("byok")).toBe(12 * 1024 * 1024)

@@ -3236,6 +3236,7 @@ export type AccountGetResponses = {
     credential: {
       type: "personal" | "organization"
       legacy: boolean
+      origin: "browser" | "key"
     } | null
     credential_sync?: unknown
   }
@@ -9943,6 +9944,12 @@ export type SettingsWalletGetResponses = {
       description: string
       createdAt: string
     }>
+    workspace?: {
+      organizationId: string
+      name: string
+      personal: boolean
+    }
+    origin?: "browser" | "key"
     refreshing: boolean
     refreshedAt: number | null
     error?: string

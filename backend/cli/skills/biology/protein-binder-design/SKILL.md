@@ -22,7 +22,7 @@ metadata:
 
 Use this workflow for an end-to-end binder campaign: target preparation, backbone generation, sequence design, independent complex prediction, interface scoring, diversity analysis, ranking, structures, and a reproducible report.
 
-The reviewed upstream source is NVIDIA BioNeMo Agent Toolkit commit `0e67a612e4045f007e38fa77adc8f3ebfc5616b6`. Its canonical workflows are `skills/bionemo-agent-toolkit/skills/protein-binder-design` and `skills/bionemo-agent-toolkit/skills/complexa-binder-design`. Record that commit and every model/version actually used.
+The reviewed upstream source is NVIDIA BioNeMo Agent Toolkit commit `0e67a612e4045f007e38fa77adc8f3ebfc5616b6`. Its canonical workflows are `workflows/generative-protein-binder-design/protein-binder-design` and `workflows/generative-protein-binder-design/complexa-binder-design` (`skills/bionemo-agent-toolkit/` is the generated aggregate). Record that commit and every model/version actually used.
 
 This adapted skill is self-contained; it has no local helper files or references to inspect. Resolve upstream details through the pinned public repository only when the active route needs them.
 

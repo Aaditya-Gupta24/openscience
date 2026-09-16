@@ -40,7 +40,7 @@ describe("hosted BioNeMo adapters", () => {
       ],
       [
         "diffdock",
-        "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate",
+        "https://health.api.nvidia.com/v1/biology/mit/diffdock",
         { protein: "ATOM", ligand: "CCO", ligand_file_type: "txt" },
       ],
       ["evo2", "https://health.api.nvidia.com/v1/biology/arc/evo2-40b/generate", { sequence: "ACGTACGT" }],

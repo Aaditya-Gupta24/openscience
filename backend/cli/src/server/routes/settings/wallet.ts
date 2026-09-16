@@ -36,6 +36,10 @@ const WalletState = z.object({
       createdAt: z.string(),
     }),
   ),
+  /** The workspace the credential is billed to, when the account named it. */
+  workspace: z.object({ organizationId: z.string(), name: z.string(), personal: z.boolean() }).optional(),
+  /** browser: a device key from sign-in; key: an API key the user pasted. */
+  origin: z.enum(["browser", "key"]).optional(),
   /** True while the served values come from the stored summary and a newer one is being read. */
   refreshing: z.boolean(),
   /** When the served values were read from the account service. */
@@ -77,8 +81,14 @@ export function walletState(input: {
   transactions: OpenScience.Transaction[]
   /** From the account's pricing catalog when it has loaded; the public default otherwise. */
   fundingFeePercent?: number
+  origin?: "browser" | "key"
 }): WalletState {
   const credits = input.snapshot?.credits ?? null
+  const context = input.snapshot?.context
+  const funded = context?.organizations.find((item) => item.organization_id === context.organization_id)
+  const workspace = funded
+    ? { organizationId: funded.organization_id, name: funded.name, personal: funded.is_personal }
+    : undefined
   const mode = input.snapshot?.billing ?? null
   const redacted = Boolean(credits?.balanceRedacted || mode?.balance_redacted)
   const balance = redacted ? null : (credits?.balanceUsd ?? (mode?.balance_verified ? mode.balance_usd : null))
@@ -98,6 +108,8 @@ export function walletState(input: {
     aceContract: { ...ACE_CONTRACT, fundingFeePercent: input.fundingFeePercent ?? ACE_CONTRACT.fundingFeePercent },
     lifetimeSpentUsd: credits?.lifetimeSpentCents == null ? null : credits.lifetimeSpentCents / 100,
     transactions: input.transactions,
+    ...(workspace ? { workspace } : {}),
+    ...(input.origin ? { origin: input.origin } : {}),
     refreshing: input.refreshing,
     refreshedAt: input.snapshot?.at ?? null,
     ...(input.error ? { error: input.error } : {}),
@@ -114,6 +126,9 @@ export async function readWallet(
 ): Promise<WalletState> {
   // The catalog already held for the account, never a network read.
   const fundingFeePercent = await ManagedPricing.fundingFeePercent()
+  const origin = await OpenScience.getSession()
+    .then((session) => session?.origin ?? (session ? ("browser" as const) : undefined))
+    .catch(() => undefined)
   if (summary) {
     // The stored summary is served at once; a stale one is refreshed in the
     // background and announced as `account.updated`. A first read waits under
@@ -127,6 +142,7 @@ export async function readWallet(
         summary: true,
         transactions: [],
         fundingFeePercent,
+        origin,
       })
     }
     if (!read.value) return SIGNED_OUT
@@ -137,6 +153,7 @@ export async function readWallet(
       summary: true,
       transactions: [],
       fundingFeePercent,
+      origin,
     })
   }
   // The ledger view is always a fresh read; the summary it fetches is stored
@@ -161,6 +178,7 @@ export async function readWallet(
     summary: false,
     transactions: transactions ?? [],
     fundingFeePercent,
+    origin,
   })
 }
 

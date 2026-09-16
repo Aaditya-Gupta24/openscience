@@ -36,6 +36,10 @@ type Wallet = {
     processingFeeDisclosedSeparately: boolean
     reloadControlledByAce: boolean
   }
+  /** The workspace the credential is billed to, when the account named it. */
+  workspace?: { organizationId: string; name: string; personal: boolean }
+  /** browser: a device key from sign-in; key: an API key the user pasted. */
+  origin?: "browser" | "key"
   /** True when these are the stored values and the server is reading newer ones. */
   refreshing?: boolean
   refreshedAt?: number | null
@@ -104,12 +108,17 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
     signingIn: boolean
     refreshing: boolean
     account: AccountStatus
+    /** The "Use an API key" field: closed, open, or submitting. */
+    keyEntry: "closed" | "open" | "submitting"
+    key: string
   }>({
     mode: normalizeMode(globalSync.data.config.billing?.llm),
     saving: false,
     signingIn: false,
     refreshing: false,
     account: "idle",
+    keyEntry: "closed",
+    key: "",
   })
   const lifecycle = { epoch: 0, preference: 0, billingRead: 0, disposed: false }
   const selected = createMemo(() => MODES.find((item) => item.value === state.mode) ?? MODES[0])
@@ -253,6 +262,31 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
       .finally(() => setState("signingIn", false))
   }
 
+  // A pasted Ace API key is the Zen-style route: the key alone selects the
+  // workspace it is billed to, no browser round trip, and it belongs to the
+  // account that created it rather than to this device.
+  const submitKey = () => {
+    const key = state.key.trim()
+    if (!key || state.keyEntry === "submitting") return
+    setState("keyEntry", "submitting")
+    props.onError?.(undefined)
+    void settingsApi<LoginResult>(sdk.url, fetchFn, "/account/login-key", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key }),
+    })
+      .then((result) => {
+        if (!result.ok) throw new Error(result.error || "That key could not be used. Check it and try again.")
+        setState({ keyEntry: "closed", key: "" })
+        window.dispatchEvent(new Event("openscience:account-changed"))
+        void syncProviders("The Ace account changed")
+      })
+      .catch((error) => {
+        setState("keyEntry", "open")
+        fail(error)
+      })
+  }
+
   const unsubscribe = globalSync.onProvidersRefreshed(() => void loadBilling())
   // The server stored a newer summary after serving the previous one; the
   // re-read keeps the current values on screen until the new ones land.
@@ -329,14 +363,28 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
       return
     }
     if (!state.wallet || (state.account === "loading" && state.wallet.balanceUsd === null)) {
-      platform.openLink(URLS.dashboardBilling)
+      platform.openLink(billingURL())
       return
     }
     if (state.wallet.balanceUsd === null && !state.wallet.managedUnlocked && !state.wallet.aceEnabled) {
       refresh()
       return
     }
-    platform.openLink(URLS.dashboardBilling)
+    platform.openLink(billingURL())
+  }
+  // Funds and auto reload belong to the workspace the credential is billed
+  // to; the bare /billing page is the browser account's Personal wallet, which
+  // is the wrong place for a team key.
+  const billingURL = () => {
+    const workspace = state.wallet?.workspace
+    return workspace && !workspace.personal ? URLS.workspaceBilling(workspace.organizationId) : URLS.dashboardBilling
+  }
+  const originLabel = () => {
+    const wallet = state.wallet
+    if (!wallet?.signedIn) return
+    const where = wallet.workspace ? (wallet.workspace.personal ? "Personal" : wallet.workspace.name) : undefined
+    if (wallet.origin === "key") return where ? `API key · ${where}` : "API key"
+    return where && !wallet.workspace?.personal ? where : undefined
   }
 
   return (
@@ -357,8 +405,19 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
                 </span>
               </div>
               <span>
-                <Show when={state.wallet && !state.wallet.signedIn} fallback="Managed models, no provider keys.">
-                  Sign in to use purchased Wallet funds or turn on Ace. Your own provider keys stay separate.
+                <Show
+                  when={state.wallet && !state.wallet.signedIn}
+                  fallback={
+                    <>
+                      Managed models, no provider keys.
+                      <Show when={originLabel()}>
+                        {(label) => <span class="models-routing__origin"> · {label()}</span>}
+                      </Show>
+                    </>
+                  }
+                >
+                  Sign in, or paste an Ace API key from any workspace you belong to. Your own provider keys stay
+                  separate.
                 </Show>
               </span>
             </div>
@@ -391,9 +450,63 @@ export function ManagedInference(props: { onError?: (error: string | undefined) 
             >
               {accountAction()}
             </Button>
+            <Show when={state.keyEntry === "closed"}>
+              <button
+                type="button"
+                class="models-routing__link"
+                data-model-access-use-key
+                onClick={() => setState("keyEntry", "open")}
+              >
+                {state.wallet?.signedIn ? "Use a different API key" : "Use an API key"}
+              </button>
+            </Show>
             <LoginApproval active={state.signingIn} openLink={(url) => platform.openLink(url)} />
           </div>
         </div>
+
+        <Show when={state.keyEntry !== "closed"}>
+          <form
+            class="models-routing__key"
+            data-model-access-key-form
+            onSubmit={(event) => {
+              event.preventDefault()
+              submitKey()
+            }}
+          >
+            <input
+              type="password"
+              class="models-routing__key-input"
+              placeholder="osk_… or thk_… from app.syntheticsciences.ai → Settings → Keys"
+              autocomplete="off"
+              spellcheck={false}
+              value={state.key}
+              disabled={state.keyEntry === "submitting"}
+              onInput={(event) => setState("key", event.currentTarget.value)}
+              aria-label="Ace API key"
+            />
+            <Button
+              type="submit"
+              size="small"
+              variant="primary"
+              disabled={!state.key.trim() || state.keyEntry === "submitting"}
+            >
+              {state.keyEntry === "submitting" ? "Checking…" : "Connect"}
+            </Button>
+            <Button
+              type="button"
+              size="small"
+              variant="ghost"
+              disabled={state.keyEntry === "submitting"}
+              onClick={() => setState({ keyEntry: "closed", key: "" })}
+            >
+              Cancel
+            </Button>
+            <p class="models-routing__key-note">
+              The key is billed to the workspace it was created in, even one outside the account signed in here. Signing
+              out later forgets it on this device without revoking it.
+            </p>
+          </form>
+        </Show>
 
         <Show when={state.wallet?.signedIn && state.wallet.aceContract}>
           {(contract) => (

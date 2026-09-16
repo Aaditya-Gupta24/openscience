@@ -37,6 +37,11 @@ export interface OpenScienceSession {
   device_name?: string
   organization_id?: string
   workspace_locked?: boolean
+  /** How the credential arrived. A browser sign-in mints a device key that
+   * this client owns and may revoke; a pasted API key belongs to the account
+   * that created it (and possibly to other machines), so leaving or replacing
+   * it here never revokes it there. */
+  origin?: "browser" | "key"
 }
 
 export interface FundingOrganization {
@@ -544,6 +549,7 @@ export namespace OpenScience {
         device_name: typeof data.device_name === "string" ? data.device_name : undefined,
         ...(organizationID ? { organization_id: organizationID } : {}),
         ...(locked ? { workspace_locked: true } : {}),
+        ...(data.origin === "key" || data.origin === "browser" ? { origin: data.origin } : {}),
       }
     } catch (error) {
       log.warn("could not read account session", { error: error instanceof Error ? error.message : String(error) })
@@ -580,10 +586,17 @@ export namespace OpenScience {
       await syncCredentials({ force: true })
       const current = await getSession()
       if (!current || current.api_key !== session.api_key) {
-        await revokeSessionDevice(session)
+        if (session.origin !== "key") await revokeSessionDevice(session)
         throw new Error("This device could not verify the new login. Sign in again.")
       }
-      if (previous && previous.api_key !== current.api_key && !(await revokeSessionDevice(previous))) {
+      // Only a device key this client minted is retired; a pasted key stays
+      // valid for whoever else holds it.
+      if (
+        previous &&
+        previous.api_key !== current.api_key &&
+        previous.origin !== "key" &&
+        !(await revokeSessionDevice(previous))
+      ) {
         loginWarning =
           "Signed in, but the previous device could not be revoked remotely. You can remove it from account settings."
       }
@@ -1198,19 +1211,28 @@ export namespace OpenScience {
         [FUNDING_PROTOCOL_HEADER]: FUNDING_PROTOCOL,
       },
     }).catch(() => undefined)
-    const status = response?.ok ? ((await response.json()) as AuthStatusResponse) : undefined
+    // The status read is what tells this client which workspace the key is
+    // billed to; a session written without it would carry no user and never
+    // verify, so the login fails here instead of half-succeeding.
+    if (!response?.ok) {
+      throw new Error(
+        `Could not read the key's account (HTTP ${response?.status ?? "unreachable"}). Check your connection and try again.`,
+      )
+    }
+    const status = (await response.json()) as AuthStatusResponse
     const selected =
-      status?.funding_context?.type === "organization" ? status.funding_context.organization_id : undefined
-    const organizationID = loginOrganizationID(status?.api_key?.organization_id ?? selected)
+      status.funding_context?.type === "organization" ? status.funding_context.organization_id : undefined
+    const organizationID = loginOrganizationID(status.api_key?.organization_id ?? selected)
     const locked =
-      status?.api_key?.workspace_locked === true || status?.funding_context?.locked === true || !!organizationID
+      status.api_key?.workspace_locked === true || status.funding_context?.locked === true || !!organizationID
     if (isWorkspaceKey(key) && (!locked || !organizationID)) {
       throw new Error("Couldn't verify this workspace key's organization. Check your connection and try again.")
     }
     const session: OpenScienceSession = {
       api_key: key,
-      user_id: typeof status?.user?.user_id === "string" ? status.user.user_id : "",
+      user_id: typeof status.user?.user_id === "string" ? status.user.user_id : "",
       device_name: deviceName(),
+      origin: "key",
       ...(organizationID ? { organization_id: organizationID } : {}),
       ...(locked ? { workspace_locked: true } : {}),
     }
@@ -1416,9 +1438,13 @@ export namespace OpenScience {
     }
   }
 
+  /** Retire this device's key on the server. A pasted API key is not a
+   * device: signing out forgets it here and leaves it valid for the account
+   * and any other machine using it, so this reports true without a call. */
   export async function revokeCurrentDevice(timeoutMs = DEVICE_REVOKE_TIMEOUT_MS): Promise<boolean> {
     const session = await getSession()
     if (!session) return false
+    if (session.origin === "key") return true
     return revokeSessionDevice(session, timeoutMs)
   }
 

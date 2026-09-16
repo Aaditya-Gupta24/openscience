@@ -8,7 +8,51 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Added
+
+- **Ace API keys work like OpenCode Zen's.** Model access → Ace has _Use an API
+  key_: paste a key from the dashboard's Settings → Keys and the gateway bills
+  the workspace the key was created in, whether or not an account is signed in
+  here and whichever organization it belongs to. The card labels the credential
+  (`API key · Lab`), _Manage Ace_ opens that workspace's own billing page rather
+  than the signed-in account's Personal wallet, and signing out forgets a pasted
+  key on this device without revoking it for anyone else. A key pasted into
+  Provider API keys is redirected there instead of refused. On the gateway, a
+  "Personal" key is now pinned to the Personal workspace like every other key,
+  and older unpinned keys resolve to their owner's Personal workspace at
+  authentication, so a client that names that workspace is no longer locked out
+  with 403 on every funded call.
+
 ### Changed
+
+- **NVIDIA BioNeMo: the DiffDock route and the repo's front door.** The hosted
+  DiffDock endpoint moved to `/v1/biology/mit/diffdock`; the old
+  `/v1/molecular-docking/diffdock/generate` path answers 404 (NVIDIA's own
+  reference page still prints it), so every DiffDock dispatch failed. README
+  gains a BioNeMo section naming the ten NIM adapters and the Agent Toolkit the
+  binder-design skill is adapted from; the capability map, service-credentials,
+  molecular-research and genomics pages and the generated tool catalog now say
+  which entries are BioNeMo NIMs and link the toolkit; the skill names the
+  toolkit's canonical workflow paths.
+- **Modal: current SDKs, working recovery, honest ceilings.** The JavaScript SDK
+  moves 0.9.0 → 0.10.1 and the Python Volume bridge accepts any installed
+  `modal` ≥ 1.1.2 (installing 1.5.5 when none is present). Recovery and release
+  probe a recorded sandbox before trusting it — `sandboxes.fromId` stopped
+  validating ids in 0.8.0, so a sandbox that had vanished was reported as
+  "not found" instead of its durable volume being harvested — and the local
+  channel is detached once a sandbox exits. Tool schemas stop advertising 128
+  GPUs and 1,024 CPUs: 8 GPUs (4 for A10), 64 CPUs, 1 TB, with Modal's GPU
+  names and the `H100:2` syntax in the descriptions and docs.
+- **Compaction retries at reduced fidelity before giving up.** When the
+  summarizer's own request overflows the window, one more attempt runs
+  standalone with every tool result cut to 2,000 characters and media
+  stripped; only if that overflows too is the turn too large to compact.
+- **Workers inherit the lead's denials.** A session rule that denies a tool or
+  gates a directory for the lead now travels to every worker it dispatches; a
+  worker can never do what the person told the lead not to do.
+- The delegation row names the worker's tool in flight (`Running · 2m 10s ·
+Reading old paper`), and `autoresearch` says that `openscience_track` is the
+  bundled tracking module, not a package to search for.
 
 - **A failed turn says what kind of failure it was.** The card carries a
   heading from the failure class (the model service did not answer, rate

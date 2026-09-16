@@ -1420,6 +1420,18 @@ ToolRegistry.register({
     }
     const agentLabel = () =>
       i18n.t("ui.tool.agent", { type: sentenceCaseLabel(String(props.input.subagent_type || props.tool)) })
+    // The backend mirrors the worker's tool calls onto the dispatch part; the
+    // row names the one in flight so the reader knows what the worker is on
+    // without opening it.
+    const activity = () => {
+      if (!live()) return
+      const summary = props.metadata.summary as
+        Array<{ tool?: string; state?: { status?: string; title?: string } }> | undefined
+      const running = summary?.findLast((entry) => entry.state?.status === "running")
+      if (!running) return
+      const title = running.state?.title?.trim()
+      return title || (running.tool ? sentenceCaseLabel(running.tool) : undefined)
+    }
 
     const childPermission = createMemo(() => {
       const sessionId = childSessionId()
@@ -1533,6 +1545,7 @@ ToolRegistry.register({
               <span data-slot="delegation-subline">
                 <span data-slot="delegation-status">{statusLabel()}</span>
                 <Show when={duration()}>{(value) => <span>{value()}</span>}</Show>
+                <Show when={activity()}>{(value) => <span data-slot="delegation-activity">{value()}</span>}</Show>
               </span>
             </span>
             <span data-slot="delegation-summary-meta">

@@ -349,7 +349,7 @@ upstream), **vendored** (unchanged apart from paths).
 ## NVIDIA BioNeMo Agent Toolkit — 1 skill
 
 - Repository: https://github.com/NVIDIA-BioNeMo/bionemo-agent-toolkit
-- Copyright: NVIDIA BioNeMo
+- Copyright: NVIDIA Corporation
 - License: CC-BY-4.0 (skills) / Apache-2.0 (code)
 
 - Pinned upstream commit `0e67a612e4045f007e38fa77adc8f3ebfc5616b6`; skills and documentation are CC-BY-4.0, code Apache-2.0, and the models the workflow calls carry their own terms.

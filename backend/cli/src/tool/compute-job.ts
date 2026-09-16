@@ -714,7 +714,7 @@ export function createComputeJobTool(base?: JobBroker.Options) {
                   ? "Outbound network access is enabled for approved Modal jobs."
                   : "Outbound network access is blocked. Do not submit jobs that download packages, models, or repositories; enable it in Compute settings first.",
               outputs: "Write and declare relative artifact/checkpoint paths under the job workspace, not /tmp.",
-              gpu: "Set gpu to the exact Modal GPU request, or none for CPU-only discovery.",
+              gpu: "Set gpu to a Modal GPU type (T4, L4, A10, L40S, A100, A100-80GB, H100, H200, B200; 'H100:2' for two), or none for CPU-only discovery. Modal may upgrade A100 to 80 GB and H100 to H200.",
             },
           },
           capabilities: resolved.capabilities,

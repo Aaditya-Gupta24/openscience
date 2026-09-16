@@ -43,7 +43,11 @@ const specs = {
     docs: "https://docs.api.nvidia.com/nim/reference/mit-boltz2-infer",
   },
   diffdock: {
-    endpoint: "https://health.api.nvidia.com/v1/molecular-docking/diffdock/generate",
+    // The hosted route moved under /v1/biology/mit; the old
+    // /v1/molecular-docking/diffdock/generate path answers 404 even though
+    // NVIDIA's reference page still prints it (the BioNeMo Agent Toolkit's
+    // own eval asserts the old URL must not appear).
+    endpoint: "https://health.api.nvidia.com/v1/biology/mit/diffdock",
     apiSchemaVersion: "api-schema-2.3.0",
     docs: "https://docs.api.nvidia.com/nim/reference/mit-diffdock-infer",
   },

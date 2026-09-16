@@ -229,6 +229,22 @@ describe("Task tool contract", () => {
           permission: [...explore!.permission, { permission: "todowrite", pattern: "*", action: "allow" }],
         })
         expect(allowed.map((rule) => rule.permission).sort()).toEqual(["question", "task"])
+        // The lead's own denials and directory gates travel to the worker;
+        // its allows do not widen the worker.
+        const inherited = childPermissionRules(
+          explore!,
+          [],
+          [
+            { permission: "bash", pattern: "rm *", action: "deny" },
+            { permission: "external_directory", pattern: "/data/*", action: "ask" },
+            { permission: "webfetch", pattern: "*", action: "allow" },
+          ],
+        )
+        expect(inherited.slice(0, 2)).toEqual([
+          { permission: "bash", pattern: "rm *", action: "deny" },
+          { permission: "external_directory", pattern: "/data/*", action: "ask" },
+        ])
+        expect(inherited.some((rule) => rule.permission === "webfetch")).toBe(false)
       },
     })
   })

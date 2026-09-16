@@ -16,7 +16,7 @@ import { ModalUpload } from "./upload"
 import { ModalVolume } from "./volume"
 
 export namespace ModalAdapter {
-  export const VERSION = "0.9.0"
+  export const VERSION = "0.10.1"
   export const ROOT = "/workspace"
   const RUN_LOG = path.posix.join(ROOT, ".openscience-run.log")
   const EXIT_CODE = path.posix.join(ROOT, ".openscience-exit-code")
@@ -147,10 +147,11 @@ export namespace ModalAdapter {
   type ClosableClient = Pick<ModalClient, "close">
 
   /**
-   * modal@0.9.0's public `close()` does not currently tear down the client's
-   * underlying gRPC channels. Reusing one process-scoped client per credential
-   * identity therefore prevents every status poll, recovery, and release call
-   * from opening another live transport in the long-running OpenScience server.
+   * One process-scoped client per credential identity. The SDK's `close()`
+   * releases the auth token manager, and from 0.10.1 idle connections are
+   * released on their own; reusing the client still keeps every status poll,
+   * recovery, and release call off a fresh transport in the long-running
+   * OpenScience server.
    *
    * Keep the pool deliberately small. Changing credentials or environments is
    * rare and a process restart is safer than silently accumulating transports
@@ -315,6 +316,17 @@ export namespace ModalAdapter {
     }
   }
 
+  /** Release the local gRPC channel once the sandbox has exited; the SDK
+   * recommends it and only 0.10.1+ does it on its own. Nothing on Modal's
+   * side changes. */
+  function detach(sandbox: Sandbox) {
+    try {
+      sandbox.detach()
+    } catch {
+      // Already detached, or a handle the SDK considers closed.
+    }
+  }
+
   async function outcome(sandbox: Sandbox, output: Hooks["output"], reattach = false) {
     const [code] = await Promise.all([
       sandbox.wait(),
@@ -436,6 +448,27 @@ export namespace ModalAdapter {
     await sandbox.filesystem.writeText("approved\n", path.posix.join(ROOT, ".openscience-ready"))
   }
 
+  /** Resolve a recorded sandbox id to a handle Modal still recognizes.
+   * `sandboxes.fromId` stopped validating ids in SDK 0.8.0 and returns a
+   * handle for any string, so the first call that reaches the API is where a
+   * vanished sandbox shows up; that is the signal to harvest the durable
+   * volume rather than to fail the job as not found. */
+  async function attach(modal: ModalClient, sandboxId: string): Promise<Sandbox | undefined> {
+    const sandbox = await modal.sandboxes.fromId(sandboxId).catch((error) => {
+      if (error instanceof NotFoundError) return undefined
+      throw error
+    })
+    if (!sandbox) return undefined
+    const known = await sandbox
+      .getTags()
+      .then(() => true)
+      .catch((error) => {
+        if (error instanceof NotFoundError) return false
+        throw error
+      })
+    return known ? sandbox : undefined
+  }
+
   async function own(sandbox: Sandbox, id: string, project: string) {
     const tags = await sandbox.getTags()
     const owner = crypto.createHash("sha256").update(project).digest("hex").slice(0, 20)
@@ -524,7 +557,7 @@ export namespace ModalAdapter {
         `Uploaded ${spec.uploads.length} input file${spec.uploads.length === 1 ? "" : "s"} (${spec.uploads.reduce((sum, file) => sum + file.size, 0)} bytes)`,
       )
       await hooks.log(`Running command: ${spec.command}`)
-      const settled = await outcome(sandbox, hooks.output)
+      const settled = await outcome(sandbox, hooks.output).finally(() => detach(sandbox))
       await hooks.log(`Command exited with code ${settled.code}; compute sandbox released`)
       const recovered = await harvest(context, spec, settled).catch((error) => {
         throw new HarvestError(settled.code, error)
@@ -549,12 +582,7 @@ export namespace ModalAdapter {
   ): Promise<Result> {
     const modal = client(context)
     return Promise.resolve().then(async () => {
-      const sandbox = sandboxId
-        ? await modal.sandboxes.fromId(sandboxId).catch((error) => {
-            if (error instanceof NotFoundError) return undefined
-            throw error
-          })
-        : undefined
+      const sandbox = sandboxId ? await attach(modal, sandboxId) : undefined
       if (!sandbox) {
         await hooks.log(
           sandboxId
@@ -569,7 +597,7 @@ export namespace ModalAdapter {
       }
       await own(sandbox, spec.id, spec.project)
       await hooks.log(`Reattached to sandbox ${sandboxId}`)
-      const settled = await outcome(sandbox, hooks.output, true)
+      const settled = await outcome(sandbox, hooks.output, true).finally(() => detach(sandbox))
       const recovered = await harvest(context, spec, settled).catch((error) => {
         throw new HarvestError(settled.code, error)
       })
@@ -635,10 +663,7 @@ export namespace ModalAdapter {
     const modal = client(context)
     return Promise.resolve().then(async () => {
       if (sandboxId) {
-        const sandbox = await modal.sandboxes.fromId(sandboxId).catch((error) => {
-          if (error instanceof NotFoundError) return undefined
-          throw error
-        })
+        const sandbox = await attach(modal, sandboxId)
         if (sandbox) {
           await own(sandbox, spec.id, spec.project)
           await sandbox.terminate({ wait: true })

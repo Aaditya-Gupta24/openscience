@@ -140,10 +140,17 @@ export function normalizeTaskAttemptInput(
 
 /** Denies a child inherits unless the subagent's own ruleset allows the tool:
  * workers do not keep todo lists or dispatch further workers by default, and
- * never ask the user directly. */
-export function childPermissionRules(agent: Agent.Info, primaryTools: string[] = []): PermissionNext.Ruleset {
+ * never ask the user directly. A lead's own session rules that deny a tool or
+ * gate a directory come first, so a worker can never do what the person told
+ * the lead not to do. */
+export function childPermissionRules(
+  agent: Agent.Info,
+  primaryTools: string[] = [],
+  parent: PermissionNext.Ruleset = [],
+): PermissionNext.Ruleset {
   const allows = (tool: string) => agent.permission.some((rule) => rule.permission === tool && rule.action !== "deny")
   return [
+    ...parent.filter((rule) => rule.action === "deny" || rule.permission === "external_directory"),
     ...(allows("todowrite") ? [] : [{ permission: "todowrite", pattern: "*", action: "deny" as const }]),
     ...(allows("task") ? [] : [{ permission: "task", pattern: "*", action: "deny" as const }]),
     { permission: "question", pattern: "*", action: "deny" },
@@ -434,6 +441,9 @@ export const TaskTool = Tool.define("task", async (ctx) => {
           if (Storage.NotFoundError.isInstance(error)) return
           throw error
         }))
+      const parentRules = await Session.get(ctx.sessionID)
+        .then((parent) => parent.permission ?? [])
+        .catch(() => [])
       const session = existing
         ? assertTaskContinuation({ session: existing, parentSessionID: ctx.sessionID, projectID: Instance.project.id })
         : await Session.createNext({
@@ -441,7 +451,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
             parentID: ctx.sessionID,
             directory: Instance.directory,
             title: params.description,
-            permission: childPermissionRules(agent, config.experimental?.primary_tools),
+            permission: childPermissionRules(agent, config.experimental?.primary_tools, parentRules),
           })
       // The child keeps its own scratch for staged inputs and side outputs but
       // works in the parent's directory: the files it writes there are the
