@@ -5,6 +5,7 @@ import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { normalizeDeepSeekToolSchema } from "./tool-schema"
 import { isAtlasProxyURL } from "../openscience/synced-env-policy"
+import { BILLING_URL } from "../endpoints"
 import { iife } from "@synsci/util/iife"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
@@ -1301,9 +1302,53 @@ export namespace ProviderTransform {
     return schema
   }
 
+  /** The managed gateway's 402 is a machine contract (codes, cents, a
+   * recovery action) with no prose. Say what it means and what to do. */
+  export function managedPaymentRequired(error: APICallError) {
+    if (error.statusCode !== 402 || !isAtlasProxyURL(error.url)) return
+    const body = iife(() => {
+      try {
+        return JSON.parse(error.responseBody ?? "") as Record<string, unknown>
+      } catch {
+        return undefined
+      }
+    })
+    if (!body || typeof body.error !== "string") return
+    const recovery = (body.recovery ?? {}) as Record<string, unknown>
+    const dollars = (cents: unknown) =>
+      typeof cents === "number" && Number.isFinite(cents) ? `$${(cents / 100).toFixed(2)}` : undefined
+    const available = dollars(body.available_cents)
+    const required = dollars(body.required_cents)
+    const balance = [
+      available ? `Available: ${available}` : undefined,
+      required ? `this request reserves ${required}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("; ")
+    if (body.error === "monthly_usage_limit") {
+      const limit = dollars(body.limit_cents)
+      const spent = dollars(body.spent_cents)
+      return `Ace is paused: this workspace reached its monthly usage limit${limit ? ` of ${limit}` : ""}${spent ? ` (${spent} spent)` : ""}. Raise the limit under Billing at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
+    }
+    if (body.error !== "insufficient_balance") return
+    const detail = balance ? ` ${balance}.` : ""
+    switch (recovery.action) {
+      case "contact_organization_billing_manager":
+        return `Ace is paused: this workspace's shared Wallet cannot fund the request.${detail} Ask a billing manager to add funds at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
+      case "retry_after_reload":
+        return `Ace is paused while an automatic reload of your Wallet completes.${detail} Retry in a moment; if the card was declined, update it at ${BILLING_URL}.`
+      case "add_wallet_funds_or_update_payment_method":
+        return `Ace is paused: your Wallet cannot fund the request and auto reload could not top it up.${detail} Add funds or update the card at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
+      default:
+        return `Ace is paused: your Wallet cannot fund the request.${detail} Add funds or turn on auto reload at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
+    }
+  }
+
   export function error(providerID: string, error: APICallError) {
     let message = error.message
     const body = error.responseBody?.toLowerCase() ?? ""
+    const managed = managedPaymentRequired(error)
+    if (managed) return managed
     if (
       providerID === "openrouter" &&
       error.statusCode === 403 &&

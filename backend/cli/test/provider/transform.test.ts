@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { APICallError } from "ai"
 import { ProviderTransform } from "../../src/provider/transform"
 import { managedOpenRouterBaseURL } from "../../src/openscience/synced-env-policy"
 
@@ -2530,5 +2531,74 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(result).toEqual({})
     })
+  })
+})
+
+describe("ProviderTransform.error for the managed gateway's payment-required contract", () => {
+  const managed = (body: Record<string, unknown>, url = `${managedOpenRouterBaseURL()}/chat/completions`) =>
+    new APICallError({
+      message: "Payment Required",
+      url,
+      requestBodyValues: {},
+      statusCode: 402,
+      responseBody: JSON.stringify(body),
+      isRetryable: false,
+    })
+
+  test("a personal Wallet that cannot fund the request says what is left and where to add funds", () => {
+    const text = ProviderTransform.error(
+      "openrouter",
+      managed({
+        error: "insufficient_balance",
+        required_cents: 50,
+        available_cents: 12,
+        recovery: { kind: "ace_reload", retryable: false, action: "turn_on_ace_or_add_wallet_funds" },
+      }),
+    )
+    expect(text).toContain("Ace is paused")
+    expect(text).toContain("Available: $0.12")
+    expect(text).toContain("reserves $0.50")
+    expect(text).toContain("/billing")
+    expect(text).not.toContain("insufficient_balance")
+  })
+
+  test("a shared Wallet points at the billing manager; a pending reload says to retry", () => {
+    expect(
+      ProviderTransform.error(
+        "openrouter",
+        managed({
+          error: "insufficient_balance",
+          recovery: { kind: "organization_wallet", retryable: false, action: "contact_organization_billing_manager" },
+        }),
+      ),
+    ).toContain("Ask a billing manager")
+    expect(
+      ProviderTransform.error(
+        "openrouter",
+        managed({
+          error: "insufficient_balance",
+          recovery: { kind: "ace_reload", retryable: true, retry_after_seconds: 5, action: "retry_after_reload" },
+        }),
+      ),
+    ).toContain("automatic reload")
+  })
+
+  test("a monthly usage limit names the limit and the spend", () => {
+    const text = ProviderTransform.error(
+      "openrouter",
+      managed({
+        error: "monthly_usage_limit",
+        limit_cents: 10_000,
+        spent_cents: 10_020,
+        recovery: { kind: "monthly_usage_limit", retryable: false, action: "increase_monthly_limit" },
+      }),
+    )
+    expect(text).toContain("monthly usage limit of $100.00")
+    expect(text).toContain("$100.20 spent")
+  })
+
+  test("a 402 from a provider the person connected directly is left alone", () => {
+    const direct = managed({ error: "insufficient_balance" }, "https://openrouter.ai/api/v1/chat/completions")
+    expect(ProviderTransform.error("openrouter", direct)).toBe("Payment Required")
   })
 })
