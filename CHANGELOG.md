@@ -59,6 +59,13 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   ask the workspace's billing manager, wait for the automatic reload that is
   already running, or raise the monthly usage limit, each with the Billing
   link.
+- **Running out of Ace funds reads as a sentence, not a code.** The managed
+  gateway's payment-required answer is a machine contract (`insufficient_balance`,
+  cents, a recovery action); the turn showed it raw. It now says what is left,
+  what the request reserves, and what to do: add funds or turn on auto reload,
+  ask the workspace's billing manager, wait for the automatic reload that is
+  already running, or raise the monthly usage limit, each with the Billing
+  link.
 - **A collapsed turn hides failures the agent recovered from.** Folded traces
   showed every failed edit and command in red while the turn was still working
   and after it had answered. A failure is the agent's to deal with while it
