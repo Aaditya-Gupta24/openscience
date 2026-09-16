@@ -798,7 +798,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   type AtOption =
-    { type: "agent"; name: string; display: string } | { type: "file"; path: string; display: string; recent?: boolean }
+    | { type: "agent"; name: string; display: string; description?: string }
+    | { type: "file"; path: string; display: string; recent?: boolean }
 
   // Subagents a person may hand a job to directly: `@explore find …` sends
   // the message as a brief to that worker (the runtime turns the mention into
@@ -806,13 +807,18 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // with the agent chip, not mentioned.
   const agentList = createMemo<AtOption[]>(() => {
     const agents = Array.isArray(sync.data.agent) ? sync.data.agent : []
-    return agents
-      .filter((agent) => agent.mode === "subagent" && !agent.hidden)
-      .map((agent) => ({
-        type: "agent" as const,
-        name: agent.name,
-        display: agent.description ? `${agent.name} — ${agent.description}` : agent.name,
-      }))
+    return (
+      agents
+        .filter((agent) => agent.mode === "subagent" && !agent.hidden)
+        // The filter matches the name only: a description that happens to
+        // contain the typed letters is not a reason to list a worker.
+        .map((agent) => ({
+          type: "agent" as const,
+          name: agent.name,
+          display: agent.name,
+          description: agent.description,
+        }))
+    )
   })
 
   const handleAtSelect = (option: AtOption | undefined) => {
@@ -1340,10 +1346,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   // The worker's description, first clause only, dimmed beside its name the
   // way a file's folder is.
   const agentSummary = (item: AtOption) => {
-    if (item.type !== "agent") return
-    const description = item.display.split(" — ")[1]
-    if (!description) return
-    const first = description.split(/(?<=[.;:])\s/)[0] ?? description
+    if (item.type !== "agent" || !item.description) return
+    const first = item.description.split(/(?<=[.;:])\s/)[0] ?? item.description
     return first.length > 72 ? `${first.slice(0, 69).trimEnd()}…` : first
   }
   const atRowMeta = (item: Extract<AtOption, { type: "file" }>) => {
