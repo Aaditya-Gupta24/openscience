@@ -34,6 +34,7 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   molecular-research and genomics pages and the generated tool catalog now say
   which entries are BioNeMo NIMs and link the toolkit; the skill names the
   toolkit's canonical workflow paths.
+
 - **Modal: current SDKs, working recovery, honest ceilings.** The JavaScript SDK
   moves 0.9.0 → 0.10.1 and the Python Volume bridge accepts any installed
   `modal` ≥ 1.1.2 (installing 1.5.5 when none is present). Recovery and release
@@ -43,37 +44,41 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   channel is detached once a sandbox exits. Tool schemas stop advertising 128
   GPUs and 1,024 CPUs: 8 GPUs (4 for A10), 64 CPUs, 1 TB, with Modal's GPU
   names and the `H100:2` syntax in the descriptions and docs.
+
 - **Compaction retries at reduced fidelity before giving up.** When the
   summarizer's own request overflows the window, one more attempt runs
   standalone with every tool result cut to 2,000 characters and media
   stripped; only if that overflows too is the turn too large to compact.
+
 - **Workers inherit the lead's denials.** A session rule that denies a tool or
   gates a directory for the lead now travels to every worker it dispatches; a
   worker can never do what the person told the lead not to do.
+
 - The delegation row names the worker's tool in flight (`Running · 2m 10s ·
 Reading old paper`), and `autoresearch` says that `openscience_track` is the
   bundled tracking module, not a package to search for.
 
-- **A failed turn says what kind of failure it was.** The card carries a
-  heading from the failure class (the model service did not answer, rate
-  limited, credentials rejected, request too large, the request was rejected),
-  the sentence to act on, and the HTTP status, gateway router code or edge
-  request id set apart in mono type for a support report instead of inside the
-  copy; `ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8 sin1::…` no longer reads
-  as the message.
-- **A delegated worker is one row that opens its session.** The Task card no
-  longer folds the worker's handoff behind a chevron: the row shows the job's
-  title, the agent, its state and duration, and clicking it opens the worker's
-  session where the transcript and handoff live. A worker waiting on a
-  permission or question still surfaces the request under the row; files it
-  saved appear as chips. The Task tool's `description` is now a one- to
-  three-word title and names the child session as is.
-- **Reports are checked page by page.** `paper-writing` and `ml-paper-writing`
-  say how to place floats (`[t]`/`[tbp]`, sized to the width they need, no two
-  floats stacked on a page with a sliver of text between them) and to render
-  page thumbnails with `pdftoppm` into scratch and read them before shipping.
-- `generate_image` receipts name the file relative to the project (or the
-  session directory), never as a climb out of the session scratch.
+### Fixed
+
+- **Restart to update no longer dead-ends on a running agent.** When agent turns
+  are the only thing running, the update banner offers _Pause and restart_: each
+  turn is paused under a named reason ("Paused to install an update"), its
+  pending tool calls are closed with that reason, and the next process continues
+  the turn where it stopped through the same path that resumes work after a
+  crash. Terminals, kernels and MCP requests still have to finish first, and the
+  refusal now lists them. On the desktop, a restart whose runtime handoff failed
+  released nothing: Retry and Discard answered "already restarting" and Quit
+  demanded proof of a disposal that never happened; the latch is now released,
+  so the staged update can be retried, discarded, or the app quit normally.
+
+- **The desktop starts several seconds sooner.** The running app's own
+  signature was verified with `codesign --deep` on every launch before the
+  splash could appear, re-checking hundreds of nested binaries; the running
+  bundle is now verified shallow (its outer seal covers the nested code, and
+  Gatekeeper assessed it at launch), while downloaded updates are still verified
+  deep before installation.
+
+## v2.0.106 – v2.0.110 — 2026-09-16
 
 ### Added
 
@@ -90,6 +95,7 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   back to hand-drawn TikZ, SVG or Graphviz; `generate-image` and
   `scientific-visualization` join the core skill index; the TikZ scaffold is
   gone.
+
 - **Schematics render under publication standards, scored before they ship.**
   `generate_image` takes a `purpose`: `schematic` prepends the scientific-diagram
   framing adapted from K-Dense's scientific-schematics skill (white background,
@@ -105,6 +111,7 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   five-sentence prompt structure, and `scientific-visualization` is the current
   upstream release (v1.2) with its publisher profiles and the metadata, palette
   and export audit CLIs.
+
 - **An explicit `/skill` is loaded by the loop, not requested of the model.**
   Typing `/scientific-visualization` had produced a system instruction to load
   the skill "before substantive work", which a model could and did skip in
@@ -113,6 +120,7 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   tool call, marked `invoked`), so the instructions and the tools the skill
   unlocks are in place when the model reads the request. `/autoresearch` gets
   its `study` and `experiments` tools the same way.
+
 - **The `@` picker reads like Cursor's.** Name first with the folder dimmed
   beside it, grouped under Recent and Files & folders, folder icons for
   directories, and a pane beside the list that draws the active row's place in
@@ -121,10 +129,12 @@ Reading old paper`), and `autoresearch` says that `openscience_track` is the
   deepest directories, and generated caches (`__pycache__`, `.ruff_cache`,
   `node_modules`, `.venv`, the study SDK) stay out of results unless the query
   names them.
+
 - **The Context dialog shows the window, not a grid of sixteen numbers.** A
   headline says how full the window is and a segmented bar shows what fills
   it, with a legend of the recorded buckets; the exact counts sit in two cards
   (last request, session); custom instructions and raw messages fold away.
+
 - **Model options has one shape on every route.** The effort ladder sits on a
   six-track grid that centres a short last row instead of leaving one option
   hanging; Speed is a heading with the Fast toggle and, where a route does not
@@ -137,6 +147,7 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   `1.05M`; Codex GPT-5.6 models offer the same cap choices as their OpenAI
   siblings and Astra offers Fast on the direct OpenAI route as it does through
   Ace.
+
 - **The Model access card is one header and two rows.** Ace's identity, status
   and one-line purpose on the left; the Wallet on the right as what is spendable
   now (`$700.50 available`, the held amount named only while turns hold funds)
@@ -146,24 +157,33 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   one-line consequences read side by side. Signed out, the card is the header
   row plus one sentence.
 
-### Fixed
+### Changed
 
-- **Restart to update no longer dead-ends on a running agent.** When agent turns
-  are the only thing running, the update banner offers _Pause and restart_: each
-  turn is paused under a named reason ("Paused to install an update"), its
-  pending tool calls are closed with that reason, and the next process continues
-  the turn where it stopped through the same path that resumes work after a
-  crash. Terminals, kernels and MCP requests still have to finish first, and the
-  refusal now lists them. On the desktop, a restart whose runtime handoff failed
-  released nothing: Retry and Discard answered "already restarting" and Quit
-  demanded proof of a disposal that never happened; the latch is now released,
-  so the staged update can be retried, discarded, or the app quit normally.
-- **The desktop starts several seconds sooner.** The running app's own
-  signature was verified with `codesign --deep` on every launch before the
-  splash could appear, re-checking hundreds of nested binaries; the running
-  bundle is now verified shallow (its outer seal covers the nested code, and
-  Gatekeeper assessed it at launch), while downloaded updates are still verified
-  deep before installation.
+- **A failed turn says what kind of failure it was.** The card carries a
+  heading from the failure class (the model service did not answer, rate
+  limited, credentials rejected, request too large, the request was rejected),
+  the sentence to act on, and the HTTP status, gateway router code or edge
+  request id set apart in mono type for a support report instead of inside the
+  copy; `ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR_CD8 sin1::…` no longer reads
+  as the message.
+
+- **A delegated worker is one row that opens its session.** The Task card no
+  longer folds the worker's handoff behind a chevron: the row shows the job's
+  title, the agent, its state and duration, and clicking it opens the worker's
+  session where the transcript and handoff live. A worker waiting on a
+  permission or question still surfaces the request under the row; files it
+  saved appear as chips. The Task tool's `description` is now a one- to
+  three-word title and names the child session as is.
+
+- **Reports are checked page by page.** `paper-writing` and `ml-paper-writing`
+  say how to place floats (`[t]`/`[tbp]`, sized to the width they need, no two
+  floats stacked on a page with a sliver of text between them) and to render
+  page thumbnails with `pdftoppm` into scratch and read them before shipping.
+
+- `generate_image` receipts name the file relative to the project (or the
+  session directory), never as a climb out of the session scratch.
+
+### Fixed
 
 - **A few large figures no longer kill a turn on Ace.** `read` attaches an
   image's bytes in full, and the only per-request limit was a count (20 recent
@@ -176,6 +196,7 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   replaced by the resize nudge instead of shipped. The gateway's router codes
   are explained in the error instead of echoed. The schematics skill scores
   the 1K render and leaves the 2K file unread.
+
 - Restored authenticated session trace delivery after the uploader was removed.
   Trace sharing is on by default for signed-in accounts, including user-owned
   routes, while preserving saved opt-outs. General settings now expose a device
@@ -189,6 +210,7 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   pill and the dialog divided by the model's raw 1.05M maximum: 11% while the
   cap was nearly half used. Both now use the chosen or default cap and say
   when it sits below the model maximum.
+
 - **Running out of Ace funds reads as a sentence, not a code.** The managed
   gateway's payment-required answer is a machine contract (`insufficient_balance`,
   cents, a recovery action); the turn showed it raw. It now says what is left,
@@ -196,6 +218,7 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   ask the workspace's billing manager, wait for the automatic reload that is
   already running, or raise the monthly usage limit, each with the Billing
   link.
+
 - **Running out of Ace funds reads as a sentence, not a code.** The managed
   gateway's payment-required answer is a machine contract (`insufficient_balance`,
   cents, a recovery action); the turn showed it raw. It now says what is left,
@@ -203,6 +226,7 @@ standard rate · $4.22 in · $21.10 out /1M`; under the context cap, whether
   ask the workspace's billing manager, wait for the automatic reload that is
   already running, or raise the monthly usage limit, each with the Billing
   link.
+
 - **A collapsed turn hides failures the agent recovered from.** Folded traces
   showed every failed edit and command in red while the turn was still working
   and after it had answered. A failure is the agent's to deal with while it
