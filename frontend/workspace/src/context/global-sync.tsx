@@ -752,7 +752,7 @@ function createGlobalSync() {
     return childStore
   }
 
-  async function loadSessions(directory: string, projectID?: string) {
+  async function loadSessions(directory: string, projectID?: string, attempt = 0) {
     const key = scopeFor(directory, projectID)
     const pending = sessionLoads.get(key)
     if (pending) return pending
@@ -789,6 +789,12 @@ function createGlobalSync() {
       })
       .catch((err) => {
         console.error("Failed to load sessions", err)
+        // A list that failed to load leaves the sidebar on whatever was
+        // persisted, with no event to correct it until something changes on
+        // the server. One retry after a pause covers the load-time timeout.
+        if (attempt < 1 && requested.has(directory)) {
+          defer(() => void loadSessions(directory, projectID, attempt + 1), 1_500)
+        }
         // Aborted/cancelled loads happen routinely when the user switches
         // projects quickly; don't flash an error toast for those.
         const name = err?.name ?? ""
