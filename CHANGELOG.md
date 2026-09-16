@@ -8,6 +8,70 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+From a trace review of a ten-hour `/autoresearch` session on GPT-5.6 via
+OpenRouter whose automatic compaction cost ten times a normal step and handed
+the resumed turn the wrong objective:
+
+- **A compaction summary reads the conversation from the cache again.** The
+  summary request rendered the head of the transcript on its own, so the
+  "last request" boundary that decides which replies replay their reasoning
+  moved to the head's newest request, and every reply of the study loop
+  replayed encrypted reasoning the conversation itself had never sent. The
+  request's bytes diverged from the cached prefix right after the system
+  prompt (12,784 cached of 166,071 input tokens, $0.495) and the summarizer
+  paid for ~30K tokens of thinking it did not need. The head is now rendered
+  against the whole conversation (same boundary, same image budget), so it is
+  byte-identical to the prefix the previous step wrote.
+- **The handoff is written for the request in progress.** The summary covers
+  the head while the newest request stays verbatim in the tail, so a
+  compaction during request N+1 summarized request N and wrote "Objective
+  complete — report the result to the user and stop" while the live request
+  waited below it, and the continuation repeated "if the Objective is already
+  complete, stop". The summarizer is now told every request still waiting in
+  the tail (as a bounded excerpt: the opening ask and closing lines, never an
+  attached dataset) and that the newest is the Objective; the continuation
+  names that request and no longer suggests stopping; and later compactions,
+  which update the previous handoff, are told to replace an earlier Objective
+  rather than preserve it.
+- **The pinned request is the one the turn works from.** The compaction
+  carrier pins one request verbatim ahead of every summary, but it matched
+  only messages without turn identity, which no typed prompt has had since
+  turns were recorded, so nothing was ever pinned; and it would have pinned
+  the oldest request rather than the current one. It now pins the newest
+  typed request when it is small enough to ride ahead of every later summary
+  (8K tokens); a request rejected for size pins nothing, since reducing it is
+  what the preflight compaction is for. The fixture that hid the dead
+  predicate uses the production message shape.
+- **Verbatim turns are the turns the person typed.** The tail kept "turns"
+  that began at any user message, so two study reminders or worker wake-ups
+  could be the whole verbatim tail while the request they belonged to was
+  summarized away. A turn now begins where the person typed; runtime
+  continuations extend it.
+- **A missing tail anchor no longer drops the newest request.** When the
+  message a summary's tail starts at is gone (an undo inside the tail, a
+  migration), the model view fell back to the carrier onward, which is
+  exactly the part of the transcript the newest request is not in. It now
+  keeps the history from the previous compaction boundary in order, with the
+  summary as its recap, and logs the malformed layout.
+- **The summary message records the agent that wrote it.** On the shared
+  path the handoff is produced under the conversation's own header, but the
+  message was labelled `agent: compaction`, so the transcript and telemetry
+  named a persona that never ran.
+- **Work after an automatic compaction stays in its turn.** The workspace
+  treated every compaction carrier as a turn of its own and rendered it only
+  as the "context compacted" divider, so every reply the runtime's
+  continuation drew after a mid-turn compaction (hours of study work, the
+  pending Modal approval card, the final answer) had no turn to appear in and
+  vanished from the transcript. An automatic carrier now folds into the turn
+  it interrupted: the trace shows one grey "Context compacted" note where it
+  fired, the turn's status line reads "Compacting context" while it runs, and
+  the approval card renders where the reader is waiting. A manual `/compact`
+  still draws its own boundary.
+
+## v2.0.104 — 2026-09-16
+
 ### Changed
 
 - **Every bundled skill names the people who wrote it.** 273 of the 366
@@ -22,6 +86,8 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   (MIT; 79 skills); Hugging Face's skills (Apache-2.0); Anthropic's document
   skills; the NVIDIA BioNeMo Agent Toolkit; pacsomatic; and the bundled fonts.
   Closes #613, which asked for the K-Dense entry.
+
+## v2.0.103 — 2026-09-15
 
 ### Fixed
 

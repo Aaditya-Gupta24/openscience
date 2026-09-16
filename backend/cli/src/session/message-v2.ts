@@ -18,8 +18,10 @@ import { Token } from "@/util/token"
 import { Inference } from "@/provider/inference"
 import { CredentialRevocation } from "@/credentials/revocation"
 import { PayloadIntegrity } from "@/tool/payload-integrity"
+import { Log } from "@/util/log"
 
 export namespace MessageV2 {
+  const log = Log.create({ service: "session.message" })
   export const ResearchEffort = z.enum(["normal", "ultra"]).meta({
     ref: "ResearchEffort",
   })
@@ -710,10 +712,19 @@ export namespace MessageV2 {
   export function toModelMessages(
     input: WithParts[],
     model: Provider.Model,
-    options?: { stripMedia?: boolean; keepRecentImages?: number },
+    options?: {
+      stripMedia?: boolean
+      keepRecentImages?: number
+      /** The full transcript `input` is a prefix of. The reasoning boundary
+       * and the image budget are taken from it, so a compaction head rendered
+       * on its own is byte-identical to the same span inside the conversation
+       * and rides the provider's cached prefix instead of re-reading it. */
+      conversation?: WithParts[]
+    },
   ): ModelMessage[] {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
+    const scope = options?.conversation ?? input
     // P2.1: older tool outputs identical to a more recent call collapse to a back-ref.
     const superseded = supersededOutputs(input)
 
@@ -729,7 +740,7 @@ export namespace MessageV2 {
       if (found >= 0) order.splice(found, 1)
       order.push(id)
     }
-    for (const msg of input)
+    for (const msg of scope)
       for (const part of msg.parts) {
         if (part.type === "file") add(part.mime, part.url)
         if (part.type === "tool" && part.state.status === "completed" && !part.state.time.compacted)
@@ -799,12 +810,19 @@ export namespace MessageV2 {
     // user-role message: a worker's result or a study update lands mid-work,
     // and stripping there would rewrite the prefix the cache holds for
     // nothing, while a person's request usually follows a pause that has
-    // cooled the cache anyway.
-    const lastUser = input.findLastIndex(
+    // cooled the cache anyway. A compaction head is rendered against the
+    // conversation's boundary, which lies in the verbatim tail beyond it:
+    // every head message is an earlier turn there, so it is one here too.
+    const boundary = scope.findLastIndex(
       (msg) =>
         msg.info.role === "user" &&
         msg.parts.some((part) => (part.type === "text" && !part.synthetic) || part.type === "file"),
     )
+    const lastUser = iife(() => {
+      if (scope === input || boundary < 0) return boundary
+      const index = input.findIndex((msg) => msg.info.id === scope[boundary].info.id)
+      return index < 0 ? input.length : index
+    })
     for (const [index, msg] of input.entries()) {
       if (msg.parts.length === 0) continue
       const earlierTurn = index < lastUser
@@ -1551,10 +1569,37 @@ export namespace MessageV2 {
         ...result.slice(tailIdx, carrierIdx), // verbatim tail
         ...result.slice(summaryIdx + 1), // continuation
       ]
-    // tailStartId was set but its message is gone (reverted/migrated) or the layout is
-    // malformed. Fall back to the no-tail behavior — drop everything before the carrier —
-    // rather than returning the whole (unbounded) history the retain scan just collected.
-    return carrierIdx >= 0 ? result.slice(carrierIdx) : result
+    if (carrierIdx < 0) return result
+    // tailStartId was set but its message is gone (reverted/migrated) or the
+    // layout is malformed. The tail is the only place the newest request
+    // lives, since the summary never saw it, so dropping it would resume from
+    // a handoff about older work. Keep the history the retain scan collected
+    // from the previous compaction boundary onward, in order, with this
+    // summary as its recap: no worse than the context before this compaction.
+    const previous = result.findLastIndex(
+      (m, i) =>
+        i < carrierIdx &&
+        m.info.role === "user" &&
+        m.parts.some((p) => p.type === "compaction") &&
+        result.some(
+          (s, j) =>
+            j > i &&
+            j < carrierIdx &&
+            s.info.role === "assistant" &&
+            s.info.summary === true &&
+            s.info.parentID === m.info.id &&
+            !!s.info.finish &&
+            !s.info.error &&
+            s.parts.some((p) => p.type === "text" && p.text.trim()),
+        ),
+    )
+    log.warn("compaction tail start missing; keeping history from the previous boundary", {
+      sessionID: result[carrierIdx].info.sessionID,
+      carrierID: result[carrierIdx].info.id,
+      tailStartId,
+      kept: result.length - Math.max(previous, 0),
+    })
+    return previous >= 0 ? result.slice(previous) : result
   }
 
   const isOpenAiErrorRetryable = (e: APICallError) => {

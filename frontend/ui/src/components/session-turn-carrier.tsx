@@ -2,17 +2,18 @@ import type { Message, Part, UserMessage } from "@synsci/sdk/v2/client"
 
 /**
  * A user message the runtime wrote to keep a turn going: a harness or loop
- * continuation, or a background worker's completion carrying the `<task>`
- * envelope. Nobody typed it, so it opens no turn of its own; the work that
- * answers it belongs to the turn the user actually started. A compaction
- * carrier is not one of these (it draws its own boundary), and neither is a
- * shell-mode command, whose synthetic text is the user's own action.
+ * continuation, a background worker's completion carrying the `<task>`
+ * envelope, or the carrier of a compaction that fired by itself mid-turn.
+ * Nobody typed it, so it opens no turn of its own; the work that answers it
+ * belongs to the turn the user actually started. A manual `/compact` is the
+ * user's own action and draws its own boundary, and so is a shell-mode
+ * command, whose synthetic text is the user's own action.
  */
 export function isContinuationCarrier(message: Message, parts: readonly Part[] | undefined): boolean {
   if (message.role !== "user") return false
   const internal = (message as UserMessage).internal
   if (internal?.type === "continuation") return true
-  if (internal?.type === "compaction") return false
+  if (internal?.type === "compaction") return internal.auto === true
   if (!parts?.length) return false
   const texts = parts.filter((part): part is Extract<Part, { type: "text" }> => part.type === "text")
   return (

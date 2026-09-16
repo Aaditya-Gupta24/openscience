@@ -198,6 +198,106 @@ describe("session.message-v2.toModelMessage — media budgeting", () => {
   })
 })
 
+describe("session.message-v2.toModelMessage — a compaction head rendered against its conversation", () => {
+  const textPart = (messageID: string, id: string, text: string, synthetic?: boolean) =>
+    ({ ...basePart(messageID, id), type: "text" as const, text, synthetic }) as MessageV2.Part
+  const reasoningPart = (messageID: string, id: string, text: string) =>
+    ({
+      ...basePart(messageID, id),
+      type: "reasoning" as const,
+      text,
+      time: { start: 0, end: 1 },
+      metadata: { openai: { reasoningEncryptedContent: `enc-${id}` } },
+    }) as MessageV2.Part
+  const imagePart = (messageID: string, id: string, name: string) =>
+    ({
+      ...basePart(messageID, id),
+      type: "file" as const,
+      mime: "image/png",
+      filename: name,
+      url: `data:image/png;base64,${Buffer.from(name).toString("base64")}`,
+    }) as MessageV2.Part
+  const typed = (id: string, text: string): MessageV2.WithParts => ({
+    info: { ...userInfo(id), internal: { type: "prompt", epoch: id } } as MessageV2.User,
+    parts: [textPart(id, `${id}-t`, text)],
+  })
+  const reply = (id: string, parentID: string, text: string): MessageV2.WithParts => ({
+    info: { ...assistantInfo(id, parentID), finish: "stop" } as MessageV2.Assistant,
+    parts: [reasoningPart(id, `${id}-r`, `thinking about ${text}`), textPart(id, `${id}-x`, text)],
+  })
+  // Two typed requests with reasoning replies, a study update the runtime
+  // wrote, then the compaction carrier: the shape of a long research session.
+  const conversation = (): MessageV2.WithParts[] => [
+    typed("u1", "Run the EDA."),
+    reply("a1", "u1", "EDA done."),
+    typed("u2", "Now train the model."),
+    reply("a2", "u2", "Baseline trained."),
+    {
+      info: {
+        ...userInfo("u3"),
+        internal: { type: "continuation", kind: "harness", text: "Study update", epoch: "u2", transaction: "u3" },
+      } as MessageV2.User,
+      parts: [textPart("u3", "u3-t", "Study update: run 4 finished.", true)],
+    },
+    reply("a3", "u3", "Recorded run 4."),
+    {
+      info: { ...userInfo("cc"), internal: { type: "compaction", auto: true, epoch: "u2", transaction: "cc" } },
+      parts: [{ ...basePart("cc", "cc-c"), type: "compaction", auto: true } as MessageV2.Part],
+    },
+  ]
+
+  test("the head keeps the conversation's reasoning boundary, so its bytes are the cached prefix", () => {
+    const all = conversation()
+    const full = MessageV2.toModelMessages(all, model)
+    // The tail starts at the newest request; everything before it is the head.
+    const head = all.slice(0, 2)
+    const rendered = MessageV2.toModelMessages(head, model, { conversation: all })
+    expect(JSON.stringify(rendered)).toBe(JSON.stringify(full.slice(0, rendered.length)))
+    expect(JSON.stringify(rendered)).not.toContain("thinking about")
+    // Rendered on its own, the boundary moves to the head's newest request and
+    // the reply behind it replays the reasoning the conversation never sent.
+    expect(JSON.stringify(MessageV2.toModelMessages(head, model))).toContain("thinking about EDA")
+  })
+
+  test("a head that ends after a runtime carrier still renders every reply as an earlier turn", () => {
+    const all = conversation()
+    const full = MessageV2.toModelMessages(all, model)
+    const head = all.slice(0, 6)
+    const rendered = MessageV2.toModelMessages(head, model, { conversation: all })
+    expect(JSON.stringify(rendered)).toBe(JSON.stringify(full.slice(0, rendered.length)))
+    // Inside the conversation the boundary is u2, so a2 and a3 replay their
+    // reasoning there and here alike; a1 does not.
+    expect(JSON.stringify(rendered)).not.toContain("thinking about EDA")
+    expect(JSON.stringify(rendered)).toContain("thinking about Baseline")
+  })
+
+  test("the image budget is the conversation's, so a head image the tail pushed out stays a placeholder", () => {
+    const all: MessageV2.WithParts[] = [
+      {
+        info: typed("u1", "Plot it.").info,
+        parts: [textPart("u1", "u1-t", "Plot it."), imagePart("u1", "u1-i", "old.png")],
+      },
+      reply("a1", "u1", "Plotted."),
+      {
+        info: typed("u2", "Again.").info,
+        parts: [textPart("u2", "u2-t", "Again."), imagePart("u2", "u2-i", "new.png")],
+      },
+    ]
+    const full = MessageV2.toModelMessages(all, model, { keepRecentImages: 1 })
+    const rendered = MessageV2.toModelMessages(all.slice(0, 2), model, { keepRecentImages: 1, conversation: all })
+    expect(JSON.stringify(rendered)).toBe(JSON.stringify(full.slice(0, rendered.length)))
+    expect(JSON.stringify(rendered)).toContain("older image omitted")
+  })
+
+  test("without a conversation the head is rendered as before", () => {
+    const all = conversation()
+    const head = all.slice(0, 2)
+    expect(JSON.stringify(MessageV2.toModelMessages(head, model, { conversation: head }))).toBe(
+      JSON.stringify(MessageV2.toModelMessages(head, model)),
+    )
+  })
+})
+
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () => {
     const input: MessageV2.WithParts[] = [
@@ -1261,11 +1361,12 @@ describe("session.message-v2.filterCompacted — verbatim tail (P3.2)", () => {
     expect(out.map((message) => message.info.id)).toEqual(["u1", "a1", "cc", "sum"])
   })
 
-  test("a missing tailStartId falls back to [carrier, summary, continuation] — never the whole history", async () => {
+  test("a missing tailStartId keeps the history in order with the summary as its recap, never dropping the newest request", async () => {
     // The summary references a tail anchor that is no longer in the stream (e.g. the tail
-    // messages were reverted/migrated away). The retain scan can't find it; the re-splice
-    // must still honour the compaction boundary and drop pre-carrier history, not return
-    // the entire un-truncated history.
+    // messages were reverted/migrated away). The tail was the only place the newest
+    // request lived, since the summary never saw it: dropping everything before the
+    // carrier would resume from a handoff about older work. Keep the history the scan
+    // collected, chronological, with the summary and continuation after it.
     const msgs: MessageV2.WithParts[] = [
       mk("cont", "assistant", [txt("cont", "go")], { finish: "stop", parentID: "cc" }),
       mk("sum", "assistant", [txt("sum", "HANDOFF")], {
@@ -1275,11 +1376,34 @@ describe("session.message-v2.filterCompacted — verbatim tail (P3.2)", () => {
         tailStartId: "gone",
       }),
       compactionCarrier("cc"),
-      mk("old2", "assistant", [txt("old2", "old a")]),
+      mk("a2", "assistant", [txt("a2", "work on the newest request")], { finish: "tool-calls", parentID: "u2" }),
+      mk("u2", "user", [txt("u2", "newest request")]),
+      mk("old2", "assistant", [txt("old2", "old a")], { finish: "stop", parentID: "old1" }),
       mk("old1", "user", [txt("old1", "old q")]),
     ]
     const out = await MessageV2.filterCompacted(streamOf(msgs))
-    expect(out.map((m) => m.info.id)).toEqual(["cc", "sum", "cont"])
+    expect(out.map((m) => m.info.id)).toEqual(["old1", "old2", "u2", "a2", "cc", "sum", "cont"])
+  })
+
+  test("a missing tailStartId is bounded by the previous compaction: history before that boundary stays dropped", async () => {
+    const msgs: MessageV2.WithParts[] = [
+      mk("cont", "assistant", [txt("cont", "go")], { finish: "stop", parentID: "cc2" }),
+      mk("sum2", "assistant", [txt("sum2", "HANDOFF 2")], {
+        summary: true,
+        finish: "stop",
+        parentID: "cc2",
+        tailStartId: "gone",
+      }),
+      compactionCarrier("cc2"),
+      mk("a2", "assistant", [txt("a2", "work on the newest request")], { finish: "tool-calls", parentID: "u2" }),
+      mk("u2", "user", [txt("u2", "newest request")]),
+      mk("sum1", "assistant", [txt("sum1", "HANDOFF 1")], { summary: true, finish: "stop", parentID: "cc1" }),
+      compactionCarrier("cc1"),
+      mk("old2", "assistant", [txt("old2", "old a")], { finish: "stop", parentID: "old1" }),
+      mk("old1", "user", [txt("old1", "old q")]),
+    ]
+    const out = await MessageV2.filterCompacted(streamOf(msgs))
+    expect(out.map((m) => m.info.id)).toEqual(["cc1", "sum1", "u2", "a2", "cc2", "sum2", "cont"])
   })
 
   test("a superseded unanswered request cannot pin every later compaction tail", () => {

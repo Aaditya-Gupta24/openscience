@@ -24,6 +24,10 @@ export type TraceRow =
 
 const groupable = new Set(["context", "sources", "commands"])
 
+/** The one line for a compaction that fired mid-turn. */
+export const COMPACTED_NOTE =
+  "Context compacted. The conversation so far was folded into a handoff and the work continued from it."
+
 /** Finished quietly: no failure, no receipt the reader must see on its own. */
 function settled(part: ToolPart) {
   return part.state.status === "completed" && collapsibleTracePart(part)
@@ -91,6 +95,12 @@ export function buildTraceRows(entries: ResearchTraceEntry[]): TraceRow[] {
     if (part.type === "text" && part.synthetic) {
       const text = part.text.replace(/<\/?system-reminder[^>]*>/g, "").trim()
       if (text) rows.push({ kind: "note", entry, text })
+      return
+    }
+    // An automatic compaction inside the turn: the reader sees where the
+    // context was folded into a handoff, and that the work went on from it.
+    if (part.type === "compaction") {
+      rows.push({ kind: "note", entry, text: COMPACTED_NOTE })
       return
     }
     if (part.type === "reasoning") {

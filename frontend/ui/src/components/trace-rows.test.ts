@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import type { AssistantMessage, Part, ToolPart } from "@synsci/sdk/v2/client"
-import { buildTraceRows, editedChanges, editedLabel, exploredLabel, thoughtLabel } from "./trace-rows"
+import {
+  buildTraceRows,
+  COMPACTED_NOTE,
+  editedChanges,
+  editedLabel,
+  exploredLabel,
+  noteLabel,
+  thoughtLabel,
+} from "./trace-rows"
 
 const message = {
   id: "msg_a",
@@ -32,6 +40,14 @@ function reasoning(id: string, start: number, end?: number): Part {
 const entries = (parts: Part[]) => parts.map((part) => ({ message, part }))
 
 describe("trace rows", () => {
+  test("a mid-turn compaction is one grey note between the work before and after it", () => {
+    const marker = { id: "prt_c", sessionID: "ses_a", messageID: "msg_c", type: "compaction", auto: true } as Part
+    const rows = buildTraceRows(entries([tool("read", "read"), marker, tool("bash", "bash"), text("t", "Done.")]))
+    expect(rows.map((row) => row.kind)).toEqual(["explored", "note", "explored", "text"])
+    const note = rows[1] as Extract<ReturnType<typeof buildTraceRows>[number], { kind: "note" }>
+    expect(note.text).toBe(COMPACTED_NOTE)
+    expect(noteLabel(note.text)).toBe("Context compacted.")
+  })
   test("edit groups include deleted files and sum completed changes without treating missing counts as zero", () => {
     const parts = [
       tool("patch", "apply_patch", {

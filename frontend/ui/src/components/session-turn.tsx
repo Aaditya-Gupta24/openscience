@@ -266,17 +266,21 @@ function AssistantTrace(props: {
     !!(data.store.permission?.[sessionID]?.[0] || data.store.question?.[sessionID]?.[0])
   const entries = createMemo(() => {
     const carriers = props.carriers ?? []
-    // A carrier's note belongs before the replies it drew; it borrows the
-    // first of them as its message so the row has an owner in the trace.
+    // A carrier's note belongs before the first reply that follows it; it
+    // borrows that reply as its message so the row has an owner in the
+    // trace. Order, not parentage, pairs them: a compaction carrier's only
+    // reply is the handoff, which the trace does not show, and message ids
+    // sort in transcript order.
+    const emitted = new Set<string>()
     const notes = (before: AssistantMessage) =>
       carriers
-        .filter((carrier) => before.parentID === carrier.id)
-        .flatMap((carrier) =>
-          (data.store.part[carrier.id] ?? emptyParts)
-            .filter((part) => part.type === "text" && part.synthetic)
-            .map((part) => ({ message: before, part })),
-        )
-    const seen = new Set<string>()
+        .filter((carrier) => carrier.id < before.id && !emitted.has(carrier.id))
+        .flatMap((carrier) => {
+          emitted.add(carrier.id)
+          return (data.store.part[carrier.id] ?? emptyParts)
+            .filter((part) => (part.type === "text" && part.synthetic) || part.type === "compaction")
+            .map((part) => ({ message: before, part }))
+        })
     return visibleResearchTrace(
       props.messages.flatMap((message) => {
         const own = (data.store.part[message.id] ?? emptyParts).map((part) => ({
@@ -284,8 +288,6 @@ function AssistantTrace(props: {
           part,
           hidden: (part.type === "tool" && part.tool === "todoread") || isGeneratedTool(part),
         }))
-        if (seen.has(message.parentID)) return own
-        seen.add(message.parentID)
         return [...notes(message), ...own]
       }),
     )
@@ -556,7 +558,9 @@ export function SessionTurn(
       if (index < 0) return emptyAssistant
 
       // A continuation the runtime wrote (a worker's completion, a harness
-      // nudge) keeps the turn open: the replies it draws are this turn's work.
+      // nudge, an automatic compaction) keeps the turn open: the replies it
+      // draws are this turn's work. The compaction's own reply is the handoff
+      // the next step reads, not work to show; the trace notes the boundary.
       const owned = new Set([msg.id])
       const result: AssistantMessage[] = []
       for (let i = index + 1; i < messages.length; i++) {
@@ -567,7 +571,9 @@ export function SessionTurn(
           owned.add(item.id)
           continue
         }
-        if (item.role === "assistant" && owned.has(item.parentID)) result.push(item as AssistantMessage)
+        if (item.role !== "assistant" || !owned.has(item.parentID)) continue
+        if ((item as AssistantMessage).summary) continue
+        result.push(item as AssistantMessage)
       }
       return result
     },
@@ -995,6 +1001,9 @@ export function SessionTurn(
     // as a hang.
     if (nextPermission()) return i18n.t("ui.sessionTurn.status.awaitingApproval")
     if (nextQuestion()) return i18n.t("ui.sessionTurn.status.awaitingAnswer")
+    // An automatic compaction runs inside the turn; its summary is not a
+    // reply the trace shows, so the line says what the wait is.
+    if (status().type === "compacting") return i18n.t("ui.sessionTurn.status.compacting")
     const live = phase()
     if (live) return i18n.t(live.key, live.params)
     if (queued()) return i18n.t("ui.sessionTurn.status.queued")

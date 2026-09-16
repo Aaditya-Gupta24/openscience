@@ -25,10 +25,14 @@ function chunk(delta: Record<string, unknown>, finish: string | null) {
   })}\n\n`
 }
 
-function reply(text: string) {
-  return new Response(`${chunk({ role: "assistant", content: text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`, {
-    headers: { "content-type": "text/event-stream" },
-  })
+function reply(text: string, reasoning?: string) {
+  const thought = reasoning ? chunk({ role: "assistant", reasoning_content: reasoning }, null) : ""
+  return new Response(
+    `${thought}${chunk({ role: "assistant", content: text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`,
+    {
+      headers: { "content-type": "text/event-stream" },
+    },
+  )
 }
 
 /** Records every request body; answers turns with a marker and summaries with a handoff. */
@@ -43,7 +47,7 @@ function startProvider() {
       if (text.includes("title generator")) return reply("A title")
       bodies.push(body)
       if (text.includes("Output exactly this Markdown structure")) return reply("## Objective\n- Answer questions")
-      return reply("ANSWER")
+      return reply("ANSWER", "THOUGHT")
     },
   })
   return { server, bodies }
@@ -60,6 +64,7 @@ test("a summary rides the conversation's own prefix: same header, system, tools 
         default_agent: "research",
         enabled_providers: [PROVIDER],
         billing: { llm: "byok" as const },
+        compaction: { tailTurns: 1 },
         provider: {
           [PROVIDER]: {
             name: "Prefix fixture",
@@ -80,11 +85,20 @@ test("a summary rides the conversation's own prefix: same header, system, tools 
       fn: async () => {
         const session = await Session.create({ title: "Shared prefix" })
         const model = { providerID: PROVIDER, modelID: MODEL }
+        // Two typed requests whose replies carried reasoning. The tail keeps
+        // the newest turn verbatim (tailTurns 1), so the head the summary
+        // renders ends before the conversation's reasoning boundary.
         await SessionPrompt.prompt({
           sessionID: session.id,
           model,
           agent: "research",
           parts: [{ type: "text", text: "QUESTION:first" }],
+        })
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          model,
+          agent: "research",
+          parts: [{ type: "text", text: "QUESTION:second" }],
         })
         await SessionCompaction.create({
           sessionID: session.id,
@@ -95,8 +109,11 @@ test("a summary rides the conversation's own prefix: same header, system, tools 
         })
         const compacted = await SessionPrompt.loop(session.id)
         expect(compacted.info.role === "assistant" && compacted.info.summary).toBe(true)
+        expect(compacted.info.role === "assistant" && compacted.info.tailStartId).toBeDefined()
+        // The record names the agent whose header produced the handoff.
+        expect(compacted.info.role === "assistant" && compacted.info.agent).toBe("research")
 
-        const turn = bodies(provider).at(0)!
+        const turn = bodies(provider).at(1)!
         const summary = bodies(provider).at(-1)!
         // Byte-identical system block and tool schemas: the provider serves the
         // head of the summary request from the cache the turn wrote.
@@ -104,16 +121,24 @@ test("a summary rides the conversation's own prefix: same header, system, tools 
         expect(JSON.stringify(summary.tools)).toBe(JSON.stringify(turn.tools))
         expect(summary.tools?.length).toBeGreaterThan(0)
         expect(summary.tool_choice).toBe("none")
-        // The conversation so far is a prefix of the summary request; the
-        // handoff instruction is the one new message at the end.
+        // The conversation before the newest request is a prefix of the
+        // summary request, rendered as the second turn rendered it (the first
+        // reply's reasoning stripped as an earlier turn); the handoff
+        // instruction is the one new message at the end.
         const turnMessages = JSON.stringify(turn.messages.filter((message) => message.role !== "system"))
         const summaryMessages = JSON.stringify(summary.messages.filter((message) => message.role !== "system"))
         const head = turnMessages.slice(0, turnMessages.lastIndexOf('{"role":"user"'))
+        expect(head).toContain("QUESTION:first")
         expect(summaryMessages.startsWith(head)).toBe(true)
+        expect(summaryMessages).not.toContain('QUESTION:second"')
+        expect(summaryMessages).not.toContain("THOUGHT")
         const last = summary.messages.at(-1)!
         expect(last.role).toBe("user")
         expect(JSON.stringify(last.content)).toContain(SessionCompaction.HANDOFF_PREAMBLE.slice(0, 40))
         expect(JSON.stringify(last.content)).toContain("Output exactly this Markdown structure")
+        // The summarizer is told which request the handoff is for, since that
+        // request lies in the tail it never sees.
+        expect(JSON.stringify(last.content)).toContain("<newest-request>\\nQUESTION:second\\n</newest-request>")
         // No compaction-agent header replaced the research header.
         expect(system(summary)).not.toContain("context summarization agent")
       },

@@ -205,9 +205,16 @@ export namespace SessionCompaction {
     } satisfies MessageV2.TextPart)
   }
 
-  export async function continueAfter(user: MessageV2.User) {
-    const text =
-      "Continue from the 'Next Move' in the handoff above. Trust it as an accurate record — do not re-read files or re-verify completed work unless the immediate step actually requires it. If the Objective is already complete, give the user your result and stop; do NOT start new work, investigations, or analyses they did not ask for."
+  /** Queue the turn that resumes after an automatic compaction. When the
+   * person's newest request follows the handoff verbatim (it lay in the tail
+   * the summary never saw), the resumed turn is that request's work, so it
+   * is never told the objective may already be complete. */
+  export async function continueAfter(user: MessageV2.User, options?: { live?: boolean }) {
+    const trust =
+      "Trust it as an accurate record — do not re-read files or re-verify completed work unless the immediate step actually requires it."
+    const text = options?.live
+      ? `Continue the user's newest request, which follows the handoff above verbatim, from the handoff's 'Next Move'. ${trust} Do NOT start new work, investigations, or analyses they did not ask for.`
+      : `Continue from the 'Next Move' in the handoff above. ${trust} If the Objective is already complete, give the user your result and stop; do NOT start new work, investigations, or analyses they did not ask for.`
     const stored = await MessageV2.get({ sessionID: user.sessionID, messageID: user.id })
     if (stored.info.role !== "user" || stored.info.internal?.type !== "compaction") return
     const reserved = stored.info.internal.continuationID
@@ -251,9 +258,8 @@ export namespace SessionCompaction {
    * ID, and automatic continuation is queued only when recovery says it is
    * still required. */
   export async function recover(input: SessionLoopState.PendingCompaction) {
-    const current = SessionLoopState.pendingCompaction(
-      await Session.messages({ sessionID: input.carrier.info.sessionID }),
-    )
+    const messages = await Session.messages({ sessionID: input.carrier.info.sessionID })
+    const current = SessionLoopState.pendingCompaction(messages)
     if (
       !current ||
       current.carrier.info.id !== input.carrier.info.id ||
@@ -320,18 +326,71 @@ export namespace SessionCompaction {
         noteCompaction({ sessionID: current.carrier.info.sessionID, before, reclaimed })
       }
     }
-    if (current.continuation) await continueAfter(current.carrier.info)
+    if (current.continuation)
+      await continueAfter(current.carrier.info, {
+        live: tailRequests(messages, current.summary.info.tailStartId).length > 0,
+      })
     return "continue" as const
   }
 
-  /** The oldest ordinary user message: the instruction every compaction pins. */
-  export function rootUser(messages: MessageV2.WithParts[]) {
-    return messages.find(
-      (message) =>
-        message.info.role === "user" &&
-        !("internal" in message.info && message.info.internal) &&
-        message.parts.some((part) => part.type === "text" && !part.synthetic && !part.ignored && part.text.trim()),
+  /** A request the person typed (or a legacy message from before turns were
+   * recorded): the instruction a turn works from. Runtime carriers, worker
+   * wake-ups and compaction carriers have only synthetic text or none. */
+  export function typed(message: MessageV2.WithParts): message is MessageV2.WithParts & { info: MessageV2.User } {
+    if (message.info.role !== "user") return false
+    const internal = message.info.internal
+    if (internal && internal.type !== "prompt") return false
+    return message.parts.some(
+      (part) =>
+        (part.type === "text" && !part.synthetic && !part.ignored && !!part.text.trim()) || part.type === "file",
     )
+  }
+
+  /** How much of a request the handoff instruction quotes. The summarizer
+   * needs to know what was asked, not to re-read an attached dataset: an
+   * oversized prompt is why a preflight compaction runs in the first place,
+   * and quoting it whole would overflow the summary request too. */
+  export const REQUEST_EXCERPT_CHARS = 2_000
+
+  /** The text of a typed request as the person wrote it, bounded to an
+   * excerpt that keeps the opening ask and the closing instructions. */
+  export function requestText(message: MessageV2.WithParts, max = REQUEST_EXCERPT_CHARS) {
+    const text = message.parts
+      .flatMap((part) => (part.type === "text" && !part.synthetic && !part.ignored ? [part.text] : []))
+      .join("\n")
+      .trim()
+    if (text.length <= max) return text
+    const tail = Math.floor(max / 4)
+    const omitted = text.length - (max - tail)
+    return `${text.slice(0, max - tail).trimEnd()}\n[… ${omitted.toLocaleString("en-US")} characters omitted …]\n${text.slice(-tail).trimStart()}`
+  }
+
+  /** The largest request a compaction pins verbatim. A pinned request rides
+   * ahead of every later summary, so it must be an instruction, not an
+   * attached dataset: a request rejected for size is what a preflight
+   * compaction has to reduce, and pinning it would undo that reduction. */
+  export const PIN_TOKENS_MAX = 8_000
+
+  /** The newest typed request: the instruction the current turn works from,
+   * which every compaction pins verbatim when it is small enough to pin. In
+   * a session with several requests the older ones are history for the
+   * handoff to record, not the task, so an oversized newest request pins
+   * nothing rather than an older instruction. */
+  export function rootUser(messages: MessageV2.WithParts[], max = PIN_TOKENS_MAX) {
+    const newest = messages.findLast(typed)
+    if (!newest || messageTokens(newest) > max) return
+    return newest
+  }
+
+  /** The typed requests kept verbatim in the tail, oldest first. The summary
+   * never sees them because they lie past the head, yet the newest is the
+   * Objective the handoff must be written for, and several can be waiting
+   * when prompts were queued during one provider turn. */
+  export function tailRequests(messages: MessageV2.WithParts[], tailStartId?: string) {
+    if (!tailStartId) return []
+    const start = messages.findIndex((message) => message.info.id === tailStartId)
+    if (start < 0) return []
+    return messages.slice(start).filter(typed)
   }
 
   // Newest prior handoff text in the transcript, or undefined if this session has never
@@ -396,9 +455,17 @@ export namespace SessionCompaction {
   // UPDATE it rather than regenerate from scratch — regenerating from the full transcript
   // every time lets still-true facts drift or get dropped, and costs a full re-summarization
   // pass. Anchoring on the previous handoff keeps it stable across repeated compactions.
-  export function buildHandoffPrompt(opts: { previousSummary?: string; focus?: string }): string {
+  export function buildHandoffPrompt(opts: { previousSummary?: string; focus?: string; requests?: string[] }): string {
     const focus = opts.focus?.trim()
       ? `\n\nThe next session will focus on: ${opts.focus.trim()}. Tailor the handoff toward that.`
+      : ""
+    // The head ends before the newest request when that request and the work
+    // on it are kept verbatim after the handoff. Without seeing it, the
+    // summarizer would write the Objective for the previous request and tell
+    // the next agent that it is complete.
+    const quoted = (opts.requests ?? []).map((text) => text.trim()).filter(Boolean)
+    const request = quoted.length
+      ? `\n\nThe transcript continues after this handoff with the user's ${quoted.length === 1 ? "newest request" : `${quoted.length} newest requests`} and the work on ${quoted.length === 1 ? "it" : "them"} so far, all kept verbatim. They are not part of what you summarize, but the Objective IS the newest request (replace any earlier Objective with it; the earlier request's work belongs under Done (verified)):\n\n${quoted.map((text) => `<newest-request>\n${text}\n</newest-request>`).join("\n\n")}\n\nRecord the earlier work under Findings and Work State as context for it. Next Move is the next action toward the newest request; do not write "Objective complete" for the earlier request.`
       : ""
     const head = opts.previousSummary
       ? `You are UPDATING an existing handoff, not writing a new one. New conversation turns have happened since it was written; fold them in.
@@ -411,7 +478,7 @@ ${opts.previousSummary}
       : `Write a self-contained handoff so another agent can continue this work WITHOUT re-reading the files or re-deriving state. This handoff is the ONLY context that agent will have — capture everything needed to act, and nothing more.
 
 Output exactly this Markdown structure, keeping every section (write "(none)" when a section is empty).`
-    return `${head}\n\n${HANDOFF_STRUCTURE}\n\n${HANDOFF_RULES}${focus}`
+    return `${head}${request}\n\n${HANDOFF_STRUCTURE}\n\n${HANDOFF_RULES}${focus}`
   }
 
   /**
@@ -558,7 +625,15 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     messages: MessageV2.WithParts[],
     opts: { tailTurns: number; tailTokens: number },
   ): { tailStartId?: string } {
-    const turnStarts = messages.flatMap((m, i) => (m.info.role === "user" ? [i] : []))
+    // A turn begins where the person typed. Harness continuations, worker
+    // wake-ups and the compaction carrier extend the turn before them: two
+    // study reminders are not two turns of verbatim history. The recovery
+    // continuation after a request rejected for size is the exception: it
+    // starts the tail, so the oversized request itself is reducible history,
+    // which is the reason that compaction runs at all.
+    const recovery = (m: MessageV2.WithParts) =>
+      m.info.role === "user" && m.info.internal?.type === "continuation" && m.info.internal.kind === "context"
+    const turnStarts = messages.flatMap((m, i) => (typed(m) || recovery(m) ? [i] : []))
     if (turnStarts.length < 2) return {}
     const turnSize = (start: number, end: number) => {
       let sum = 0
@@ -584,7 +659,7 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     // input. If several messages were queued during one provider turn, keep that
     // whole active span verbatim so compaction cannot silently turn one of the
     // user's requests into lossy summary prose before the model has seen it.
-    const current = messages[turnStarts.at(-1)!].info.id
+    const current = messages.findLast((m) => m.info.role === "user")!.info.id
     const protectedID = protectedContext(messages, current)[0]?.info.id
     const protectedStart = protectedID ? messages.findIndex((message) => message.info.id === protectedID) : -1
     if (protectedStart >= 0) cut = Math.min(cut, protectedStart)
@@ -715,18 +790,34 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     const { tailStartId } = selectTail(input.messages, { tailTurns, tailTokens })
     const tailIdx = tailStartId ? input.messages.findIndex((m) => m.info.id === tailStartId) : -1
     const head = tailIdx > 0 ? input.messages.slice(0, tailIdx) : input.messages
+    // The newest request lies in the tail when the head ends before it; the
+    // summarizer is told about it, or it would hand off the previous request.
+    const live = tailIdx > 0 ? tailRequests(input.messages, tailStartId) : []
     if (userMessage.internal?.type === "compaction") {
       userMessage.internal.before = MessageV2.composition(input.messages).total
       userMessage.internal.headTokens = MessageV2.composition(head).total
       await Session.updateMessage(userMessage)
     }
+    // When the conversation's newest request is known and the summary runs on
+    // the same model, the summary rides that request's exact prefix: same
+    // header, system blocks, tools (offered, not callable) and rendering, so
+    // the provider serves the head from its cache. A configured compaction
+    // model, or a process that has not sent a request yet, takes the
+    // standalone path.
+    const remembered = assemblies().get(input.sessionID)
+    const shared =
+      remembered && remembered.model.providerID === model.providerID && remembered.model.id === model.id
+        ? remembered
+        : undefined
     const msg = (await Session.updateMessage({
       id: await MessageV2.nextMessageID(input.sessionID),
       role: "assistant",
       parentID: input.parentID,
       sessionID: input.sessionID,
-      mode: "compaction",
-      agent: "compaction",
+      // The record names the agent whose header produced the handoff: on the
+      // shared path that is the conversation's own agent, not `compaction`.
+      mode: shared ? shared.agent.mode : "compaction",
+      agent: shared ? shared.agent.name : agent.name,
       summary: true,
       ...(tailStartId ? { tailStartId } : {}),
       path: {
@@ -770,20 +861,13 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
     const promptText =
       compacting.prompt ??
       [
-        buildHandoffPrompt({ previousSummary: previousSummary(input.messages), focus: input.focus }),
+        buildHandoffPrompt({
+          previousSummary: previousSummary(input.messages),
+          focus: input.focus,
+          requests: live.map((message) => requestText(message)),
+        }),
         ...compacting.context,
       ].join("\n\n")
-    // When the conversation's newest request is known and the summary runs on
-    // the same model, the summary rides that request's exact prefix: same
-    // header, system blocks, tools (offered, not callable) and rendering, so
-    // the provider serves the head from its cache. A configured compaction
-    // model, or a process that has not sent a request yet, takes the
-    // standalone path.
-    const remembered = assemblies().get(input.sessionID)
-    const shared =
-      remembered && remembered.model.providerID === model.providerID && remembered.model.id === model.id
-        ? remembered
-        : undefined
     const config = await Config.get()
     const result = await processor.process({
       // The standalone call is isolated: preserve the source system controls on
@@ -800,13 +884,19 @@ Output exactly this Markdown structure, keeping every section (write "(none)" wh
       messages: [
         // Summarize only the head (P3.2): the tail is kept verbatim in the
         // transcript and re-spliced after the summary via tailStartId /
-        // filterCompacted. The shared call renders the head exactly as the
-        // conversation does; the standalone call strips media the summarizer
-        // never needs.
+        // filterCompacted. The head is rendered against the whole
+        // conversation, so its reasoning boundary and image budget are the
+        // ones the cached prefix was written with; rendered alone, the
+        // boundary would move to the head's newest request and every later
+        // message would replay its reasoning, missing the cache and paying
+        // for thinking the summarizer never needed. The standalone call
+        // strips media the summarizer never needs.
         ...MessageV2.toModelMessages(
           head,
           model,
-          shared ? { keepRecentImages: recentImages(config) } : { stripMedia: true },
+          shared
+            ? { keepRecentImages: recentImages(config), conversation: input.messages }
+            : { stripMedia: true, conversation: input.messages },
         ),
         {
           role: "user",

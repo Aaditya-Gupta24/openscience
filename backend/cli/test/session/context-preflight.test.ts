@@ -538,10 +538,19 @@ describe("current-turn context preflight", () => {
           const summary = requests.find((request) => request.kind === "summary")
           const main = requests.find((request) => request.kind === "main" && request.scenario === scenario.id)
           if (!summary || !main) throw new Error("Expected summary and resumed provider requests")
-          expect(summary.text).not.toContain(first)
-          expect(summary.text).not.toContain(second)
+          // The queued prompts are not summarized: their bodies stay out of the
+          // summary request and verbatim in the resumed one. The handoff
+          // instruction does name both as the requests still waiting, as a
+          // bounded excerpt, so the summarizer writes the Objective for them.
+          expect(summary.text).not.toContain("q".repeat(8_000))
+          expect(summary.text).not.toContain("r".repeat(8_000))
+          expect(summary.text.indexOf(`<newest-request>\n${first}`)).toBeGreaterThan(-1)
+          expect(summary.text.indexOf(`<newest-request>\n${first}`)).toBeLessThan(
+            summary.text.indexOf(`<newest-request>\n${second}`),
+          )
           expect(main.text).toContain(first)
           expect(main.text).toContain(second)
+          expect(main.text).toContain("q".repeat(8_000))
         },
       })
     } finally {

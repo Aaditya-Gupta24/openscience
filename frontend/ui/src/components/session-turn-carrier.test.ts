@@ -22,7 +22,7 @@ const text = (messageID: string, value: string, synthetic?: boolean): Part => ({
 })
 
 describe("continuation carriers", () => {
-  test("harness continuations and worker wake-ups are carriers; typed requests, shell commands and compactions are not", () => {
+  test("harness continuations, worker wake-ups and automatic compactions are carriers; typed requests, shell commands and manual compactions are not", () => {
     const typed = user("msg_typed", { type: "prompt", epoch: "msg_typed" })
     expect(isContinuationCarrier(typed, [text("msg_typed", "Fit the model.")])).toBe(false)
     const harness = user("msg_h", {
@@ -44,10 +44,37 @@ describe("continuation carriers", () => {
     expect(isContinuationCarrier(shell, [text("msg_s", "The following tool was executed by the user", true)])).toBe(
       false,
     )
+    // A compaction that fired by itself mid-turn is the runtime's bookkeeping:
+    // the work after it is still the turn's. A /compact the user typed draws
+    // its own boundary.
     const compaction = user("msg_k", { type: "compaction", auto: true, epoch: "msg_typed", transaction: "msg_k" })
-    expect(isContinuationCarrier(compaction, [text("msg_k", "", true)])).toBe(false)
+    const marker: Part = { id: "prt_k", sessionID: "ses_c", messageID: "msg_k", type: "compaction", auto: true }
+    expect(isContinuationCarrier(compaction, [marker])).toBe(true)
+    const manual = user("msg_m", { type: "compaction", auto: false, epoch: "msg_m", transaction: "msg_m" })
+    expect(isContinuationCarrier(manual, [{ ...marker, id: "prt_m", messageID: "msg_m", auto: false }])).toBe(false)
     expect(isContinuationCarrier(wake, [])).toBe(false)
     expect(isContinuationCarrier(wake, undefined)).toBe(false)
+  })
+
+  test("a compaction carrier folds into the turn it interrupted, so the work after it is not orphaned", () => {
+    const opener = user("msg_1", { type: "prompt", epoch: "msg_1" })
+    const compaction = user("msg_5", { type: "compaction", auto: true, epoch: "msg_1", transaction: "msg_5" })
+    const continuation = user("msg_7", {
+      type: "continuation",
+      kind: "compaction",
+      text: "Continue the user's newest request",
+      epoch: "msg_1",
+      transaction: "msg_7",
+    })
+    const messages: Message[] = [opener, compaction, continuation]
+    const parts = (id: string): Part[] => {
+      if (id === compaction.id)
+        return [{ id: "prt_5", sessionID: "ses_c", messageID: id, type: "compaction", auto: true }]
+      if (id === continuation.id) return [text(id, "Continue the user's newest request", true)]
+      return [text(id, "Train the model.")]
+    }
+    expect(turnOpener(messages, 1, parts)?.id).toBe("msg_1")
+    expect(turnOpener(messages, 2, parts)?.id).toBe("msg_1")
   })
 
   test("a carrier belongs to the nearest earlier turn the user opened", () => {
