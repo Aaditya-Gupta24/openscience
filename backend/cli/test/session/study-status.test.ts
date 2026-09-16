@@ -69,7 +69,12 @@ test("the study's state is appended when it changes, not when the model moves it
             agent: "research",
             parts: [{ type: "text", text }],
           })
-          const main = fixture.requests.slice(before).find((request) => JSON.stringify(request).includes(text))!
+          // The title request quotes the prompt too and may land first; the
+          // research request is the one under the research system prompt.
+          const main = fixture.requests
+            .slice(before)
+            .filter((request) => JSON.stringify(request).includes(text))
+            .find((request) => !JSON.stringify(request.messages[0]).includes("title generator"))!
           return carriers(main.messages)
         }
 

@@ -1203,7 +1203,7 @@ export namespace MessageV2 {
     const side = maxBytes <= 2 * 1024 * 1024 ? 1400 : 2000
     return (
       `[Image${name} omitted — too large to send (~${mb} MB, ${limit} MB limit on this route). ` +
-      `To view it, save a smaller copy and read that instead, e.g.: ` +
+      `To view it, resize it and read the smaller copy, e.g.: ` +
       `python3 -c "from PIL import Image; im=Image.open(SRC).convert('RGB'); im.thumbnail((${side},${side})); im.save(OUT, quality=85)" ` +
       `(SRC = the file named in the read/attachment just above; OUT = a new .jpg path), then read OUT. ` +
       `If it was rendered by a script, re-run it at a lower dpi/figsize.]`
