@@ -1,3 +1,4 @@
+import { managedOpenRouterBaseURL } from "../../src/openscience/synced-env-policy"
 import { describe, expect, spyOn, test } from "bun:test"
 import { APICallError } from "ai"
 import { SessionRetry } from "../../src/session/retry"
@@ -466,6 +467,57 @@ describe("session.message-v2.fromError", () => {
     })
     const result = MessageV2.fromError(error, { providerID: "openai" }) as MessageV2.APIError
     expect(result.data.isRetryable).toBe(true)
+  })
+
+  test("a managed 402 for funds reserved by requests in flight retries on the gateway's retry-after", () => {
+    const error = new APICallError({
+      message: "Payment Required",
+      url: `${managedOpenRouterBaseURL()}/chat/completions`,
+      requestBodyValues: {},
+      statusCode: 402,
+      responseHeaders: { "content-type": "application/json", "retry-after": "15" },
+      responseBody: JSON.stringify({
+        error: "insufficient_balance",
+        required_cents: 401,
+        available_cents: 0,
+        balance_cents: 1200,
+        held_cents: 1200,
+        recovery: {
+          kind: "inflight_holds",
+          retryable: true,
+          retry_after_seconds: 15,
+          action: "retry_after_inflight_requests",
+        },
+      }),
+      isRetryable: false,
+    })
+    const result = MessageV2.fromError(error, { providerID: "openrouter" })
+    const data = result.data as MessageV2.APIError["data"]
+    expect(data.isRetryable).toBe(true)
+    expect(data.message).toContain("requests in flight")
+    expect(SessionRetry.retryable(result)).toContain("requests in flight")
+    expect(SessionRetry.delay(1, result as unknown as MessageV2.APIError)).toBe(15_000)
+
+    // An empty Wallet stays final: the gateway did not say waiting helps.
+    const empty = new APICallError({
+      message: "Payment Required",
+      url: `${managedOpenRouterBaseURL()}/chat/completions`,
+      requestBodyValues: {},
+      statusCode: 402,
+      responseHeaders: { "content-type": "application/json" },
+      responseBody: JSON.stringify({
+        error: "insufficient_balance",
+        required_cents: 401,
+        available_cents: 1,
+        balance_cents: 1,
+        held_cents: 0,
+        recovery: { kind: "ace_reload", retryable: false, action: "add_wallet_funds_or_update_payment_method" },
+      }),
+      isRetryable: false,
+    })
+    const final = MessageV2.fromError(empty, { providerID: "openrouter" })
+    expect((final.data as MessageV2.APIError["data"]).isRetryable).toBe(false)
+    expect(SessionRetry.retryable(final)).toBeUndefined()
   })
 
   test("explains Muse Spark's United States availability restriction", () => {

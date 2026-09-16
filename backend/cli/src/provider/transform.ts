@@ -1302,9 +1302,7 @@ export namespace ProviderTransform {
     return schema
   }
 
-  /** The managed gateway's 402 is a machine contract (codes, cents, a
-   * recovery action) with no prose. Say what it means and what to do. */
-  export function managedPaymentRequired(error: APICallError) {
+  function managedPaymentBody(error: APICallError) {
     if (error.statusCode !== 402 || !isAtlasProxyURL(error.url)) return
     const body = iife(() => {
       try {
@@ -1314,13 +1312,38 @@ export namespace ProviderTransform {
       }
     })
     if (!body || typeof body.error !== "string") return
+    return body
+  }
+
+  /** The SDK treats every 402 as final. The managed gateway's says whether
+   * waiting helps: a Wallet reload is in flight, or this Wallet's own
+   * requests in flight reserved the funds this one needs (a lead and its
+   * workers asking at the same moment). Those are retried on the gateway's
+   * retry-after, and the Wallet is never touched twice for one request
+   * because the refused request was never dispatched. */
+  export function managedRetryable(error: APICallError) {
+    const body = managedPaymentBody(error)
+    const recovery = (body?.recovery ?? {}) as Record<string, unknown>
+    return recovery.retryable === true
+  }
+
+  /** The managed gateway's 402 is a machine contract (codes, cents, a
+   * recovery action) with no prose. Say what it means and what to do. */
+  export function managedPaymentRequired(error: APICallError) {
+    const body = managedPaymentBody(error)
+    if (!body) return
     const recovery = (body.recovery ?? {}) as Record<string, unknown>
     const dollars = (cents: unknown) =>
       typeof cents === "number" && Number.isFinite(cents) ? `$${(cents / 100).toFixed(2)}` : undefined
     const available = dollars(body.available_cents)
     const required = dollars(body.required_cents)
+    const held = dollars(body.held_cents)
+    const wallet = dollars(body.balance_cents)
     const balance = [
-      available ? `Available: ${available}` : undefined,
+      available ? `Available: ${available}${wallet ? ` of ${wallet}` : ""}` : undefined,
+      typeof body.held_cents === "number" && body.held_cents > 0 && held
+        ? `${held} reserved by requests in flight`
+        : undefined,
       required ? `this request reserves ${required}` : undefined,
     ]
       .filter(Boolean)
@@ -1333,6 +1356,8 @@ export namespace ProviderTransform {
     if (body.error !== "insufficient_balance") return
     const detail = balance ? ` ${balance}.` : ""
     switch (recovery.action) {
+      case "retry_after_inflight_requests":
+        return `Ace is waiting for this Wallet's other requests in flight to settle before sending this one.${detail} Retrying automatically.`
       case "contact_organization_billing_manager":
         return `Ace is paused: this workspace's shared Wallet cannot fund the request.${detail} Ask a billing manager to add funds at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
       case "retry_after_reload":

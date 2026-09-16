@@ -2620,6 +2620,37 @@ describe("ProviderTransform.error for the managed gateway's payment-required con
     ).toContain("automatic reload")
   })
 
+  test("funds reserved by the Wallet's own requests in flight: says so, and the error is retryable", () => {
+    const error = managed({
+      error: "insufficient_balance",
+      required_cents: 401,
+      available_cents: 0,
+      balance_cents: 1200,
+      held_cents: 1200,
+      recovery: {
+        kind: "inflight_holds",
+        retryable: true,
+        retry_after_seconds: 15,
+        action: "retry_after_inflight_requests",
+      },
+    })
+    const text = ProviderTransform.error("openrouter", error)
+    expect(text).toContain("requests in flight")
+    expect(text).toContain("Available: $0.00 of $12.00")
+    expect(text).toContain("$12.00 reserved by requests in flight")
+    expect(text).toContain("reserves $4.01")
+    expect(text).not.toContain("Add funds")
+    expect(ProviderTransform.managedRetryable(error)).toBe(true)
+    expect(
+      ProviderTransform.managedRetryable(
+        managed({
+          error: "insufficient_balance",
+          recovery: { kind: "ace_reload", retryable: false, action: "turn_on_ace_or_add_wallet_funds" },
+        }),
+      ),
+    ).toBe(false)
+  })
+
   test("a monthly usage limit names the limit and the spend", () => {
     const text = ProviderTransform.error(
       "openrouter",

@@ -8,8 +8,20 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+## v2.0.111 – v2.0.114 — 2026-09-17
+
 ### Changed
 
+- **A busy Wallet no longer fails the turn.** When a lead and its workers ask
+  the model at the same moment, each request reserves a hold; on a small Wallet
+  the holds can add up to the whole balance and the next request was refused
+  with "Available: $0.00 ... auto reload could not top it up" while the Wallet
+  was far from empty. The gateway now reports the real amounts (balance, held
+  by requests in flight, available) and marks that refusal retryable;
+  OpenScience waits for its own requests to settle (15 s per attempt) and sends
+  the request again instead of ending the step with an error. Auto reload's
+  threshold is measured on spendable funds, so a Wallet whose balance is held
+  by in-flight requests reloads when the person consented to it.
 - **Slim Modal images get `libgomp1`.** LightGBM and several OpenMP-built wheels
   import `libgomp.so.1`, which `python:3.12-slim` does not ship; two study runs
   failed on it after their image built. When Python packages are installed onto
