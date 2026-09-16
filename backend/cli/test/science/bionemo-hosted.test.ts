@@ -780,7 +780,7 @@ await Instance.provide({
             BioNemoHosted.start("boltz2", session.id, {
               polymers: [{ molecule_type: "protein", sequence: "MVLTIYPDELVQIVSDKKAA" }],
             }),
-          ).rejects.toThrow("credential is not configured")
+          ).rejects.toThrow("No NVIDIA API key is connected")
           expect(
             await BioNemoHostedDispatch.get({ approvalSha256: preview.approval_sha256, sessionID: session.id }),
           ).toBeUndefined()
