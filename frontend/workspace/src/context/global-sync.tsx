@@ -1065,6 +1065,13 @@ function createGlobalSync() {
           if (!globalStore.ready) return
           refresh()
           for (const directory of requested) {
+            // The stream cannot replay what was emitted while it was down, and
+            // a re-bootstrap only trims an already loaded session list; a title
+            // renamed or a session created in the gap would otherwise stay
+            // stale until reload. Forget the loaded window so it is fetched.
+            for (const key of sessionMeta.keys()) {
+              if (key.endsWith(`\n${directory}`)) sessionMeta.delete(key)
+            }
             push(directory)
             void refreshLoadedMessages(directory).catch((error) =>
               console.warn("Failed to backfill loaded transcripts after reconnect", { directory, error }),

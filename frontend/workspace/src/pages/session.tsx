@@ -2010,7 +2010,11 @@ function SessionRow(props: {
         />
       </Show>
       <Show when={!editing()}>
-        <DropdownMenu open={menu()} onOpenChange={setMenu}>
+        {/* Uncontrolled on purpose: the row mirrors the menu's state for its
+            styling, but does not drive it. A controlled `open` raced the
+            trigger's pointerdown/click pair under load and the menu could
+            close in the same gesture that opened it. */}
+        <DropdownMenu onOpenChange={setMenu}>
           <DropdownMenu.Trigger
             class="session-sidebar__session-menu-button"
             title="Session actions"
