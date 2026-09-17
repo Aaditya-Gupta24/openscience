@@ -10,7 +10,7 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Changed
 
-- **A clearer OpenScience download page.** Desktop downloads are grouped by platform above the terminal install commands, with a wider workspace preview framed by a stepped page border on the homepage and a shared footer for product, resource, and privacy links.
+- **A clearer OpenScience download page.** Desktop downloads are grouped by platform above the terminal install commands, with a wider workspace preview that extends beyond the bordered homepage column and a shared footer for product, resource, and privacy links.
 
 ### Fixed
 
