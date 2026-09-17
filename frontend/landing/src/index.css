@@ -517,21 +517,27 @@ pre {
     }
   }
 
-  /* The footer spans beyond the reading column, like a closing title page. */
+  /* The footer continues the page column so the patterned gutters stay visible. */
   [data-component="footer"] {
+    width: 100%;
+    max-width: 64rem;
+    margin: -1px auto 0;
     background: var(--color-background);
-    border-top: 1px solid var(--color-border-weak);
-    margin-top: -1px;
+    border: 1px solid var(--color-border-weak);
+
+    @media (max-width: 65rem) {
+      border-inline: 0;
+    }
 
     [data-slot="footer-inner"] {
-      width: min(100% - 6rem, 80rem);
+      width: calc(100% - 2 * var(--padding));
       margin-inline: auto;
       container-type: inline-size;
     }
     [data-slot="footer-top"] {
       display: grid;
-      grid-template-columns: 1.8fr 1fr 1fr 1.2fr;
-      gap: 3rem;
+      grid-template-columns: 1.5fr 0.85fr 0.85fr 1.15fr;
+      gap: 2rem;
       padding-block: 4.5rem 4rem;
     }
     [data-slot="footer-home"] {
@@ -596,7 +602,7 @@ pre {
     }
     [data-slot="footer-wordmark"] {
       padding-block: 1rem 0.1em;
-      font-size: 16.35cqw;
+      font-size: 18.5cqw;
       letter-spacing: -0.065em;
       line-height: 1.1;
       color: var(--color-icon);
@@ -918,10 +924,27 @@ pre {
     }
   }
 
-  /* Product replica ----------------------------------------------------- */
+  /* The picture can cross the column edges without painting over the patterned gutters. */
   [data-component="demo"] {
-    border-top: 1px solid var(--color-border-weak);
-    background: #17191c;
+    position: relative;
+    width: min(84rem, calc(100vw - 4rem));
+    margin-left: 50%;
+    transform: translateX(-50%);
+    scroll-margin-top: 100px;
+
+    .os-viewport {
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+    }
+    @media (max-width: 65rem) {
+      width: 100%;
+      margin-left: 0;
+      transform: none;
+      .os-viewport {
+        border-inline: 0;
+        border-radius: 0;
+      }
+    }
   }
 
   /* Benchmarks, laid out like opencode.ai's growth figures ---------------- */
