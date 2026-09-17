@@ -434,9 +434,15 @@ async function invokeAtomicSwap(executable, transaction, target, incoming) {
 
 export async function reconcileTransactions(cache, options = {}) {
   await mkdir(cache, { recursive: true, mode: 0o700 })
-  const requiredTrust = options.trusted
-    ? await verify(options.current, options.currentVersion, { trusted: true, current: options.current })
-    : undefined
+  // The running bundle's trust is usually established moments earlier at
+  // launch (shallow seal check plus Gatekeeper assessment); verifying it
+  // again here, deep, cost a second codesign pass and a second spctl
+  // assessment on every start. Callers that hold that trust pass it in.
+  const requiredTrust =
+    options.trust ??
+    (options.trusted
+      ? await verify(options.current, options.currentVersion, { trusted: true, current: options.current })
+      : undefined)
   const names = (await readdir(cache)).filter((name) => /^transaction-[0-9a-f]{48}\.json$/.test(name))
   // Newest journals first, so the bounded pass never drops the most recent
   // interrupted update in favour of stale ones.

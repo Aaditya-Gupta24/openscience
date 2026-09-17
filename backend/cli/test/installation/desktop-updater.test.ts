@@ -1087,6 +1087,25 @@ process.exit(70)
     ).toEqual({ relaunch: undefined, inProgress: true })
   })
 
+  test("reconciliation reuses the trust established at launch instead of re-verifying the running bundle", async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "openscience-desktop-launch-trust-")))
+    roots.push(root)
+    const cache = path.join(root, "cache")
+    const current = await buildBundle(root, "current", "9.8.7")
+    // An ad-hoc signature cannot pass the notarized Developer ID assessment a
+    // trusted verification runs, so a deep re-verification here would throw.
+    expect((await Bun.$`codesign --force --deep --sign - ${current}`.quiet()).exitCode).toBe(0)
+    await expect(reconcileTransactions(cache, { current, currentVersion: "9.8.7", trusted: true })).rejects.toThrow()
+    expect(
+      await reconcileTransactions(cache, {
+        current,
+        currentVersion: "9.8.7",
+        trusted: true,
+        trust: { team: "TEAMID0000", designated: 'identifier "ai.syntheticsciences.openscience"' },
+      }),
+    ).toEqual({ relaunch: undefined, inProgress: false })
+  })
+
   test("recovers a staged first install while the target is still absent", async () => {
     const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "openscience-desktop-staged-install-")))
     roots.push(root)

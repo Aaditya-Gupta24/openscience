@@ -51,6 +51,8 @@ const state = {
   updateHelperLaunched: false,
   desktopParentToken: randomBytes(24).toString("hex"),
   updateTrusted: false,
+  /** The running bundle's signature identity as verified at launch. */
+  updateTrust: undefined,
   updateResult: undefined,
   updateRelaunch: undefined,
   updateStartupFailure: undefined,
@@ -562,16 +564,17 @@ async function updateRequest(request, response) {
 async function updates() {
   if (!app.isPackaged || process.platform !== "darwin") return
   state.updateCache = path.join(app.getPath("userData"), "updates")
-  state.updateTrusted = await verifyUpdate(currentUpdate(), app.getVersion(), { trusted: true, running: true })
-    .then(() => true)
-    .catch((error) => {
+  state.updateTrust = await verifyUpdate(currentUpdate(), app.getVersion(), { trusted: true, running: true }).catch(
+    (error) => {
       console.warn(
         `Automatic updates are unavailable because this app is not a notarized Developer ID build: ${
           error instanceof Error ? error.message : String(error)
         }`,
       )
-      return false
-    })
+      return undefined
+    },
+  )
+  state.updateTrusted = Boolean(state.updateTrust)
   if (!state.updateTrusted) return
   const active = currentUpdate()
   state.updateMigrationRequired =
@@ -625,6 +628,9 @@ async function reconcileCurrentUpdate(healthyCurrent) {
     current: currentUpdate(),
     currentVersion: app.getVersion(),
     trusted: true,
+    // Established at launch; reconciliation must not re-verify the running
+    // bundle deep on every start.
+    ...(state.updateTrust ? { trust: state.updateTrust } : {}),
     swapExecutable: binary(),
     ...(supervised ? { supervised } : {}),
     ...(typeof healthyCurrent === "boolean" ? { healthyCurrent } : {}),

@@ -17,6 +17,12 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
   belong to their instances. The pause now enters each live instance to stop
   its own turns; the plain refusal ("Finish active work before restarting")
   was unaffected. The regression test invokes the pause the way the route does.
+- **Desktop starts about two seconds sooner.** Launch verified the running
+  bundle twice: once shallow with the Gatekeeper assessment, then again deep
+  with a second assessment while reconciling interrupted updates. Measured on
+  an isolated packaged app, the two verifications were most of the five
+  seconds between the process starting and the local runtime being spawned.
+  Reconciliation now reuses the trust established at launch.
 
 ## v2.0.111 – v2.0.114 — 2026-09-17
 
