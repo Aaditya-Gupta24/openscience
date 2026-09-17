@@ -339,9 +339,16 @@ export namespace SessionPrompt {
    * left unfinished with its tool calls closed under the reason, so the next
    * process picks it up through resumeInterrupted; workers are aborted with
    * their leads and re-dispatched by them.
+   *
+   * The restart route runs outside any project instance, and turns belong
+   * to their instances, so each live instance is entered to cancel its own.
    */
-  export function pauseForRestart(): number {
-    return interrupt(new SessionRestart.Interruption())
+  export async function pauseForRestart(): Promise<number> {
+    let paused = 0
+    await Instance.each(() => {
+      paused += interrupt(new SessionRestart.Interruption())
+    })
+    return paused
   }
 
   export function assertNotBusy(sessionID: string) {

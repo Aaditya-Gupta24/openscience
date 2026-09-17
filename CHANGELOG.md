@@ -8,6 +8,16 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Fixed
+
+- **"Pause and restart" works from the update banner.** Choosing it while an
+  agent was running failed with "No context found for instance" on the packaged
+  app (found while updating an isolated v2.0.113 desktop with a turn in
+  progress): the restart route runs outside any project instance, and turns
+  belong to their instances. The pause now enters each live instance to stop
+  its own turns; the plain refusal ("Finish active work before restarting")
+  was unaffected. The regression test invokes the pause the way the route does.
+
 ## v2.0.111 – v2.0.114 — 2026-09-17
 
 ### Changed

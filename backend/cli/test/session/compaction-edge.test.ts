@@ -893,7 +893,7 @@ describe("compaction edge cases", () => {
             const messages = await Session.messages({ sessionID: session.id })
             return summaries(messages).find((message) => !message.info.time.completed)
           }, "the in-flight summary record")
-          expect(SessionPrompt.pauseForRestart()).toBe(1)
+          expect(await SessionPrompt.pauseForRestart()).toBe(1)
           const paused = await turn
           const atPause = {
             messages: await Session.messages({ sessionID: session.id }),

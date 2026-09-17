@@ -279,7 +279,7 @@ export const UpdatesSettingsRoutes = lazy(() =>
           // jobs, terminals and kernels hold state no resume can rebuild, so
           // they still have to finish first.
           if (blockers.length && mode === "now" && SessionPrompt.activeCount()) {
-            SessionPrompt.pauseForRestart()
+            await SessionPrompt.pauseForRestart()
             const settled = Date.now() + 5_000
             while (SessionPrompt.activeCount() && Date.now() < settled) await Bun.sleep(100)
             blockers = blockersNow()

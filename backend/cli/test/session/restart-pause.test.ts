@@ -83,6 +83,15 @@ test("a restart pauses a running turn under a named reason and the next boot con
     git: true,
     config: stressProviderConfig(`http://127.0.0.1:${server.port}/v1`),
   })
+  // The restart route has no project instance of its own. The pause is
+  // requested from a continuation registered before any instance context
+  // exists, so it runs with none, exactly as the route does.
+  let signal!: () => void
+  const request = new Promise<void>((resolve) => (signal = resolve))
+  const outside = request.then(() => {
+    expect(() => Instance.directory).toThrow()
+    return SessionPrompt.pauseForRestart()
+  })
   try {
     await Instance.provide({
       directory: tmp.path,
@@ -103,7 +112,8 @@ test("a restart pauses a running turn under a named reason and the next boot con
         const pending = await pendingToolPart(session.id)
 
         // The person chose "Pause and restart" while this turn was streaming.
-        expect(SessionPrompt.pauseForRestart()).toBe(1)
+        signal()
+        expect(await outside).toBe(1)
         const result = await turn
         if (result.info.role !== "assistant") throw new Error("the turn did not produce an assistant message")
         // Left unfinished on purpose: the shape resumeInterrupted looks for.
