@@ -9,7 +9,9 @@ text, Bold for titles, so the pages read like a preprint. The site is dark
 only; a hairline diagonal grid fills the space outside the page column.
 The shared footer stays inside that column, keeping the patterned gutters visible
 to the bottom of every page. Only the homepage workspace preview extends wider
-on desktop; it leaves the gutter pattern visible around the picture.
+on desktop; it leaves the gutter pattern visible around the picture. The page
+reserves patterned side margins at every viewport width, including narrow
+desktop windows, and keeps the header, body, and footer borders aligned.
 
 | Route       | File                     | What                                                                    |
 | ----------- | ------------------------ | ----------------------------------------------------------------------- |

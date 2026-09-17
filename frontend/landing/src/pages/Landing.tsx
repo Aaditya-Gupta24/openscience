@@ -224,8 +224,7 @@ export default function Landing() {
             <div data-slot="hero-copy">
               <h1>The open-source AI workbench for scientific research</h1>
               <p>
-                One workspace for literature, code, experiments, compute, and results.
-                <span data-slot="br" />
+                One workspace for literature, code, experiments, compute, and results. <span data-slot="br" />
                 Free models included, or bring Claude, GPT, Gemini and any other provider.
               </p>
             </div>
