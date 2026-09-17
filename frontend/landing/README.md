@@ -7,8 +7,6 @@ its deps stay isolated). The layout follows opencode.ai (one bordered page
 column, sticky header, 4rem section rhythm) set in CMU Concrete: Roman for
 text, Bold for titles, so the pages read like a preprint. The site is dark
 only; a hairline diagonal grid fills the space outside the page column.
-The homepage keeps straight borders around the reading column. Only the workspace
-preview expands into a full-width section, with a wider image and plain backdrop.
 Every page ends with the shared full-width footer and its large OpenScience wordmark.
 
 | Route       | File                     | What                                                                    |
