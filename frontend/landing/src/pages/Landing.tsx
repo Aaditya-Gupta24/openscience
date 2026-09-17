@@ -2,7 +2,7 @@ import { useState } from "react"
 import { BenchmarkFigure } from "@/components/BenchmarkFigure"
 import { CopyStatus, useCopy } from "@/components/Copy"
 import { FaqSection } from "@/components/Faq"
-import { Footer, Legal } from "@/components/Footer"
+import { Footer } from "@/components/Footer"
 import Header from "@/components/Header"
 import { useMeta } from "@/components/Meta"
 import { ProviderRow } from "@/components/ProviderMark"
@@ -208,7 +208,7 @@ export default function Landing() {
   })
 
   return (
-    <main data-page="openscience">
+    <main id="top" data-page="openscience">
       <div data-component="container">
         <Header />
 
@@ -296,12 +296,10 @@ export default function Landing() {
           </section>
 
           <FaqSection items={FAQ} />
-
-          <Footer />
         </div>
       </div>
 
-      <Legal />
+      <Footer />
     </main>
   )
 }
