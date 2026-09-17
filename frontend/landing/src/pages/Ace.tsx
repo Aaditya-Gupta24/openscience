@@ -1,5 +1,5 @@
 import { FaqSection } from "@/components/Faq"
-import { Footer, Legal } from "@/components/Footer"
+import { Footer } from "@/components/Footer"
 import Header from "@/components/Header"
 import { useMeta } from "@/components/Meta"
 import { ProviderMark, ProviderRow, PROVIDER_NAMES } from "@/components/ProviderMark"
@@ -315,7 +315,7 @@ export default function Ace() {
   })
 
   return (
-    <main data-page="ace">
+    <main id="top" data-page="ace">
       <div data-component="container">
         <Header current="ace" />
 
@@ -447,12 +447,10 @@ export default function Ace() {
           </section>
 
           <FaqSection items={FAQ} />
-
-          <Footer />
         </div>
       </div>
 
-      <Legal />
+      <Footer />
     </main>
   )
 }

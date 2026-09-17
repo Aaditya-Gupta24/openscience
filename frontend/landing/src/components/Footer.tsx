@@ -1,77 +1,86 @@
-import { useEffect, useState } from "react"
-import { CHANGELOG, DOCS, GITHUB, LICENSE, SECURITY, SYNTHETIC_SCIENCES, X } from "@/data/links"
+import { ArrowUpIcon, ArrowUpRightIcon } from "@phosphor-icons/react"
+import { CHANGELOG, DOCS, GITHUB, SECURITY, SYNTHETIC_SCIENCES, X } from "@/data/links"
 
-function useStars() {
-  const [stars, setStars] = useState<string | null>(null)
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch("https://api.github.com/repos/synthetic-sciences/OpenScience", { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { stargazers_count?: number } | null) => {
-        if (typeof data?.stargazers_count !== "number") return
-        setStars(
-          new Intl.NumberFormat("en", { notation: "compact", compactDisplay: "short" }).format(data.stargazers_count),
-        )
-      })
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [])
-  return stars
-}
+const GROUPS = [
+  {
+    title: "OpenScience",
+    links: [
+      { label: "Download", href: "/download" },
+      { label: "Workspace", href: "/#workspace" },
+      { label: "Ace", href: "/ace" },
+      { label: "GitHub", href: GITHUB, external: true },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { label: "Docs", href: DOCS },
+      { label: "Changelog", href: CHANGELOG, external: true },
+      { label: "Install the CLI", href: "/download#terminal" },
+      { label: "FAQ", href: "/#faq" },
+    ],
+  },
+  {
+    title: "Company",
+    links: [
+      { label: "Synthetic Sciences", href: SYNTHETIC_SCIENCES, external: true },
+      { label: "Privacy policy", href: "/privacy" },
+      { label: "Security", href: SECURITY, external: true },
+      { label: "X", href: X, external: true },
+    ],
+  },
+]
 
 export function Footer() {
-  const stars = useStars()
   return (
-    <footer data-component="footer">
-      <div data-slot="cell">
-        <a href={GITHUB} target="_blank" rel="noreferrer">
-          GitHub {stars ? <span>[{stars}]</span> : null}
-        </a>
-      </div>
-      <div data-slot="cell">
-        <a href={DOCS}>Docs</a>
-      </div>
-      <div data-slot="cell">
-        <a href={CHANGELOG} target="_blank" rel="noreferrer">
-          Changelog
-        </a>
-      </div>
-      <div data-slot="cell">
-        <a href={SYNTHETIC_SCIENCES} target="_blank" rel="noreferrer">
-          Synthetic Sciences
-        </a>
-      </div>
-      <div data-slot="cell">
-        <a href={X} target="_blank" rel="noreferrer">
-          X
-        </a>
+    <footer data-component="footer" role="contentinfo">
+      <div data-slot="footer-inner">
+        <div data-slot="footer-top">
+          <div data-slot="footer-brand">
+            <a href="/" data-slot="footer-home" aria-label="OpenScience home">
+              <svg aria-hidden="true" focusable="false">
+                <use href="/provider-logos.svg#synsci" />
+              </svg>
+              OpenScience
+            </a>
+            <p>
+              An open-source workbench
+              <br />
+              for scientific research.
+            </p>
+          </div>
+          {GROUPS.map((group) => (
+            <nav key={group.title} aria-label={group.title}>
+              <h2>{group.title}</h2>
+              <ul>
+                {group.links.map((link) => (
+                  <li key={link.label}>
+                    <a href={link.href} {...("external" in link ? { target: "_blank", rel: "noreferrer" } : {})}>
+                      {link.label}
+                      {"external" in link ? <ArrowUpRightIcon size={13} aria-hidden="true" /> : null}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
+        </div>
+        <div data-slot="footer-bottom">
+          <span>
+            &copy; {new Date().getFullYear()} InkVell Inc. (dba{" "}
+            <a href={SYNTHETIC_SCIENCES} target="_blank" rel="noreferrer">
+              Synthetic Sciences
+            </a>
+            )
+          </span>
+          <a href="#top" data-slot="back-to-top">
+            Back to top <ArrowUpIcon size={16} aria-hidden="true" />
+          </a>
+        </div>
+        <div data-slot="footer-wordmark" aria-hidden="true">
+          OpenScience
+        </div>
       </div>
     </footer>
-  )
-}
-
-export function Legal() {
-  return (
-    <div data-component="legal">
-      <span>
-        &copy;{new Date().getFullYear()}{" "}
-        <a href={SYNTHETIC_SCIENCES} target="_blank" rel="noreferrer">
-          Synthetic Sciences
-        </a>
-      </span>
-      <span>
-        <a href="/privacy">Privacy</a>
-      </span>
-      <span>
-        <a href={SECURITY} target="_blank" rel="noreferrer">
-          Security
-        </a>
-      </span>
-      <span>
-        <a href={LICENSE} target="_blank" rel="noreferrer">
-          Apache 2.0
-        </a>
-      </span>
-    </div>
   )
 }

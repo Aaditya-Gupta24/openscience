@@ -8,6 +8,12 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ## Unreleased
 
+### Changed
+
+- **Updated website attribution.** The shared footer names InkVell Inc. (dba Synthetic Sciences) and no longer displays the Apache 2.0 link.
+
+- **A clearer OpenScience download page.** Desktop downloads are grouped by platform above the terminal install commands, with a shared footer for product, resource, and privacy links. The homepage workspace preview extends wider while patterned page gutters remain visible at every window size. Smoother spacing, complete mobile install commands, and a continuous sticky header keep the preview and surrounding content from looking clipped.
+
 ### Fixed
 
 - **"Pause and restart" works from the update banner.** Choosing it while an

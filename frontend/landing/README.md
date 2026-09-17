@@ -7,6 +7,14 @@ its deps stay isolated). The layout follows opencode.ai (one bordered page
 column, sticky header, 4rem section rhythm) set in CMU Concrete: Roman for
 text, Bold for titles, so the pages read like a preprint. The site is dark
 only; a hairline diagonal grid fills the space outside the page column.
+The shared footer stays inside that column, keeping the patterned gutters visible
+to the bottom of every page. Only the homepage workspace preview extends wider
+on desktop; it leaves the gutter pattern visible around the picture. The page
+reserves patterned side margins at every viewport width, including narrow
+desktop windows, and keeps the header, body, and footer borders aligned.
+The sticky header also covers the outer gutters so the wider preview scrolls
+behind a continuous edge. Its outline does not subtract from the scaled
+workspace's 16:9 content area.
 
 | Route       | File                     | What                                                                    |
 | ----------- | ------------------------ | ----------------------------------------------------------------------- |
@@ -26,6 +34,8 @@ Things to keep current:
 - `src/data/benchmarks.ts` holds every benchmark number on the home page and
   a `PRELIMINARY` flag that controls the footnote wording.
 - `src/pages/Ace.tsx` mirrors `backend/cli/src/provider/managed-catalog.ts`.
+- `src/pages/Download.tsx` groups desktop installers by operating system before
+  the terminal commands. Keep its download filenames in sync with release assets.
 - `src/components/Workspace.tsx` is a pixel replica of the product in its own
   font (Inter Variable) and tokens, standing in for a product video. Swap it
   for a `<video>` in `Landing.tsx` when a recording exists.

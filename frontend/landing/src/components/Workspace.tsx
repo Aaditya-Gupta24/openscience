@@ -372,7 +372,7 @@ function useScale(ref: React.RefObject<HTMLDivElement>) {
   useLayoutEffect(() => {
     const node = ref.current
     if (!node) return
-    const update = () => setScale(node.clientWidth / 1440)
+    const update = () => setScale(node.getBoundingClientRect().width / 1440)
     update()
     const observer = new ResizeObserver(update)
     observer.observe(node)

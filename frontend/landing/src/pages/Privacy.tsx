@@ -1,4 +1,4 @@
-import { Footer, Legal } from "@/components/Footer"
+import { Footer } from "@/components/Footer"
 import Header from "@/components/Header"
 import { useMeta } from "@/components/Meta"
 import { DASHBOARD, GITHUB, REPORT_VULNERABILITY, SECURITY, docs } from "@/data/links"
@@ -17,7 +17,7 @@ export default function Privacy() {
   })
 
   return (
-    <main data-page="privacy">
+    <main id="top" data-page="privacy">
       <div data-component="container">
         <Header current="privacy" />
 
@@ -239,12 +239,10 @@ export default function Privacy() {
               <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
             </p>
           </article>
-
-          <Footer />
         </div>
       </div>
 
-      <Legal />
+      <Footer />
     </main>
   )
 }
