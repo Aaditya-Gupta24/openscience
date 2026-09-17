@@ -6,27 +6,14 @@ import { Footer, Legal } from "@/components/Footer"
 import Header from "@/components/Header"
 import { useMeta } from "@/components/Meta"
 import { GITHUB, INSTALL_SCRIPT, NPM, NPM_SDK, RELEASES, RELEASE_DOWNLOAD, docs } from "@/data/links"
-
-const DOWNLOADS = {
-  "mac-arm64": { platform: "mac", label: "macOS (Apple Silicon)", os: "macOS", file: "OpenScience-mac-arm64.dmg" },
-  "mac-x64": { platform: "mac", label: "macOS (Intel)", os: "macOS", file: "OpenScience-mac-x64.dmg" },
-  "windows-x64": { platform: "windows", label: "Windows (x64)", os: "Windows", file: "OpenScience-windows-x64.exe" },
-  "linux-x64": {
-    platform: "linux",
-    label: "Linux (x64, AppImage)",
-    os: "Linux",
-    file: "OpenScience-linux-x64.AppImage",
-  },
-  "linux-arm64": {
-    platform: "linux",
-    label: "Linux (ARM64, AppImage)",
-    os: "Linux",
-    file: "OpenScience-linux-arm64.AppImage",
-  },
-} as const
-
-type Target = keyof typeof DOWNLOADS
-type Platform = (typeof DOWNLOADS)[Target]["platform"]
+import {
+  DOWNLOADS,
+  detectTarget,
+  targetForArchitecture,
+  type DetectedTarget,
+  type Platform,
+  type Target,
+} from "./download-target"
 
 const NOTES: Record<Platform, string> = {
   mac: "Developer ID signed and notarized. Open the DMG and drag OpenScience into Applications. Signed builds update themselves.",
@@ -35,14 +22,9 @@ const NOTES: Record<Platform, string> = {
   linux: "Make the AppImage executable, then open it. Requires kernel 5.1 or newer.",
 }
 
-function detect(): Target {
-  if (typeof navigator === "undefined") return "mac-arm64"
-  const agent = `${navigator.userAgent} ${navigator.platform}`.toLowerCase()
-  if (agent.includes("win")) return "windows-x64"
-  const linux = agent.includes("linux") || agent.includes("x11")
-  const arm = /arm64|aarch64/.test(agent)
-  if (linux) return arm ? "linux-arm64" : "linux-x64"
-  return "mac-arm64"
+function detect(): DetectedTarget {
+  if (typeof navigator === "undefined") return "mac-unknown"
+  return detectTarget(navigator.userAgent, navigator.platform)
 }
 
 function PlatformIcon({ platform }: { platform: Platform }) {
@@ -223,12 +205,12 @@ export default function Download() {
     path: "/download",
   })
 
-  const [target, setTarget] = useState<Target>(detect)
+  const [target, setTarget] = useState<DetectedTarget>(detect)
   const chosen = useRef(false)
 
   useEffect(() => {
-    const platform = DOWNLOADS[detect()].platform
-    if (platform === "windows") return
+    const detected = detect()
+    if (detected === "windows-x64") return
     const data = (
       navigator as Navigator & {
         userAgentData?: { getHighEntropyValues: (hints: string[]) => Promise<{ architecture?: string }> }
@@ -237,16 +219,14 @@ export default function Download() {
     if (!data?.getHighEntropyValues) return
     void data.getHighEntropyValues(["architecture"]).then(
       (value) => {
-        const architecture = value.architecture?.toLowerCase()
-        if (!architecture || chosen.current || !/arm|^(x86|x64|x86_64|amd64)$/.test(architecture)) return
-        const arm = architecture.includes("arm")
-        setTarget(platform === "linux" ? (arm ? "linux-arm64" : "linux-x64") : arm ? "mac-arm64" : "mac-x64")
+        const next = targetForArchitecture(detected, value.architecture)
+        if (next && !chosen.current) setTarget(next)
       },
       () => undefined,
     )
   }, [])
 
-  const download = DOWNLOADS[target]
+  const download = target === "mac-unknown" ? undefined : DOWNLOADS[target]
 
   return (
     <main data-page="download">
@@ -261,17 +241,41 @@ export default function Download() {
             <div data-component="hero-text">
               <h1>Download OpenScience Desktop</h1>
               <p>Available for macOS, Windows, and Linux</p>
-              <a
-                href={`${RELEASE_DOWNLOAD}/${download.file}`}
-                data-slot="button"
-                aria-label={`Download OpenScience for ${download.label}`}
-              >
-                <DownloadIcon />
-                Download for {download.os}
-              </a>
-              <p data-slot="hero-note">
-                {download.label}. {NOTES[download.platform]}
-              </p>
+              {download ? (
+                <>
+                  <a
+                    href={`${RELEASE_DOWNLOAD}/${download.file}`}
+                    data-slot="button"
+                    aria-label={`Download OpenScience for ${download.label}`}
+                  >
+                    <DownloadIcon />
+                    Download for {download.os}
+                  </a>
+                  <p data-slot="hero-note">
+                    {download.label}. {NOTES[download.platform]}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div data-component="architecture-choices" role="group" aria-label="Choose your Mac architecture">
+                    {(["mac-arm64", "mac-x64"] as const).map((key) => (
+                      <a
+                        key={key}
+                        href={`${RELEASE_DOWNLOAD}/${DOWNLOADS[key].file}`}
+                        data-slot={key === "mac-arm64" ? "button" : "button-light"}
+                        onClick={() => {
+                          chosen.current = true
+                          setTarget(key)
+                        }}
+                      >
+                        <DownloadIcon />
+                        Download for {key === "mac-arm64" ? "Apple Silicon" : "Intel"}
+                      </a>
+                    ))}
+                  </div>
+                  <p data-slot="hero-note">Choose Apple Silicon for M1 and newer Macs, or Intel for older Macs.</p>
+                </>
+              )}
             </div>
           </div>
 
