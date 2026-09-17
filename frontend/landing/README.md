@@ -12,6 +12,9 @@ to the bottom of every page. Only the homepage workspace preview extends wider
 on desktop; it leaves the gutter pattern visible around the picture. The page
 reserves patterned side margins at every viewport width, including narrow
 desktop windows, and keeps the header, body, and footer borders aligned.
+The sticky header also covers the outer gutters so the wider preview scrolls
+behind a continuous edge. Its outline does not subtract from the scaled
+workspace's 16:9 content area.
 
 | Route       | File                     | What                                                                    |
 | ----------- | ------------------------ | ----------------------------------------------------------------------- |

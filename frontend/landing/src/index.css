@@ -32,7 +32,7 @@
 
   /* opencode.ai's scale: 16px body on 200% leading, titles at body size in
      bold, one large heading, one small size for captions and notes. */
-  --text-heading: 2.375rem;
+  --text-heading: clamp(1.5rem, 3.2vw, 2.375rem);
   --text-title: 1rem;
   --text-body: 1rem;
   --text-small: 0.875rem;
@@ -64,23 +64,15 @@
   --color-accent-soft: hsla(181, 32%, 62%, 0.16);
   --color-chart-other: hsl(24, 38%, 60%);
 
-  --padding: 5rem;
+  --padding: clamp(1.5rem, calc(15vw - 7.5rem), 5rem);
   --page-gutter: clamp(0.75rem, calc(12.5vw - 3rem), 6rem);
   --vertical-padding: 4rem;
   color-scheme: dark;
 }
 
-@media (min-width: 60.001rem) and (max-width: 75rem) {
-  :root {
-    --padding: 4vw;
-  }
-}
-
 @media (max-width: 60rem) {
   :root {
-    --padding: 1.5rem;
     --vertical-padding: 3rem;
-    --text-heading: clamp(1.375rem, 3.2vw, 2.375rem);
     --leading: 180%;
   }
 }
@@ -110,6 +102,7 @@ body {
   background-color: var(--color-background);
   background-image: var(--grid-tile);
   background-size: 40px 40px;
+  background-attachment: fixed;
   min-height: 100vh;
   overflow-x: clip;
 }
@@ -214,6 +207,27 @@ pre {
     border-bottom: 1px solid var(--color-border-weak);
     z-index: 10;
 
+    /* Cover the full preview width while keeping the patterned header gutters. */
+    &::before,
+    &::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+    &::before {
+      inset: 0 calc((100% - 100vw) / 2);
+      z-index: -2;
+      background: var(--grid-tile) var(--color-background);
+      background-size: 40px 40px;
+      background-attachment: fixed;
+    }
+    &::after {
+      inset: 0 -1px;
+      z-index: -1;
+      background: var(--color-background);
+      border-inline: 1px solid var(--color-border-weak);
+    }
+
     [data-slot="wordmark"] {
       display: inline-flex;
       align-items: center;
@@ -300,9 +314,8 @@ pre {
       [data-component="nav-mobile-toggle"] {
         border: none;
         background: none;
-        outline: none;
-        height: 40px;
-        width: 40px;
+        height: 44px;
+        width: 44px;
         cursor: pointer;
         margin-right: -8px;
         color: var(--color-icon);
@@ -317,7 +330,9 @@ pre {
         top: 80px;
         left: var(--page-gutter);
         right: var(--page-gutter);
-        height: 100vh;
+        height: calc(100dvh - 80px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
         border-top: 1px solid var(--color-border-weak);
 
         ul {
@@ -788,18 +803,12 @@ pre {
       line-height: 1.2;
       text-wrap: balance;
       max-width: 30ch;
-
-      @media (max-width: 60rem) {
-        max-width: none;
-      }
     }
     p {
       color: var(--color-text);
       margin-bottom: 32px;
-      max-width: 82%;
-      @media (max-width: 50rem) {
-        max-width: 100%;
-      }
+      max-width: 48rem;
+      text-wrap: pretty;
     }
     [data-slot="br"] {
       display: block;
@@ -891,6 +900,7 @@ pre {
     [data-slot="command"] {
       all: unset;
       display: flex;
+      box-sizing: border-box;
       max-width: 100%;
       cursor: pointer;
       align-items: center;
@@ -899,17 +909,12 @@ pre {
       border-radius: 4px;
       color: var(--color-text-weak);
       font-family: var(--font-mono);
+      line-height: 1.6;
 
       [data-slot="command-script"] {
-        display: inline-block;
-        max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        vertical-align: middle;
-        @media (max-width: 35rem) {
-          width: calc(100% - 40px) !important;
-        }
+        min-width: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       [data-slot="highlight"] {
         color: var(--color-text-strong);
@@ -926,12 +931,19 @@ pre {
     width: min(84rem, calc(100vw - clamp(1rem, 4.8vw, 4rem)));
     margin-left: 50%;
     transform: translateX(-50%);
-    scroll-margin-top: 100px;
+    scroll-margin-top: 112px;
 
     .os-viewport {
-      border: 1px solid var(--color-border);
-      border-radius: 4px;
+      border-radius: 6px;
+      outline: 1px solid var(--color-border);
+      outline-offset: -1px;
+      box-shadow: 0 16px 40px hsl(0 9% 3% / 24%);
     }
+  }
+
+  [data-component="demo"] + [data-component="section"] {
+    border-top: none;
+    padding-top: calc(var(--vertical-padding) + 2rem);
   }
 
   /* Benchmarks, laid out like opencode.ai's growth figures ---------------- */
