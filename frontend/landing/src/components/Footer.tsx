@@ -1,5 +1,5 @@
 import { ArrowUpIcon, ArrowUpRightIcon } from "@phosphor-icons/react"
-import { CHANGELOG, DOCS, GITHUB, LICENSE, SECURITY, SYNTHETIC_SCIENCES, X } from "@/data/links"
+import { CHANGELOG, DOCS, GITHUB, SECURITY, SYNTHETIC_SCIENCES, X } from "@/data/links"
 
 const GROUPS = [
   {
@@ -67,14 +67,12 @@ export function Footer() {
         </div>
         <div data-slot="footer-bottom">
           <span>
-            &copy;{new Date().getFullYear()}{" "}
+            &copy; {new Date().getFullYear()} InkVell Inc. (dba{" "}
             <a href={SYNTHETIC_SCIENCES} target="_blank" rel="noreferrer">
               Synthetic Sciences
             </a>
+            )
           </span>
-          <a href={LICENSE} target="_blank" rel="noreferrer">
-            Apache 2.0
-          </a>
           <a href="#top" data-slot="back-to-top">
             Back to top <ArrowUpIcon size={16} aria-hidden="true" />
           </a>
