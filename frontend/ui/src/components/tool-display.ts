@@ -341,6 +341,11 @@ export function sessionErrorText(value: unknown): string {
   if (credential) return credential
   const body = typeof data?.responseBody === "string" ? data.responseBody : ""
   if (!body.includes('"error":"insufficient_balance"')) return message
+  // The managed gateway's 402 carries a recovery contract, and the runtime
+  // has already turned it into a sentence that says what is held, what a
+  // reload is doing, and what to do. Repeating the two bare numbers here
+  // once hid "reserved by requests in flight" behind "$0.09 is available".
+  if (body.includes('"recovery"') && message !== "Request failed") return message
 
   const required = body.match(/"required_cents":\s*(\d+)/)?.[1]
   const available = body.match(/"available_cents":\s*(\d+)/)?.[1]

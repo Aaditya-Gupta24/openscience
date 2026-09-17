@@ -94,6 +94,20 @@ describe("sessionErrorText", () => {
     ).toBe("The connected provider account needs $3.74 for this step; $2.58 is available.")
   })
 
+  test("keeps the gateway's explanation when the 402 carries a recovery contract", () => {
+    const message =
+      "Ace is waiting for this Wallet's other requests in flight to settle before sending this one. Available: $0.09 of $6.81; $6.72 reserved by requests in flight; this request reserves $1.39. Retrying automatically."
+    expect(
+      sessionErrorText({
+        data: {
+          message,
+          responseBody:
+            '{"error":"insufficient_balance","required_cents":139,"available_cents":9,"balance_cents":681,"held_cents":672,"recovery":{"kind":"inflight_holds","retryable":true}}',
+        },
+      }),
+    ).toBe(message)
+  })
+
   test("preserves ordinary provider errors", () => {
     expect(sessionErrorText({ data: { message: "Provider is overloaded" } })).toBe("Provider is overloaded")
     expect(

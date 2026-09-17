@@ -16,6 +16,19 @@ tagged release also ships native binaries for Linux, macOS, and Windows.
 
 ### Fixed
 
+- **Waiting for the Wallet no longer ends the turn.** When a lead and its
+  workers share a small Wallet, each request reserves its worst-case cost and
+  the rest wait for those holds to settle; the wait was capped at five 15 s
+  retries, so on a $7 Wallet with four workers a step gave up while the others
+  were still finishing, with the card reading "needs $1.39 for this step; $0.09
+  is available" although the Wallet held $6.81. The wait is now budgeted by
+  time (ten minutes), and the card shows the gateway's explanation: what is
+  held by requests in flight, and what auto reload is doing ("a reload is on
+  its way", "did not run: this month's reload cap is reached", "the last
+  automatic reload failed (card_declined)").
+
+### Fixed
+
 - **"Pause and restart" works from the update banner.** Choosing it while an
   agent was running failed with "No context found for instance" on the packaged
   app (found while updating an isolated v2.0.113 desktop with a turn in

@@ -294,6 +294,55 @@ describe("SessionProcessor.providerFailureAction", () => {
     expect(SessionProcessor.consumeProviderRetry({ attempt: 5, transientRetries: 5 })).toBeUndefined()
   })
 
+  test("waiting for the Wallet is budgeted by time, not by the five transient retries", () => {
+    const start = 1_000_000
+    // The wait does not consume transient retries and records when it began.
+    const first = SessionProcessor.consumeProviderRetry({ attempt: 5, transientRetries: 5 }, { wait: true, now: start })
+    expect(first).toEqual({ attempt: 6, transientRetries: 5, waitingSince: start })
+    // Nine minutes in, still waiting.
+    expect(
+      SessionProcessor.consumeProviderRetry(
+        { attempt: 30, transientRetries: 5, waitingSince: start },
+        { wait: true, now: start + 9 * 60_000 },
+      ),
+    ).toEqual({ attempt: 31, transientRetries: 5, waitingSince: start })
+    // At the budget the step gives up.
+    expect(
+      SessionProcessor.consumeProviderRetry(
+        { attempt: 40, transientRetries: 5, waitingSince: start },
+        { wait: true, now: start + SessionProcessor.WALLET_WAIT_BUDGET_MS },
+      ),
+    ).toBeUndefined()
+
+    // Only the gateway's retryable 402 counts as a Wallet wait.
+    const wait = new APICallError({
+      message: "Payment Required",
+      url: `${managedOpenRouterBaseURL()}/chat/completions`,
+      requestBodyValues: {},
+      statusCode: 402,
+      responseHeaders: { "retry-after": "15" },
+      responseBody: JSON.stringify({
+        error: "insufficient_balance",
+        recovery: { kind: "inflight_holds", retryable: true, action: "retry_after_inflight_requests" },
+      }),
+      isRetryable: false,
+    })
+    expect(SessionRetry.walletWait(MessageV2.fromError(wait, { providerID: "openrouter" }))).toBe(true)
+    const empty = new APICallError({
+      message: "Payment Required",
+      url: `${managedOpenRouterBaseURL()}/chat/completions`,
+      requestBodyValues: {},
+      statusCode: 402,
+      responseBody: JSON.stringify({
+        error: "insufficient_balance",
+        recovery: { kind: "ace_reload", retryable: false, action: "add_wallet_funds_or_update_payment_method" },
+      }),
+      isRetryable: false,
+    })
+    expect(SessionRetry.walletWait(MessageV2.fromError(empty, { providerID: "openrouter" }))).toBe(false)
+    expect(SessionRetry.walletWait(apiError({ "retry-after": "1" }))).toBe(false)
+  })
+
   test.each([400, 200, 503])("never retries gateway timeout under HTTP %s or SSE", (statusCode) => {
     const body = JSON.stringify({
       error: {

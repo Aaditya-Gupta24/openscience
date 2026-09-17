@@ -1355,15 +1355,37 @@ export namespace ProviderTransform {
     }
     if (body.error !== "insufficient_balance") return
     const detail = balance ? ` ${balance}.` : ""
+    // The reload's own state, when the gateway knows it: on its way, blocked
+    // for a named reason, or failed. Silence here once cost an afternoon.
+    const reload = (recovery.ace_reload ?? undefined) as Record<string, unknown> | undefined
+    const reloadNote = iife(() => {
+      if (!reload || reload.state !== "available") return ""
+      if (reload.pending === true) return " A Wallet reload is on its way."
+      if (typeof reload.error_class === "string" && reload.error_class && reload.attempt_state === "failed")
+        return ` The last automatic reload failed (${reload.error_class}).`
+      const reason = typeof reload.blocked_reason === "string" ? reload.blocked_reason : ""
+      const reasons: Record<string, string> = {
+        not_enrolled: "auto reload is not set up for this Wallet",
+        stripe_disabled: "payments are unavailable right now",
+        legacy_reload_reconciliation_required: "an older reload is still being reconciled",
+        legacy_wallet_sync_required: "the Wallet's earlier funds are still being migrated",
+        failure_cooldown: "the last charge failed recently",
+        monthly_cap_reached: "this month's reload cap is reached",
+        no_amount: "no reload amount is configured",
+      }
+      return reason && reasons[reason] && reason !== "above_threshold"
+        ? ` Auto reload did not run: ${reasons[reason]}.`
+        : ""
+    })
     switch (recovery.action) {
       case "retry_after_inflight_requests":
-        return `Ace is waiting for this Wallet's other requests in flight to settle before sending this one.${detail} Retrying automatically.`
+        return `Ace is waiting for this Wallet's other requests in flight to settle before sending this one.${detail}${reloadNote} Retrying automatically.`
       case "contact_organization_billing_manager":
         return `Ace is paused: this workspace's shared Wallet cannot fund the request.${detail} Ask a billing manager to add funds at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
       case "retry_after_reload":
         return `Ace is paused while an automatic reload of your Wallet completes.${detail} Retry in a moment; if the card was declined, update it at ${BILLING_URL}.`
       case "add_wallet_funds_or_update_payment_method":
-        return `Ace is paused: your Wallet cannot fund the request and auto reload could not top it up.${detail} Add funds or update the card at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
+        return `Ace is paused: your Wallet cannot fund the request and auto reload could not top it up.${detail}${reloadNote} Add funds or update the card at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
       default:
         return `Ace is paused: your Wallet cannot fund the request.${detail} Add funds or turn on auto reload at ${BILLING_URL}, or switch model access to Keys & subscriptions.`
     }

@@ -334,9 +334,26 @@ export namespace SessionProcessor {
   export type ProviderRetryState = {
     attempt: number
     transientRetries: number
+    /** When the step first started waiting for the Wallet (a managed 402 the gateway marked retryable). */
+    waitingSince?: number
   }
 
-  export function consumeProviderRetry(state: ProviderRetryState): ProviderRetryState | undefined {
+  /** How long a step may wait for this Wallet's own requests in flight (or a
+   * reload) before giving up. Nothing was dispatched on those refusals, so
+   * the wait costs nothing but time; five fixed retries ended real turns on
+   * small Wallets while their workers were still finishing. */
+  export const WALLET_WAIT_BUDGET_MS = 10 * 60_000
+
+  export function consumeProviderRetry(
+    state: ProviderRetryState,
+    options: { wait?: boolean; now?: number } = {},
+  ): ProviderRetryState | undefined {
+    if (options.wait) {
+      const now = options.now ?? Date.now()
+      const since = state.waitingSince ?? now
+      if (now - since >= WALLET_WAIT_BUDGET_MS) return
+      return { ...state, attempt: state.attempt + 1, waitingSince: since }
+    }
     if (state.transientRetries >= MAX_RETRY_ATTEMPTS) return
     return { ...state, attempt: state.attempt + 1, transientRetries: state.transientRetries + 1 }
   }
@@ -765,6 +782,7 @@ export namespace SessionProcessor {
     let shouldBreakOnDeny = true
     let attempt = 0
     let transientRetries = 0
+    let waitingSince: number | undefined
     let resubmits = 0
     let output: ReturnType<typeof outputWatchdog> | undefined
     let needsCompaction = false
@@ -1358,13 +1376,14 @@ export namespace SessionProcessor {
                 }
               })
               if (action.type === "retry") {
-                const retry = consumeProviderRetry({
-                  attempt,
-                  transientRetries,
-                })
+                const retry = consumeProviderRetry(
+                  { attempt, transientRetries, waitingSince },
+                  { wait: SessionRetry.walletWait(error) },
+                )
                 if (retry) {
                   attempt = retry.attempt
                   transientRetries = retry.transientRetries
+                  waitingSince = retry.waitingSince
                   const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
                   await SessionTraceStore.recordRetry({
                     sessionID: input.sessionID,

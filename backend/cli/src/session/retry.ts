@@ -273,6 +273,20 @@ export namespace SessionRetry {
     }).toObject() as MessageV2.APIError
   }
 
+  /** A managed 402 the gateway marked retryable: the Wallet's own requests in
+   * flight hold the funds, or a reload is on its way. Nothing was dispatched,
+   * so waiting is safe and is budgeted by time rather than by attempts. */
+  export function walletWait(error: ReturnType<NamedError["toObject"]>) {
+    if (!MessageV2.APIError.isInstance(error)) return false
+    if (error.data.statusCode !== 402) return false
+    try {
+      const body = JSON.parse(error.data.responseBody ?? "") as { recovery?: { retryable?: unknown } }
+      return body?.recovery?.retryable === true
+    } catch {
+      return false
+    }
+  }
+
   export function retryable(error: ReturnType<NamedError["toObject"]>) {
     if (isContextOverflow(error)) return undefined
     const normalized = normalizeProviderError(error)

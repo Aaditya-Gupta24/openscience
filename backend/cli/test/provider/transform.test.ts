@@ -2636,6 +2636,7 @@ describe("ProviderTransform.error for the managed gateway's payment-required con
     })
     const text = ProviderTransform.error("openrouter", error)
     expect(text).toContain("requests in flight")
+    expect(text).not.toContain("Auto reload did not run")
     expect(text).toContain("Available: $0.00 of $12.00")
     expect(text).toContain("$12.00 reserved by requests in flight")
     expect(text).toContain("reserves $4.01")
@@ -2649,6 +2650,63 @@ describe("ProviderTransform.error for the managed gateway's payment-required con
         }),
       ),
     ).toBe(false)
+  })
+
+  test("the refusal says why auto reload did not run, or that one is on its way", () => {
+    const base = {
+      error: "insufficient_balance",
+      required_cents: 401,
+      available_cents: 0,
+      balance_cents: 1200,
+      held_cents: 1200,
+    }
+    const blocked = ProviderTransform.error(
+      "openrouter",
+      managed({
+        ...base,
+        recovery: {
+          kind: "inflight_holds",
+          retryable: true,
+          retry_after_seconds: 15,
+          action: "retry_after_inflight_requests",
+          ace_reload: {
+            state: "available",
+            pending: false,
+            attempt_state: null,
+            blocked_reason: "monthly_cap_reached",
+          },
+        },
+      }),
+    )
+    expect(blocked).toContain("Auto reload did not run: this month's reload cap is reached.")
+    const pending = ProviderTransform.error(
+      "openrouter",
+      managed({
+        ...base,
+        recovery: {
+          kind: "inflight_holds",
+          retryable: true,
+          retry_after_seconds: 15,
+          action: "retry_after_inflight_requests",
+          ace_reload: { state: "available", pending: true, attempt_state: "pending", blocked_reason: null },
+        },
+      }),
+    )
+    expect(pending).toContain("A Wallet reload is on its way.")
+    const failed = ProviderTransform.error(
+      "openrouter",
+      managed({
+        ...base,
+        held_cents: 0,
+        recovery: {
+          kind: "ace_reload",
+          retryable: false,
+          action: "add_wallet_funds_or_update_payment_method",
+          ace_reload: { state: "available", pending: false, attempt_state: "failed", error_class: "card_declined" },
+        },
+      }),
+    )
+    expect(failed).toContain("The last automatic reload failed (card_declined).")
   })
 
   test("a monthly usage limit names the limit and the spend", () => {
